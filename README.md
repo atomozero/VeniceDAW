@@ -2,9 +2,13 @@
 
 A digital audio workstation designed specifically for Haiku OS, featuring intuitive performance monitoring.
 
+## 🚧 Project Status: Early Prototype
+
+**Important:** VeniceDAW is currently in an early prototype phase. This is experimental software with many features still in development. Much work remains before it becomes a fully usable DAW. Consider this a technical preview and proof of concept rather than production-ready software.
+
 ## Overview
 
-VeniceDAW brings professional audio production capabilities to Haiku OS with a focus on real-time performance and system efficiency. Built from the ground up using Haiku's native BMediaKit, it provides both powerful audio processing and intelligent system monitoring.
+VeniceDAW aims to bring professional audio production capabilities to Haiku OS with a focus on real-time performance and system efficiency. Built from the ground up using Haiku's native BMediaKit, it will provide both powerful audio processing and intelligent system monitoring.
 
 ## Current Status: Performance Station
 
@@ -44,11 +48,6 @@ make performance
 
 # Run the performance station
 ./VeniceDAWBenchmark
-```
-
-### Quick Test (syntax validation without Haiku)
-```bash
-make test-weather
 ```
 
 ## Architecture
