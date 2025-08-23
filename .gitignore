@@ -1,0 +1,106 @@
+# VeniceDAW .gitignore
+
+# ==================
+# Compiled binaries
+# ==================
+HaikuDAWDemo
+HaikuDAWNative
+HaikuDAWGUI
+HaikuDAWBenchmark
+HaikuDAWBenchmarkUnified
+HaikuDAWBenchmarkFull
+HaikuDAWBenchmarkGUI
+HaikuDAWWeatherBenchmark
+VeniceDAWBenchmark
+VeniceDAW
+
+# Object files
+*.o
+*.obj
+
+# Build artifacts
+src/main_simple.o
+src/main_simple_native.o
+src/main_gui.o
+src/main_benchmark.o
+src/main_benchmark_gui.o
+src/main_weather_benchmark.o
+src/audio/*.o
+src/benchmark/*.o
+src/gui/*.o
+src/ui/*.o
+src/utils/*.o
+src/midi/*.o
+src/project/*.o
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Temporary files
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.settings/
+.project
+.cproject
+
+# Haiku-specific
+*.rsrc
+*.rdef.h
+*.catkeys
+
+# Build directories
+build/
+dist/
+release/
+debug/
+
+# Generated documentation
+docs/generated/
+docs/doxygen/
+
+# Test results and reports
+test_results/
+benchmark_results/
+benchmark_results.txt
+benchmark_results*.txt
+*.log
+*.report
+
+# Package files
+*.hpkg
+*.zip
+*.tar.gz
+*.tar.bz2
+
+# Runtime files
+core
+vgcore.*
+
+# OS generated files
+.Trash-*
+ehthumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Configuration files (keep templates)
+config.local
+*.local.conf
+
+# Cache directories
+.cache/
+tmp/

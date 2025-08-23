@@ -1,0 +1,131 @@
+SUMMARY="Professional digital audio workstation for Haiku OS"
+DESCRIPTION="VeniceDAW is a native digital audio workstation designed \
+specifically for Haiku OS, featuring real-time audio processing, \
+professional performance monitoring, and innovative 3D spatial mixing \
+capabilities. Built from the ground up using Haiku's native BMediaKit \
+for optimal performance and system integration.
+
+Key Features:
+- Native Haiku BMediaKit integration for low-latency audio
+- Professional Performance Station with real-time system analysis
+- Weather-metaphor performance visualization for intuitive monitoring
+- 3D spatial audio mixing with OpenGL acceleration  
+- Ableton Live-inspired professional interface design
+- Real-time CPU, memory, audio latency, and I/O monitoring
+- Export capabilities for performance reports and audio analysis
+- Modular architecture supporting future plugin development
+
+The Performance Station provides comprehensive audio workstation \
+benchmarking with weather metaphors - sunny skies indicate optimal \
+performance while storms suggest system bottlenecks. Perfect for \
+studio setup optimization and professional audio system certification."
+
+HOMEPAGE="https://github.com/atomozero/VeniceDAW"
+COPYRIGHT="2024 VeniceDAW Project"
+LICENSE="MIT"
+REVISION="1"
+SOURCE_URI="https://github.com/atomozero/VeniceDAW/archive/v$portVersion.tar.gz"
+CHECKSUM_SHA256=""
+SOURCE_FILENAME="VeniceDAW-$portVersion.tar.gz"
+SOURCE_DIR="VeniceDAW-$portVersion"
+
+ARCHITECTURES="all !x86_gcc2"
+SECONDARY_ARCHITECTURES="x86"
+
+PROVIDES="
+	veniceDAW$secondaryArchSuffix = $portVersion
+	app:VeniceDAW = $portVersion
+	app:VeniceDAWPerformanceStation = $portVersion
+	"
+
+REQUIRES="
+	haiku$secondaryArchSuffix
+	lib:libGL$secondaryArchSuffix
+	lib:libGLU$secondaryArchSuffix
+	"
+
+BUILD_REQUIRES="
+	haiku${secondaryArchSuffix}_devel
+	devel:libGL$secondaryArchSuffix
+	devel:libGLU$secondaryArchSuffix
+	"
+
+BUILD_PREREQUIRES="
+	cmd:gcc$secondaryArchSuffix
+	cmd:g++$secondaryArchSuffix
+	cmd:make
+	cmd:which
+	"
+
+PATCH()
+{
+	# No patches needed - native Haiku code
+	true
+}
+
+BUILD()
+{
+	# Build the main DAW application
+	make clean
+	make native
+	
+	# Build the Performance Station
+	make performance
+}
+
+INSTALL()
+{
+	# Create application directories
+	mkdir -p "$appsDir/VeniceDAW"
+	mkdir -p "$dataDir/VeniceDAW/resources"
+	mkdir -p "$documentationDir/VeniceDAW"
+	
+	# Install main applications
+	cp HaikuDAWNative "$appsDir/VeniceDAW/VeniceDAW"
+	cp HaikuDAWWeatherBenchmark "$appsDir/VeniceDAW/PerformanceStation"
+	
+	# Install resources
+	cp -r resources/* "$dataDir/VeniceDAW/resources/" 2>/dev/null || true
+	
+	# Install documentation
+	cp README.md "$documentationDir/VeniceDAW/"
+	cp WEATHER_BENCHMARK_TODO.md "$documentationDir/VeniceDAW/"
+	cp BENCHMARK_RESULTS.md "$documentationDir/VeniceDAW/" 2>/dev/null || true
+	
+	# Create desktop shortcuts
+	mkdir -p "$dataDir/deskbar/menu/Applications/AudioVideo"
+	
+	# VeniceDAW main application shortcut
+	cat > "$dataDir/deskbar/menu/Applications/AudioVideo/VeniceDAW" << 'EOF'
+#!/bin/sh
+exec /boot/system/apps/VeniceDAW/VeniceDAW "$@"
+EOF
+	chmod +x "$dataDir/deskbar/menu/Applications/AudioVideo/VeniceDAW"
+	
+	# Performance Station shortcut
+	cat > "$dataDir/deskbar/menu/Applications/AudioVideo/Performance Station" << 'EOF'
+#!/bin/sh
+exec /boot/system/apps/VeniceDAW/PerformanceStation "$@"
+EOF
+	chmod +x "$dataDir/deskbar/menu/Applications/AudioVideo/Performance Station"
+	
+	# Set proper application signatures
+	settype -t application/x-vnd.VeniceDAW-MainApp "$appsDir/VeniceDAW/VeniceDAW"
+	settype -t application/x-vnd.VeniceDAW-PerformanceStation "$appsDir/VeniceDAW/PerformanceStation"
+	
+	# Install application icons if available
+	if [ -f "resources/icons/veniceDAW.hvif" ]; then
+		addattr -t "'VICN'" "BEOS:ICON" "resources/icons/veniceDAW.hvif" "$appsDir/VeniceDAW/VeniceDAW"
+	fi
+	
+	if [ -f "resources/icons/performanceStation.hvif" ]; then
+		addattr -t "'VICN'" "BEOS:ICON" "resources/icons/performanceStation.hvif" "$appsDir/VeniceDAW/PerformanceStation"
+	fi
+}
+
+TEST()
+{
+	# Run syntax validation tests
+	make test-weather
+	echo "✅ VeniceDAW package validation completed successfully"
+}
