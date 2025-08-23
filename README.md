@@ -39,6 +39,13 @@ VeniceDAW will be available through HaikuDepot for easy installation:
 - Haiku OS (R1/Beta4 or later recommended)
 - GCC development tools
 - BMediaKit headers (included with Haiku)
+- GLU development library
+
+#### Installing Dependencies
+```bash
+# Install GLU development package (required for 3D visualization)
+pkgman install glu_devel
+```
 
 ### Compilation
 
