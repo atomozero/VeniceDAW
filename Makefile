@@ -1,8 +1,8 @@
-# HaikuDAW - Modern Digital Audio Workstation for Haiku OS
+# VeniceDAW - Professional Audio Workstation for Haiku OS
 # Incremental build system for step-by-step development
 
 # Application name
-APP_NAME = HaikuDAW
+APP_NAME = VeniceDAW
 
 # Compiler settings
 CXX = g++
@@ -87,21 +87,21 @@ TEST_OBJS = $(TEST_SRCS:.cpp=.o)
 all: demo
 
 # Cross-platform demo (works on any system)
-demo: HaikuDAWDemo
-	@echo "✅ Demo ready! Run with: ./HaikuDAWDemo"
+demo: VeniceDAWDemo
+	@echo "✅ Demo ready! Run with: ./VeniceDAWDemo"
 
-HaikuDAWDemo: $(DEMO_OBJS)
+VeniceDAWDemo: $(DEMO_OBJS)
 	@echo "Linking cross-platform demo..."
-	$(CXX) $(DEMO_OBJS) -o HaikuDAWDemo
+	$(CXX) $(DEMO_OBJS) -o VeniceDAWDemo
 	@echo "✅ Cross-platform demo built successfully!"
 
 # Native Haiku audio engine test (100% BMediaKit)
-native: HaikuDAWNative
-	@echo "✅ Native Haiku engine ready! Run on Haiku: ./HaikuDAWNative"
+native: VeniceDAWNative
+	@echo "✅ Native Haiku engine ready! Run on Haiku: ./VeniceDAWNative"
 
-HaikuDAWNative: $(NATIVE_OBJS)
+VeniceDAWNative: $(NATIVE_OBJS)
 	@echo "Linking 100% native Haiku audio engine..."
-	$(CXX) $(NATIVE_OBJS) $(LIBS) -o HaikuDAWNative
+	$(CXX) $(NATIVE_OBJS) $(LIBS) -o VeniceDAWNative
 	@echo "✅ Native Haiku engine built successfully!"
 
 # Full Haiku application (requires native Haiku)
@@ -113,12 +113,12 @@ $(APP_NAME): $(FULL_OBJS)
 haiku-full: $(APP_NAME)
 
 # GUI version (native Haiku with mixer interface)
-gui: HaikuDAWGUI
-	@echo "✅ GUI ready! Run: ./HaikuDAWGUI"
+gui: VeniceDAWGUI
+	@echo "✅ GUI ready! Run: ./VeniceDAWGUI"
 
-HaikuDAWGUI: $(FULL_OBJS)
+VeniceDAWGUI: $(FULL_OBJS)
 	@echo "Linking native Haiku GUI application..."
-	$(CXX) $(FULL_OBJS) $(LIBS) -o HaikuDAWGUI
+	$(CXX) $(FULL_OBJS) $(LIBS) -o VeniceDAWGUI
 	@echo "✅ Native Haiku GUI built successfully!"
 
 # Compile rules
@@ -129,27 +129,27 @@ HaikuDAWGUI: $(FULL_OBJS)
 # Benchmark target (simplified version)
 benchmark: src/benchmark_simple.o src/audio/SimpleHaikuEngine.o
 	@echo "Building benchmark suite..."
-	$(CXX) src/benchmark_simple.o src/audio/SimpleHaikuEngine.o $(LIBS) -o HaikuDAWBenchmark
-	@echo "✅ Benchmark built! Run with: ./HaikuDAWBenchmark"
+	$(CXX) src/benchmark_simple.o src/audio/SimpleHaikuEngine.o $(LIBS) -o VeniceDAWBenchmark
+	@echo "✅ Benchmark built! Run with: ./VeniceDAWBenchmark"
 
 # Latency test target
 latency-test: src/latency_test.o
 	@echo "Building latency test..."
-	$(CXX) src/latency_test.o $(LIBS) -o HaikuDAWLatencyTest
-	@echo "✅ Latency test built! Run with: ./HaikuDAWLatencyTest"
+	$(CXX) src/latency_test.o $(LIBS) -o VeniceDAWLatencyTest
+	@echo "✅ Latency test built! Run with: ./VeniceDAWLatencyTest"
 
 # Full benchmark with runner (when ready)
 benchmark-full: src/benchmark_test.o src/benchmark/BenchmarkRunner.o $(AUDIO_HAIKU_OBJS)
 	@echo "Building full benchmark suite..."
-	$(CXX) src/benchmark_test.o src/benchmark/BenchmarkRunner.o $(AUDIO_HAIKU_OBJS) $(LIBS) -o HaikuDAWBenchmarkFull
+	$(CXX) src/benchmark_test.o src/benchmark/BenchmarkRunner.o $(AUDIO_HAIKU_OBJS) $(LIBS) -o VeniceDAWBenchmarkFull
 	@echo "✅ Full benchmark built!"
 
 # Unified benchmark suite (complete performance testing)
 benchmark-unified: $(BENCHMARK_OBJS)
 	@echo "Building unified benchmark suite with 3D FPS testing..."
-	$(CXX) $(BENCHMARK_CXXFLAGS) $(BENCHMARK_OBJS) $(LIBS) -o HaikuDAWBenchmarkUnified
-	@echo "✅ Unified benchmark suite built! Run with: ./HaikuDAWBenchmarkUnified"
-	@echo "    Usage: ./HaikuDAWBenchmarkUnified [--all|--audio|--3d|--memory|--system|--quick]"
+	$(CXX) $(BENCHMARK_CXXFLAGS) $(BENCHMARK_OBJS) $(LIBS) -o VeniceDAWBenchmarkUnified
+	@echo "✅ Unified benchmark suite built! Run with: ./VeniceDAWBenchmarkUnified"
+	@echo "    Usage: ./VeniceDAWBenchmarkUnified [--all|--audio|--3d|--memory|--system|--quick]"
 
 # GUI Benchmark (windowed version with graphs)
 GUI_SRCS_NO_BENCHMARK = \
@@ -161,21 +161,21 @@ BENCHMARK_GUI_OBJS = src/main_benchmark_gui.o src/gui/BenchmarkWindow.o src/benc
 
 benchmark-gui: $(BENCHMARK_GUI_OBJS)
 	@echo "Building GUI benchmark with visualization..."
-	$(CXX) $(CXXFLAGS) $(BENCHMARK_GUI_OBJS) $(LIBS) -o HaikuDAWBenchmarkGUI
-	@echo "✅ GUI Benchmark built! Run with: ./HaikuDAWBenchmarkGUI"
+	$(CXX) $(CXXFLAGS) $(BENCHMARK_GUI_OBJS) $(LIBS) -o VeniceDAWBenchmarkGUI
+	@echo "✅ GUI Benchmark built! Run with: ./VeniceDAWBenchmarkGUI"
 
-# Weather Benchmark (Revolutionary UI with weather metaphors)
-WEATHER_BENCHMARK_OBJS = src/main_weather_benchmark.o src/gui/WeatherBenchmarkWindow.o src/benchmark/PerformanceStation.o $(AUDIO_HAIKU_SRCS:.cpp=.o) $(GUI_SRCS_NO_BENCHMARK:.cpp=.o)
+# Performance Station (Professional UI with advanced analytics)
+PERFORMANCE_STATION_OBJS = src/main_weather_benchmark.o src/gui/WeatherBenchmarkWindow.o src/benchmark/PerformanceStation.o $(AUDIO_HAIKU_SRCS:.cpp=.o) $(GUI_SRCS_NO_BENCHMARK:.cpp=.o)
 
-benchmark-weather: $(WEATHER_BENCHMARK_OBJS)
-	@echo "🌤️ Building Weather Station Performance UI..."
+benchmark-weather: $(PERFORMANCE_STATION_OBJS)
+	@echo "🎛️ Building VeniceDAW Performance Station..."
 	$(CXX) $(CXXFLAGS) $(WEATHER_BENCHMARK_OBJS) $(LIBS) -o VeniceDAWBenchmark
-	@echo "✅ Weather Benchmark built! Run with: ./VeniceDAWBenchmark"
-	@echo "    Features: 🌤️ Weather metaphors, 🎨 3-level progressive UI, 📊 Ecosystem visualization"
+	@echo "✅ Performance Station built! Run with: ./VeniceDAWBenchmark"
+	@echo "    Features: 📊 Performance analytics, 🎨 Professional UI, ⚡ Real-time monitoring"
 
 # Clean build files
 clean:
-	rm -f $(DEMO_OBJS) $(NATIVE_OBJS) $(FULL_OBJS) $(BENCHMARK_OBJS) $(APP_NAME) HaikuDAWDemo HaikuDAWNative HaikuDAWGUI HaikuDAWBenchmark HaikuDAWBenchmarkUnified HaikuDAWBenchmarkFull HaikuDAWBenchmarkGUI VeniceDAWBenchmark
+	rm -f $(DEMO_OBJS) $(NATIVE_OBJS) $(FULL_OBJS) $(BENCHMARK_OBJS) $(APP_NAME) VeniceDAWDemo VeniceDAWNative VeniceDAWGUI VeniceDAWBenchmark VeniceDAWBenchmarkUnified VeniceDAWBenchmarkFull VeniceDAWBenchmarkGUI VeniceDAWBenchmark
 	rm -f src/main_benchmark_gui.o src/gui/BenchmarkWindow.o
 	rm -f src/main_weather_benchmark.o src/gui/WeatherBenchmarkWindow.o
 	rm -f src/benchmark_test.o src/benchmark/BenchmarkRunner.o src/benchmark/PerformanceStation.o src/main_benchmark.o
@@ -188,13 +188,13 @@ test-compile:
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/audio/AudioEngine.cpp
 	@echo "✅ Syntax check passed!"
 
-# Test Weather Benchmark syntax
-test-weather: CXXFLAGS += -fsyntax-only
-test-weather:
-	@echo "Testing Weather Benchmark compilation..."
+# Test Performance Station syntax
+test-performance: CXXFLAGS += -fsyntax-only
+test-performance:
+	@echo "Testing Performance Station compilation..."
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/gui/WeatherBenchmarkWindow.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/main_weather_benchmark.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
-	@echo "✅ Weather Benchmark syntax structure validated!"
+	@echo "✅ Performance Station syntax structure validated!"
 
 # Modular benchmark with new test architecture
 MODULAR_BENCHMARK_OBJS = src/main_benchmark_modular.o \
@@ -220,11 +220,11 @@ ui-only:
 
 # Run the demo
 run: demo
-	./HaikuDAWDemo
+	./VeniceDAWDemo
 
 # Run the native engine (Haiku only)
 run-native: native
-	./HaikuDAWNative
+	./VeniceDAWNative
 
 # Run the full application (Haiku only)
 run-haiku: $(APP_NAME)
@@ -244,7 +244,7 @@ station: benchmark-weather
 
 # Help target
 help:
-	@echo "HaikuDAW Build System - Modern Audio Workstation"
+	@echo "VeniceDAW Build System - Modern Audio Workstation"
 	@echo "==============================================="
 	@echo "Available targets:"
 	@echo ""
@@ -271,8 +271,8 @@ help:
 	@echo "VeniceDAW Performance Station:"
 	@echo "  make performance        - 🚀 Build Performance Station (recommended)"
 	@echo "  make station            - 🚀 Same as above (shortcut)"
-	@echo "  make benchmark-weather  - 🌤️ Full target name"
-	@echo "  make test-weather       - Test syntax only"
+	@echo "  make benchmark-weather  - 🎛️ Performance Station (full target name)"
+	@echo "  make test-performance   - Test syntax only"
 	@echo ""
 	@echo "Other Benchmarks (legacy):"
 	@echo "  make benchmark-unified  - Complete suite"
@@ -281,7 +281,7 @@ help:
 	@echo "🎯 FOR HAIKU COMMUNITY DEMO:"
 	@echo "  1. Copy project to Haiku system"
 	@echo "  2. Run: make native"
-	@echo "  3. Run: ./HaikuDAWNative"
+	@echo "  3. Run: ./VeniceDAWNative"
 	@echo ""
 	@echo "Debug build enabled by default for development"
 

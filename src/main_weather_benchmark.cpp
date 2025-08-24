@@ -30,7 +30,7 @@ public:
     
     virtual void AboutRequested() override {
         BAlert* alert = new BAlert("About", 
-            "🌤️ HaikuMix Weather Performance Station\n"
+            "🌤️ VeniceDAW Weather Performance Station\n"
             "Revolutionary benchmark interface that makes\n"
             "system performance as easy to understand\n"
             "as checking the weather forecast!\n\n"

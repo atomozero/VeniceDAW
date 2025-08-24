@@ -1,8 +1,8 @@
 #!/bin/bash
-# run_benchmarks.sh - Automated benchmark comparison script
+# run_performance_tests.sh - Automated performance comparison script
 
 echo "======================================"
-echo " HaikuDAW Benchmark Comparison Suite"
+echo " VeniceDAW Performance Test Suite"
 echo "======================================"
 echo ""
 
@@ -141,4 +141,4 @@ grep "CXXFLAGS +=" Makefile | head -1
 echo ""
 
 # Make script executable
-chmod +x run_benchmarks.sh 2>/dev/null
+chmod +x run_performance_tests.sh 2>/dev/null

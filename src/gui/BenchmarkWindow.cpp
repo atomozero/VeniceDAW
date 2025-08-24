@@ -279,7 +279,7 @@ void BenchmarkGraphView::DrawHeader(BRect bounds)
     font_height fh;
     fOffscreenView->GetFontHeight(&fh);
     float textY = 20 + fh.ascent / 2;
-    fOffscreenView->DrawString("HaikuMix Performance Dashboard", BPoint(15, textY));
+    fOffscreenView->DrawString("VeniceDAW Performance Dashboard", BPoint(15, textY));
     
     // Draw timestamp
     char timeStr[64];
@@ -697,7 +697,7 @@ rgb_color BenchmarkGraphView::GetCategoryColor(int index)
 
 // BenchmarkWindow Implementation
 BenchmarkWindow::BenchmarkWindow(BRect frame)
-    : BWindow(frame, "HaikuMix Performance Benchmark", B_TITLED_WINDOW,
+    : BWindow(frame, "VeniceDAW Performance Station", B_TITLED_WINDOW,
               B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS)
     , fBenchmark(nullptr)
     , fBenchmarkThread(-1)
@@ -2136,7 +2136,7 @@ void BenchmarkWindow::ExportTXT()
 {
     BPath path;
     find_directory(B_DESKTOP_DIRECTORY, &path);
-    path.Append("HaikuMix_Benchmark_Results.txt");
+    path.Append("VeniceDAW_Benchmark_Results.txt");
     
     BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
     if (file.InitCheck() != B_OK) return;
@@ -2144,7 +2144,7 @@ void BenchmarkWindow::ExportTXT()
     const auto& results = fBenchmark->GetResults();
     
     BString content;
-    content << "HaikuMix Benchmark Results\n";
+    content << "VeniceDAW Benchmark Results\n");
     content << "Generated: " << system_time() / 1000000 << "\n\n";
     
     // System info
@@ -2188,7 +2188,7 @@ void BenchmarkWindow::ExportHTML()
 {
     BPath path;
     find_directory(B_DESKTOP_DIRECTORY, &path);
-    path.Append("HaikuMix_Benchmark_Results.html");
+    path.Append("VeniceDAW_Benchmark_Results.html");
     
     BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
     if (file.InitCheck() != B_OK) return;
@@ -2197,7 +2197,7 @@ void BenchmarkWindow::ExportHTML()
     
     BString html;
     html << "<!DOCTYPE html>\n<html>\n<head>\n";
-    html << "<title>HaikuMix Benchmark Results</title>\n";
+    html << "<title>VeniceDAW Benchmark Results</title>\n");
     html << "<style>\n";
     html << "body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }\n";
     html << ".header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }\n";
@@ -2210,7 +2210,7 @@ void BenchmarkWindow::ExportHTML()
     
     // Header
     html << "<div class='header'>\n";
-    html << "<h1>🎵 HaikuMix Performance Benchmark</h1>\n";
+    html << "<h1>🎵 VeniceDAW Performance Station</h1>\n");
     html << "<p>Complete system performance analysis for audio production</p>\n";
     html << "</div>\n";
     
@@ -2265,7 +2265,7 @@ void BenchmarkWindow::ExportCSV()
 {
     BPath path;
     find_directory(B_DESKTOP_DIRECTORY, &path);
-    path.Append("HaikuMix_Benchmark_Results.csv");
+    path.Append("VeniceDAW_Benchmark_Results.csv");
     
     BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
     if (file.InitCheck() != B_OK) return;
@@ -2297,7 +2297,7 @@ void BenchmarkWindow::SaveBenchmarkHistory()
     
     BPath historyPath;
     find_directory(B_USER_SETTINGS_DIRECTORY, &historyPath);
-    historyPath.Append("HaikuMix");
+    historyPath.Append("VeniceDAW");
     // Create directory if it doesn't exist
     BDirectory dir;
     if (dir.CreateDirectory(historyPath.Path(), &dir) != B_OK && 
@@ -2347,7 +2347,7 @@ void BenchmarkWindow::ShowBenchmarkHistory()
 {
     BPath historyPath;
     find_directory(B_USER_SETTINGS_DIRECTORY, &historyPath);
-    historyPath.Append("HaikuMix");
+    historyPath.Append("VeniceDAW");
     
     BDirectory historyDir(historyPath.Path());
     if (historyDir.InitCheck() != B_OK) {

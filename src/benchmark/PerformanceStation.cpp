@@ -80,7 +80,7 @@ void PerformanceStation::RunAllTests()
 {
     printf("\n");
     printf("=====================================\n");
-    printf("  HaikuMix Unified Benchmark Suite\n");
+    printf("  VeniceDAW Performance Station\n");
     printf("=====================================\n");
     printf("\n");
     
@@ -1738,7 +1738,7 @@ void PerformanceStation::SaveReport(const std::string& filename)
     FILE* file = fopen(filename.c_str(), "w");
     if (!file) return;
     
-    fprintf(file, "HaikuMix Unified Benchmark Report\n");
+    fprintf(file, "VeniceDAW Performance Station Report\n");
     fprintf(file, "==================================\n\n");
     
     // Complete system info including kernel build

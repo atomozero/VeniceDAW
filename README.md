@@ -141,7 +141,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Acknowledgments
 
 - **Haiku OS Team**: For creating an amazing platform for native development
-- **BeOS Legacy**: The foundation that makes elegant audio programming possible
+- **Haiku Media Kit**: The foundation that makes elegant audio programming possible
 - **Venice**: The floating city that inspired the name and the engineering mindset
 
 ---

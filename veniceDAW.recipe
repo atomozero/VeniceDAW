@@ -89,8 +89,8 @@ INSTALL()
 	
 	# Install documentation
 	cp README.md "$documentationDir/VeniceDAW/"
-	cp WEATHER_BENCHMARK_TODO.md "$documentationDir/VeniceDAW/"
-	cp BENCHMARK_RESULTS.md "$documentationDir/VeniceDAW/" 2>/dev/null || true
+	cp PERFORMANCE_STATION_TODO.md "$documentationDir/VeniceDAW/"
+	cp PERFORMANCE_RESULTS.md "$documentationDir/VeniceDAW/" 2>/dev/null || true
 	
 	# Create desktop shortcuts
 	mkdir -p "$dataDir/deskbar/menu/Applications/AudioVideo"

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# HaikuMix Unified Benchmark Runner
+# VeniceDAW Performance Station Runner
 # Comprehensive performance testing for audio and 3D rendering
 
-echo "HaikuMix Unified Benchmark Runner"
+echo "VeniceDAW Performance Station Runner"
 echo "=================================="
 echo
 

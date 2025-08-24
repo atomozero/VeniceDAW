@@ -11,7 +11,7 @@ using namespace HaikuDAW;
 class BenchmarkGUIApp : public BApplication {
 public:
     BenchmarkGUIApp() 
-        : BApplication("application/x-vnd.HaikuMix-BenchmarkGUI") {
+        : BApplication("application/x-vnd.VeniceDAW-BenchmarkGUI") {
     }
     
     virtual void ReadyToRun() override {
@@ -23,11 +23,11 @@ public:
     
     virtual void AboutRequested() override {
         BAlert* about = new BAlert("About",
-            "HaikuMix Performance Benchmark\n"
+            "VeniceDAW Performance Station\n"
             "Version 1.0\n\n"
             "A comprehensive benchmark suite for\n"
             "testing audio and 3D performance.\n\n"
-            "© 2024 HaikuMix Project",
+            "© 2024 VeniceDAW Project",
             "OK", nullptr, nullptr,
             B_WIDTH_AS_USUAL, B_INFO_ALERT);
         about->Go();

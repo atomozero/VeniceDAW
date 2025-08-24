@@ -19,7 +19,7 @@ void RunBenchmarkTests(int argc, char* argv[]);
 class BenchmarkApp : public BApplication {
 public:
     BenchmarkApp(int argc, char** argv) 
-        : BApplication("application/x-vnd.HaikuMix-Benchmark")
+        : BApplication("application/x-vnd.VeniceDAW-Benchmark")
         , fArgc(argc)
         , fArgv(argv) {}
     
@@ -43,7 +43,7 @@ private:
 
 void PrintUsage(const char* progName)
 {
-    printf("HaikuMix Unified Benchmark Suite\n");
+    printf("VeniceDAW Performance Station\n");
     printf("=================================\n\n");
     printf("Usage: %s [options]\n\n", progName);
     printf("Options:\n");
@@ -216,7 +216,7 @@ void RunBenchmarkTests(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-    printf("HaikuMix Unified Benchmark Suite v1.0\n");
+    printf("VeniceDAW Performance Station v1.0\n");
     printf("======================================\n\n");
     
     // Check if we need 3D tests (which require BApplication)

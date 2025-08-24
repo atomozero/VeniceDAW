@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-HaikuMix is a 3D audio mixing application ported from BeOS R6 to modern Haiku OS. It's a C++ application using native Haiku APIs for audio processing and GUI.
+VeniceDAW is a professional audio workstation and 3D mixing application built natively for Haiku OS. It's a modern C++ application using native Haiku APIs for audio processing and GUI.
 
 ## Essential Commands
 
@@ -37,7 +37,7 @@ make test-weather      # Test syntax only
 ## Architecture & Key Components
 
 ### Audio Engine Architecture
-The audio system has been modernized from deprecated BeOS APIs to current Haiku Media Kit:
+The audio system uses modern Haiku Media Kit APIs:
 
 - **Core Audio**: `play.cpp` - BSoundPlayer-based real-time audio with semaphore synchronization
 - **Buffer Management**: Fixed 2048-byte buffers at 44.1kHz stereo
@@ -63,7 +63,7 @@ Multi-window system using Haiku Interface Kit:
 When working with audio, use modern Haiku APIs:
 ```cpp
 // Modern pattern (DO use):
-BSoundPlayer *player = new BSoundPlayer(&format, "HaikuMix", PlayBufferFunc);
+BSoundPlayer *player = new BSoundPlayer(&format, "VeniceDAW", PlayBufferFunc);
 BMediaFile *file = new BMediaFile(&ref, &file_format);
 BMediaTrack *track = file->CreateTrack(&format, &codec_info);
 
@@ -122,7 +122,7 @@ The project uses cross-compilation testing to validate code without a full Haiku
 
 ## Known Issues & Constraints
 
-- **MIDI Support**: Disabled due to deprecated BeOS MIDI APIs
+- **MIDI Support**: Disabled due to deprecated legacy MIDI APIs
 - **Cross-Compilation**: Some features only testable on actual Haiku system
 - **Buffer Timing**: Real-time audio requires careful semaphore management in `play.cpp`
 
@@ -152,7 +152,7 @@ The Draw() method MUST always draw the_bits bitmap:
 ```cpp
 void TSoundView::Draw(BRect rr) {
     // NEVER use conditional drawing based on rr coordinates!
-    // Modern Haiku uses different rectangle logic than BeOS
+    // Modern Haiku uses updated rectangle logic
     if (the_bits && the_bits->IsValid()) {
         DrawBitmap(the_bits, BPoint(bm_hp, 0));
     }
@@ -174,22 +174,22 @@ For mouse events to work properly:
 ### Architectural Synergy
 
 **Cortex** = Router audio di sistema (gestisce connessioni tra nodi media)
-**HaikuMix** = Mixer creativo con visualizzazione 3D
+**VeniceDAW** = Mixer creativo con visualizzazione 3D
 
 L'integrazione naturale:
-- Cortex gestisce **routing** (input hardware → HaikuMix, HaikuMix → output)
-- HaikuMix gestisce **creatività** (mixaggio spaziale, effetti, automazione)
+- Cortex gestisce **routing** (input hardware → VeniceDAW, VeniceDAW → output)
+- VeniceDAW gestisce **creatività** (mixaggio spaziale, effetti, automazione)
 
 ### Pattern di integrazione ottimale
 
-#### 1. HaikuMix come nodo media specializzato
-- Ogni track di HaikuMix appare come nodo separato in Cortex
+#### 1. VeniceDAW come nodo media specializzato
+- Ogni track di VeniceDAW appare come nodo separato in Cortex
 - Routing flessibile: microfoni → track specifici, track → monitor cuffie
 - Parametri 3D (posizione, distanza) esposti come BParameter controllabili da Cortex
 
 #### 2. Workflow professionale
 ```
-Hardware Input → Cortex → HaikuMix Tracks → HaikuMix Master → Cortex → Output Device
+Hardware Input → Cortex → VeniceDAW Tracks → VeniceDAW Master → Cortex → Output Device
                     ↑                              ↓
               Send/Return effects           Bounce to disk
 ```
@@ -198,7 +198,7 @@ Hardware Input → Cortex → HaikuMix Tracks → HaikuMix Master → Cortex →
 
 #### Per i musicisti:
 - **Setup complessi**: Routing multicanale con controllo spaziale
-- **Live performance**: Cortex per routing veloce, HaikuMix per mixaggio espressivo
+- **Live performance**: Cortex per routing veloce, VeniceDAW per mixaggio espressivo
 - **Recording session**: Input diretto da interfacce multi-canale
 
 #### Per il sistema:
@@ -209,7 +209,7 @@ Hardware Input → Cortex → HaikuMix Tracks → HaikuMix Master → Cortex →
 ### Sfide tecniche interessanti
 
 #### Latenza composta:
-Hardware → Cortex → HaikuMix → Cortex → Output
+Hardware → Cortex → VeniceDAW → Cortex → Output
 Ogni hop aggiunge ~2-5ms. Soluzione: routing bypass per monitoring diretto.
 
 #### Controllo distribuito:
@@ -235,7 +235,7 @@ Questa integrazione dimostrerebbe che:
 
 L'integrazione potrebbe stabilire **pattern standard** per future applicazioni audio native, rendendo Haiku attraente per sviluppatori di software musicale professionale.
 
-La chiave è **non duplicare funzionalità** ma creare **sinergia complementare** tra routing (Cortex) e creatività (HaikuMix).
+La chiave è **non duplicare funzionalità** ma creare **sinergia complementare** tra routing (Cortex) e creatività (VeniceDAW).
 
 ## File Organization
 
