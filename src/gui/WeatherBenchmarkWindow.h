@@ -145,6 +145,7 @@ private:
     BString fCPUType;
     BString fCPUModel;
     BString fHaikuVersion;
+    BString fHaikuRevision;
     BString fAudioDriver;
     BString fAudioDevice;
     BString fGraphicsDriver;

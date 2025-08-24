@@ -425,10 +425,12 @@ void PCInfoView::DetectSystemInfo()
             // Enhanced Haiku version from uname
             fHaikuVersion.SetTo(sysname);
             fHaikuVersion << " " << release;
+            fHaikuRevision.SetTo(unameData.version);
         } else {
             fCPUType.SetTo("x86-64");
             fCPUModel.SetTo("Multi-core processor");
             fHaikuVersion.SetTo("Haiku R1/Beta5+");
+            fHaikuRevision.SetTo("Unknown");
         }
     } else {
         fCPUCores = 1;
@@ -436,6 +438,7 @@ void PCInfoView::DetectSystemInfo()
         fCPUType.SetTo("Unknown");
         fCPUModel.SetTo("Unknown CPU");
         fHaikuVersion.SetTo("Haiku OS");
+        fHaikuRevision.SetTo("Unknown");
     }
     
     // Detect detailed audio driver information
@@ -584,6 +587,12 @@ void PCInfoView::DrawSystemInfo(BRect bounds)
     char osText[96];
     sprintf(osText, "OS: %s", fHaikuVersion.String());
     DrawString(osText, textPos);
+    textPos.y += lineHeight;
+    
+    // Haiku Revision (compact)
+    char revText[96];
+    sprintf(revText, "Rev: %s", fHaikuRevision.String());
+    DrawString(revText, textPos);
     textPos.y += lineHeight;
     
     // Audio with device
