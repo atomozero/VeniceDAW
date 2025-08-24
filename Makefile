@@ -169,7 +169,7 @@ PERFORMANCE_STATION_OBJS = src/main_weather_benchmark.o src/gui/WeatherBenchmark
 
 benchmark-weather: $(PERFORMANCE_STATION_OBJS)
 	@echo "🎛️ Building VeniceDAW Performance Station..."
-	$(CXX) $(CXXFLAGS) $(WEATHER_BENCHMARK_OBJS) $(LIBS) -o VeniceDAWBenchmark
+	$(CXX) $(CXXFLAGS) $(PERFORMANCE_STATION_OBJS) $(LIBS) -o VeniceDAWBenchmark
 	@echo "✅ Performance Station built! Run with: ./VeniceDAWBenchmark"
 	@echo "    Features: 📊 Performance analytics, 🎨 Professional UI, ⚡ Real-time monitoring"
 
