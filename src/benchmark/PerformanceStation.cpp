@@ -168,8 +168,9 @@ void PerformanceStation::PrintSystemInfo()
     // Get Haiku kernel build info
     struct utsname unameData;
     if (uname(&unameData) == 0) {
-        // Only show build version which typically contains hrev number
-        printf("  Kernel Build: %s\n", unameData.version);
+        // Show Haiku version and revision
+        printf("  Haiku Version: %s %s\n", unameData.sysname, unameData.release);
+        printf("  Haiku Revision: %s\n", unameData.version);
         printf("  Machine: %s\n", unameData.machine);
     }
 }
@@ -1756,7 +1757,10 @@ void PerformanceStation::SaveReport(const std::string& filename)
     // Include kernel build info for version tracking
     struct utsname unameData;
     if (uname(&unameData) == 0) {
-        fprintf(file, "Kernel Build: %s\n", unameData.version);
+        // Save Haiku version (sysname and release)
+        fprintf(file, "Haiku Version: %s %s\n", unameData.sysname, unameData.release);
+        // Save Haiku revision (from version string which contains hrev)
+        fprintf(file, "Haiku Revision: %s\n", unameData.version);
         fprintf(file, "Machine: %s\n", unameData.machine);
     }
     
