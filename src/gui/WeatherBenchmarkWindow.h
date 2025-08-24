@@ -136,6 +136,9 @@ public:
 private:
     void DrawSystemInfo(BRect bounds);
     void DetectSystemInfo();
+    void DetectCPUTemperature();
+    void DetectMesaVersion();
+    void DetectDiskInfo();
     void DetectAudioDriverDetails();
     void DetectGraphicsDriverDetails();
     
@@ -146,6 +149,9 @@ private:
     BString fCPUModel;
     BString fHaikuVersion;
     BString fHaikuRevision;
+    float fCPUTemperature;
+    BString fMesaVersion;
+    BString fDiskInfo;
     BString fAudioDriver;
     BString fAudioDevice;
     BString fGraphicsDriver;
