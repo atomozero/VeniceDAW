@@ -64,11 +64,24 @@ FULL_SRCS = $(APP_SRCS) $(AUDIO_HAIKU_SRCS) $(GUI_SRCS)
 # Benchmark build (unified performance testing)
 BENCHMARK_ALL_SRCS = $(BENCHMARK_SRCS) $(AUDIO_HAIKU_SRCS) $(GUI_SRCS)
 
+# Test sources for modular benchmark
+TEST_SRCS = \
+	src/benchmark/TestBase.cpp \
+	src/benchmark/tests/AudioEngineTest.cpp \
+	src/benchmark/tests/AudioLatencyTest.cpp \
+	src/benchmark/tests/SineGenerationTest.cpp \
+	src/benchmark/tests/BufferProcessingTest.cpp \
+	src/benchmark/tests/MemoryUsageTest.cpp \
+	src/benchmark/tests/MemoryBandwidthTest.cpp \
+	src/benchmark/tests/RealtimePerformanceTest.cpp \
+	src/benchmark/tests/CPUScalingTest.cpp
+
 # Object files
 DEMO_OBJS = $(DEMO_ALL_SRCS:.cpp=.o)
 NATIVE_OBJS = $(NATIVE_ALL_SRCS:.cpp=.o)
 FULL_OBJS = $(FULL_SRCS:.cpp=.o)
 BENCHMARK_OBJS = $(BENCHMARK_ALL_SRCS:.cpp=.o)
+TEST_OBJS = $(TEST_SRCS:.cpp=.o)
 
 # Default target - cross-platform demo
 all: demo
@@ -182,6 +195,17 @@ test-weather:
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/gui/WeatherBenchmarkWindow.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/main_weather_benchmark.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
 	@echo "✅ Weather Benchmark syntax structure validated!"
+
+# Modular benchmark with new test architecture
+MODULAR_BENCHMARK_OBJS = src/main_benchmark_modular.o \
+                        src/benchmark/PerformanceStation2.o $(TEST_OBJS) \
+                        src/audio/SimpleHaikuEngine.o src/audio/HaikuAudioEngine.o \
+                        src/audio/FastMath.o
+
+benchmark-modular: $(MODULAR_BENCHMARK_OBJS)
+	@echo "Building modular benchmark suite..."
+	$(CXX) $(CXXFLAGS) $(MODULAR_BENCHMARK_OBJS) $(LIBS) -o VeniceDAWBenchmarkModular
+	@echo "✅ Modular benchmark built! Run with: ./VeniceDAWBenchmarkModular"
 
 # Incremental targets for step-by-step building
 audio-only:
