@@ -89,7 +89,7 @@ INSTALL()
 	
 	# Install documentation
 	cp README.md "$documentationDir/VeniceDAW/"
-	cp PERFORMANCE_STATION_TODO.md "$documentationDir/VeniceDAW/"
+# 	cp PERFORMANCE_STATION_TODO.md "$documentationDir/VeniceDAW/" # File removed - obsolete weather metaphors
 	cp PERFORMANCE_RESULTS.md "$documentationDir/VeniceDAW/" 2>/dev/null || true
 	
 	# Create desktop shortcuts
