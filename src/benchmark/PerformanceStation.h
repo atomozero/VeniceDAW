@@ -11,6 +11,7 @@
 #include <kernel/OS.h>
 #include <Window.h>
 #include <GLView.h>
+#include <InterfaceDefs.h>  // For rgb_color
 
 // Forward declarations
 namespace HaikuDAW {
@@ -65,15 +66,76 @@ public:
     WindowLockGuard& operator=(const WindowLockGuard&) = delete;
 };
 
+// Performance categories for DAW-specific analysis
+enum PerformanceCategory {
+    AUDIO_REALTIME = 0,     // Latency, dropouts, jitter
+    SYSTEM_RESOURCES,       // CPU, RAM, I/O bandwidth  
+    GRAPHICS_3D,            // FPS, render times, GPU usage
+    STABILITY              // Error rates, thermal, power
+};
+
+// Trend data for performance analysis
+struct TrendData {
+    std::vector<float> history;    // Last N measurements
+    float average;
+    float variance;
+    bool isStable;
+    
+    TrendData() : average(0.0f), variance(0.0f), isStable(false) {}
+    
+    void AddMeasurement(float value) {
+        history.push_back(value);
+        if (history.size() > 10) {
+            history.erase(history.begin());
+        }
+        CalculateStats();
+    }
+    
+    void CalculateStats() {
+        if (history.empty()) return;
+        
+        // Calculate average
+        float sum = 0.0f;
+        for (float v : history) sum += v;
+        average = sum / history.size();
+        
+        // Calculate variance
+        float varSum = 0.0f;
+        for (float v : history) {
+            float diff = v - average;
+            varSum += diff * diff;
+        }
+        variance = varSum / history.size();
+        
+        // Consider stable if variance is low (< 5% of average)
+        isStable = (variance < (average * 0.05f));
+    }
+};
+
 struct BenchmarkResult {
     std::string name;
     std::string category;
     std::string unit;
-    float value;         // Primary metric value
-    float duration;      // Test duration in ms
-    float score;         // Performance score (0-100)
+    float value;              // Primary metric value
+    float duration;           // Test duration in ms
+    float score;              // Performance score (0-100)
     
-    BenchmarkResult() : value(0.0f), duration(0.0f), score(0.0f) {}
+    // PHASE 1 ENHANCEMENTS - Professional DAW Analysis
+    PerformanceCategory perfCategory;
+    float targetValue;        // Target value for DAW usage
+    float actualValue;        // Raw measurement (before scoring)
+    std::string bottleneck;   // "CPU bound", "RAM limited", "Thermal", etc.
+    TrendData trend;          // Performance trend analysis
+    bool isRealTime;          // Critical for real-time audio
+    float cpuUsage;           // CPU usage during test
+    float memoryMB;           // Memory usage in MB
+    std::string recommendation; // Optimization suggestion
+    
+    BenchmarkResult() : 
+        value(0.0f), duration(0.0f), score(0.0f),
+        perfCategory(SYSTEM_RESOURCES), targetValue(0.0f), 
+        actualValue(0.0f), isRealTime(false), 
+        cpuUsage(0.0f), memoryMB(0.0f) {}
 };
 
 class PerformanceStation {
@@ -120,6 +182,27 @@ public:
     void AddResult(const BenchmarkResult& result) { fResults.push_back(result); }
     void SetTotalScore(float score) { fTotalScore = score; }
     void ClearResults() { fResults.clear(); fTotalScore = 0.0f; }
+    
+    // PHASE 1 ENHANCEMENTS - DAW-Specific Analysis
+    static float GetDAWTargetValue(const std::string& testName, PerformanceCategory category);
+    static const char* GetDAWStatusText(float value, float target, PerformanceCategory category);
+    static rgb_color GetDAWStatusColor(float value, float target, PerformanceCategory category);
+    static std::string AnalyzeBottleneck(const BenchmarkResult& result);
+    static std::string GenerateRecommendation(const BenchmarkResult& result);
+    
+    // Enhanced result creation with DAW context
+    BenchmarkResult CreateEnhancedResult(const std::string& name, 
+                                       const std::string& unit,
+                                       float actualValue,
+                                       PerformanceCategory category,
+                                       bool isRealTime = false,
+                                       float cpuUsage = 0.0f,
+                                       float memoryMB = 0.0f);
+    
+    // Category-specific analysis
+    std::vector<BenchmarkResult> GetResultsByCategory(PerformanceCategory category) const;
+    float GetCategoryScore(PerformanceCategory category) const;
+    std::string GetCategorySummary(PerformanceCategory category) const;
 
 private:
     // Test infrastructure

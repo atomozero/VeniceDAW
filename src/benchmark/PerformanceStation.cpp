@@ -1888,4 +1888,270 @@ float PerformanceStation::MeasureRealAudioLatency(int bufferSize)
     return -1.0f; // Measurement failed
 }
 
+// PHASE 1 ENHANCEMENTS - DAW-Specific Analysis Implementation
+
+float PerformanceStation::GetDAWTargetValue(const std::string& testName, PerformanceCategory category) {
+    // DAW-specific target values for professional audio production
+    
+    if (category == AUDIO_REALTIME) {
+        if (testName.find("Latency") != std::string::npos) {
+            return 5.0f;  // Target: < 5ms for studio recording
+        }
+        if (testName.find("Buffer") != std::string::npos) {
+            return 95.0f; // Target: > 95% buffer safety
+        }
+        if (testName.find("Jitter") != std::string::npos) {
+            return 1.0f;  // Target: < 1ms jitter
+        }
+    }
+    
+    if (category == SYSTEM_RESOURCES) {
+        if (testName.find("CPU") != std::string::npos) {
+            return 70.0f; // Target: < 70% CPU usage (30% headroom)
+        }
+        if (testName.find("Memory") != std::string::npos) {
+            return 80.0f; // Target: < 80% memory usage
+        }
+        if (testName.find("I/O") != std::string::npos) {
+            return 500.0f; // Target: > 500 MB/s disk throughput
+        }
+    }
+    
+    if (category == GRAPHICS_3D) {
+        if (testName.find("FPS") != std::string::npos) {
+            return 60.0f; // Target: > 60 FPS for smooth 3D interaction
+        }
+        if (testName.find("Frame") != std::string::npos) {
+            return 16.0f; // Target: < 16ms frame time
+        }
+    }
+    
+    if (category == STABILITY) {
+        if (testName.find("Temperature") != std::string::npos) {
+            return 70.0f; // Target: < 70°C
+        }
+        if (testName.find("Error") != std::string::npos) {
+            return 1.0f;  // Target: < 1% error rate
+        }
+    }
+    
+    return 100.0f; // Default target
+}
+
+const char* PerformanceStation::GetDAWStatusText(float value, float target, PerformanceCategory category) {
+    if (category == AUDIO_REALTIME) {
+        // For latency tests (lower is better)
+        if (value <= target * 0.5f) return "STUDIO";     // Excellent for studio recording
+        if (value <= target) return "LIVE-OK";           // Good for live performance  
+        if (value <= target * 2.0f) return "BASIC";     // Basic audio work only
+        return "CRITICAL";                               // Unusable for real-time
+    }
+    
+    if (category == SYSTEM_RESOURCES) {
+        // For resource usage (lower is better for CPU/RAM, higher for I/O)
+        float ratio = value / target;
+        if (ratio <= 0.6f) return "EXCELLENT";
+        if (ratio <= 0.8f) return "GOOD";
+        if (ratio <= 1.0f) return "ADEQUATE";
+        if (ratio <= 1.5f) return "LIMITING";
+        return "CRITICAL";
+    }
+    
+    if (category == GRAPHICS_3D) {
+        // For FPS (higher is better)
+        if (value >= target * 1.5f) return "SMOOTH";
+        if (value >= target) return "GOOD";
+        if (value >= target * 0.7f) return "USABLE";
+        return "CHOPPY";
+    }
+    
+    if (category == STABILITY) {
+        // For stability metrics (lower is better)
+        if (value <= target * 0.5f) return "STABLE";
+        if (value <= target) return "NORMAL";
+        if (value <= target * 1.5f) return "CONCERN";
+        return "UNSTABLE";
+    }
+    
+    return "UNKNOWN";
+}
+
+rgb_color PerformanceStation::GetDAWStatusColor(float value, float target, PerformanceCategory category) {
+    // Professional DAW color coding
+    const rgb_color STUDIO_GREEN = {0, 204, 102, 255};    // Excellent/Studio quality
+    const rgb_color PROSUMER_BLUE = {0, 102, 204, 255};   // Good/Professional
+    const rgb_color WARNING_AMBER = {255, 204, 0, 255};   // Warning/Limiting
+    const rgb_color CRITICAL_RED = {204, 0, 0, 255};      // Critical/Unusable
+    const rgb_color NEUTRAL_GRAY = {128, 128, 128, 255};  // Unknown/N/A
+    
+    if (category == AUDIO_REALTIME) {
+        // For latency (lower is better)
+        if (value <= target * 0.5f) return STUDIO_GREEN;
+        if (value <= target) return PROSUMER_BLUE;
+        if (value <= target * 2.0f) return WARNING_AMBER;
+        return CRITICAL_RED;
+    }
+    
+    if (category == SYSTEM_RESOURCES) {
+        float ratio = value / target;
+        if (ratio <= 0.6f) return STUDIO_GREEN;
+        if (ratio <= 0.8f) return PROSUMER_BLUE;
+        if (ratio <= 1.0f) return WARNING_AMBER;
+        return CRITICAL_RED;
+    }
+    
+    if (category == GRAPHICS_3D) {
+        // For FPS (higher is better)
+        if (value >= target * 1.2f) return STUDIO_GREEN;
+        if (value >= target) return PROSUMER_BLUE;
+        if (value >= target * 0.7f) return WARNING_AMBER;
+        return CRITICAL_RED;
+    }
+    
+    return NEUTRAL_GRAY;
+}
+
+std::string PerformanceStation::AnalyzeBottleneck(const BenchmarkResult& result) {
+    // Analyze what's limiting performance
+    
+    if (result.cpuUsage > 85.0f) {
+        return "CPU Bound";
+    }
+    
+    if (result.memoryMB > 1024 && result.perfCategory == AUDIO_REALTIME) {
+        return "Memory Pressure";  
+    }
+    
+    if (result.perfCategory == GRAPHICS_3D && result.actualValue < 30.0f) {
+        return "GPU Limited";
+    }
+    
+    if (result.actualValue > result.targetValue * 2.0f) {
+        return "System Overload";
+    }
+    
+    if (!result.trend.isStable && result.trend.variance > result.trend.average * 0.1f) {
+        return "Unstable Performance";
+    }
+    
+    return "No Bottleneck";
+}
+
+std::string PerformanceStation::GenerateRecommendation(const BenchmarkResult& result) {
+    // Generate specific recommendations for improvement
+    
+    std::string bottleneck = result.bottleneck;
+    
+    if (bottleneck == "CPU Bound") {
+        return "Increase buffer size or reduce track count";
+    }
+    
+    if (bottleneck == "Memory Pressure") {
+        return "Close other applications or add more RAM";
+    }
+    
+    if (bottleneck == "GPU Limited") {
+        return "Reduce 3D quality or update graphics drivers";
+    }
+    
+    if (bottleneck == "System Overload") {
+        return "System optimization required for DAW use";
+    }
+    
+    if (bottleneck == "Unstable Performance") {
+        return "Check for background processes or thermal issues";
+    }
+    
+    if (result.score >= 90.0f) {
+        return "Performance is optimal for professional use";
+    }
+    
+    if (result.score >= 70.0f) {
+        return "Good performance, minor optimizations possible";
+    }
+    
+    return "Performance optimization recommended";
+}
+
+BenchmarkResult PerformanceStation::CreateEnhancedResult(const std::string& name, 
+                                                       const std::string& unit,
+                                                       float actualValue,
+                                                       PerformanceCategory category,
+                                                       bool isRealTime,
+                                                       float cpuUsage,
+                                                       float memoryMB) {
+    BenchmarkResult result;
+    result.name = name;
+    result.unit = unit;
+    result.actualValue = actualValue;
+    result.value = actualValue; // For backward compatibility
+    result.perfCategory = category;
+    result.isRealTime = isRealTime;
+    result.cpuUsage = cpuUsage;
+    result.memoryMB = memoryMB;
+    
+    // Set DAW-specific target and calculate score
+    result.targetValue = GetDAWTargetValue(name, category);
+    
+    // Calculate DAW-aware score
+    if (category == AUDIO_REALTIME && name.find("Latency") != std::string::npos) {
+        // For latency: lower is better
+        float ratio = actualValue / result.targetValue;
+        result.score = std::max(0.0f, std::min(100.0f, 100.0f / ratio));
+    } else if (category == GRAPHICS_3D && name.find("FPS") != std::string::npos) {
+        // For FPS: higher is better
+        float ratio = actualValue / result.targetValue;
+        result.score = std::min(100.0f, ratio * 100.0f);
+    } else {
+        // Generic scoring (adjust based on target)
+        float ratio = actualValue / result.targetValue;
+        result.score = std::max(0.0f, std::min(100.0f, 100.0f - (ratio - 1.0f) * 50.0f));
+    }
+    
+    // Analyze bottleneck and generate recommendation
+    result.bottleneck = AnalyzeBottleneck(result);
+    result.recommendation = GenerateRecommendation(result);
+    
+    return result;
+}
+
+std::vector<BenchmarkResult> PerformanceStation::GetResultsByCategory(PerformanceCategory category) const {
+    std::vector<BenchmarkResult> categoryResults;
+    for (const auto& result : fResults) {
+        if (result.perfCategory == category) {
+            categoryResults.push_back(result);
+        }
+    }
+    return categoryResults;
+}
+
+float PerformanceStation::GetCategoryScore(PerformanceCategory category) const {
+    auto categoryResults = GetResultsByCategory(category);
+    if (categoryResults.empty()) return 0.0f;
+    
+    float totalScore = 0.0f;
+    for (const auto& result : categoryResults) {
+        totalScore += result.score;
+    }
+    return totalScore / categoryResults.size();
+}
+
+std::string PerformanceStation::GetCategorySummary(PerformanceCategory category) const {
+    float score = GetCategoryScore(category);
+    auto results = GetResultsByCategory(category);
+    
+    std::string categoryName;
+    switch (category) {
+        case AUDIO_REALTIME: categoryName = "Real-Time Audio"; break;
+        case SYSTEM_RESOURCES: categoryName = "System Resources"; break;
+        case GRAPHICS_3D: categoryName = "3D Graphics"; break;
+        case STABILITY: categoryName = "System Stability"; break;
+    }
+    
+    char summary[256];
+    sprintf(summary, "%s: %.0f%% (%zu tests)", 
+            categoryName.c_str(), score, results.size());
+    return std::string(summary);
+}
+
 } // namespace HaikuDAW

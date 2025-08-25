@@ -7,7 +7,7 @@
 #include <app/Application.h>
 #include <interface/Alert.h>
 #include <stdio.h>
-#include "ui/MainWindow.h"
+#include "gui/MainWindow.h"
 
 using namespace HaikuDAW;
 

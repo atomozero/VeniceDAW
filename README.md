@@ -50,11 +50,17 @@ pkgman install glu_devel
 ### Compilation
 
 ```bash
-# Build the performance station (recommended)
-make performance
+# Build the full VeniceDAW application (with mixer UI)
+make gui
+./VeniceDAWGUI
 
-# Run the performance station
+# Or build the Performance Station benchmark tool
+make performance
 ./VeniceDAWBenchmark
+
+# For cross-platform testing
+make demo
+./VeniceDAWDemo
 ```
 
 ## Architecture
@@ -68,31 +74,38 @@ VeniceDAW is built on several core principles:
 
 ### Core Components
 
-- **Audio Engine**: `SimpleHaikuEngine` using `BSoundPlayer` for real-time audio
-- **Performance Monitor**: Real-time system metrics with professional visualization
-- **Benchmark Suite**: Comprehensive audio workstation performance testing
-- **3D Mixer**: Spatial audio positioning (in development)
+- **Audio Engines**: 
+  - `SimpleHaikuEngine`: Lightweight BSoundPlayer implementation
+  - `HaikuAudioEngine`: Full BMediaKit integration
+  - `AudioEngineSimple`: Cross-platform testing engine
+- **GUI Applications**:
+  - **VeniceDAW GUI**: Full mixer with 3D visualization
+  - **Performance Station**: Professional benchmark and monitoring
+- **3D Mixer**: Revolutionary spatial audio interface with OpenGL
 
 ## Development
 
 ### Project Structure
 ```
 src/
-├── audio/              # Audio engine implementation
-├── benchmark/          # Performance testing suite  
-├── gui/               # User interface components
-└── utils/             # Shared utilities
+├── audio/              # Audio engines (SimpleHaikuEngine, HaikuAudioEngine)
+├── benchmark/          # Performance Station testing suite  
+├── gui/                # All UI components (windows, views)
+├── main_*.cpp          # Various entry points
+└── benchmark/tests/    # Modular performance tests
 
-resources/             # Icons, presets, themes
-docs/                  # Architecture and development guides
+tests/                  # Test files and utilities
+resources/              # Icons, presets, themes (planned)
+plugins/                # Plugin architecture (planned)
 ```
 
 ### Build Targets
 
 ```bash
-make performance      # Performance station (recommended)
-make station         # Same as above (shortcut)
-make test-weather    # Syntax validation
+make gui            # Full VeniceDAW application with 3D mixer
+make performance    # Performance Station benchmark tool
+make demo           # Cross-platform demo (for testing)
+make native         # Native Haiku audio engine test
 make clean          # Clean build files
 make help           # Show all targets
 ```
@@ -105,10 +118,11 @@ make help           # Show all targets
 - [x] Professional UI framework
 
 ### Phase 2: Core DAW (In Progress)
-- [ ] Multi-track audio interface
-- [ ] Real-time mixing controls
+- [x] Multi-track mixer interface
+- [x] Real-time mixing controls with 3D visualization
+- [x] Basic mixer architecture (8 tracks per window)
 - [ ] Audio file I/O
-- [ ] Basic effects processing
+- [ ] Effects processing
 
 ### Phase 3: Professional Features
 - [ ] Plugin architecture (VST support)
@@ -124,7 +138,7 @@ Contributions are welcome! VeniceDAW aims to demonstrate the potential of native
 ### Getting Started
 1. Check the [issues](../../issues) for current tasks
 2. Read `CLAUDE.md` for development guidelines
-3. Test your changes with `make test-weather`
+3. Test your changes with `make test-compile`
 4. Submit PR with clear description
 
 ### Areas Needing Help

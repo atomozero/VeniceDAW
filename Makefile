@@ -126,23 +126,11 @@ VeniceDAWGUI: $(FULL_OBJS)
 	@echo "Compiling $<..."
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-# Benchmark target (simplified version)
-benchmark: src/benchmark_simple.o src/audio/SimpleHaikuEngine.o
-	@echo "Building benchmark suite..."
-	$(CXX) src/benchmark_simple.o src/audio/SimpleHaikuEngine.o $(LIBS) -o VeniceDAWBenchmark
-	@echo "✅ Benchmark built! Run with: ./VeniceDAWBenchmark"
+# Removed old benchmark target - use 'make performance' instead
 
-# Latency test target
-latency-test: src/latency_test.o
-	@echo "Building latency test..."
-	$(CXX) src/latency_test.o $(LIBS) -o VeniceDAWLatencyTest
-	@echo "✅ Latency test built! Run with: ./VeniceDAWLatencyTest"
+# Removed latency-test - functionality in Performance Station
 
-# Full benchmark with runner (when ready)
-benchmark-full: src/benchmark_test.o src/benchmark/BenchmarkRunner.o $(AUDIO_HAIKU_OBJS)
-	@echo "Building full benchmark suite..."
-	$(CXX) src/benchmark_test.o src/benchmark/BenchmarkRunner.o $(AUDIO_HAIKU_OBJS) $(LIBS) -o VeniceDAWBenchmarkFull
-	@echo "✅ Full benchmark built!"
+# Removed benchmark-full - obsolete
 
 # Unified benchmark suite (complete performance testing)
 benchmark-unified: $(BENCHMARK_OBJS)
@@ -157,12 +145,7 @@ GUI_SRCS_NO_BENCHMARK = \
 	src/gui/Mixer3DWindow.cpp \
 	src/gui/SuperMasterWindow.cpp
 
-BENCHMARK_GUI_OBJS = src/main_benchmark_gui.o src/gui/BenchmarkWindow.o src/benchmark/PerformanceStation.o $(AUDIO_HAIKU_SRCS:.cpp=.o) $(GUI_SRCS_NO_BENCHMARK:.cpp=.o)
-
-benchmark-gui: $(BENCHMARK_GUI_OBJS)
-	@echo "Building GUI benchmark with visualization..."
-	$(CXX) $(CXXFLAGS) $(BENCHMARK_GUI_OBJS) $(LIBS) -o VeniceDAWBenchmarkGUI
-	@echo "✅ GUI Benchmark built! Run with: ./VeniceDAWBenchmarkGUI"
+# Removed benchmark-gui - use Performance Station instead
 
 # Performance Station (Professional UI with advanced analytics)
 PERFORMANCE_STATION_OBJS = src/main_weather_benchmark.o src/gui/WeatherBenchmarkWindow.o src/benchmark/PerformanceStation.o $(AUDIO_HAIKU_SRCS:.cpp=.o) $(GUI_SRCS_NO_BENCHMARK:.cpp=.o)
@@ -176,16 +159,16 @@ benchmark-weather: $(PERFORMANCE_STATION_OBJS)
 # Clean build files
 clean:
 	rm -f $(DEMO_OBJS) $(NATIVE_OBJS) $(FULL_OBJS) $(BENCHMARK_OBJS) $(APP_NAME) VeniceDAWDemo VeniceDAWNative VeniceDAWGUI VeniceDAWBenchmark VeniceDAWBenchmarkUnified VeniceDAWBenchmarkFull VeniceDAWBenchmarkGUI VeniceDAWBenchmark
-	rm -f src/main_benchmark_gui.o src/gui/BenchmarkWindow.o
+	rm -f src/gui/BenchmarkWindow.o
 	rm -f src/main_weather_benchmark.o src/gui/WeatherBenchmarkWindow.o
-	rm -f src/benchmark_test.o src/benchmark/BenchmarkRunner.o src/benchmark/PerformanceStation.o src/main_benchmark.o
+	rm -f src/benchmark/PerformanceStation.o src/main_benchmark.o
 	@echo "🧹 Cleaned build files"
 
 # Quick test build (compile only, no linking)
 test-compile: CXXFLAGS += -fsyntax-only
 test-compile:
 	@echo "Testing compilation..."
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/audio/AudioEngine.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/audio/AudioEngineSimple.cpp
 	@echo "✅ Syntax check passed!"
 
 # Test Performance Station syntax
@@ -196,26 +179,17 @@ test-performance:
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/main_weather_benchmark.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
 	@echo "✅ Performance Station syntax structure validated!"
 
-# Modular benchmark with new test architecture
-MODULAR_BENCHMARK_OBJS = src/main_benchmark_modular.o \
-                        src/benchmark/PerformanceStation2.o $(TEST_OBJS) \
-                        src/audio/SimpleHaikuEngine.o src/audio/HaikuAudioEngine.o \
-                        src/audio/FastMath.o
-
-benchmark-modular: $(MODULAR_BENCHMARK_OBJS)
-	@echo "Building modular benchmark suite..."
-	$(CXX) $(CXXFLAGS) $(MODULAR_BENCHMARK_OBJS) $(LIBS) -o VeniceDAWBenchmarkModular
-	@echo "✅ Modular benchmark built! Run with: ./VeniceDAWBenchmarkModular"
+# Removed modular benchmark - obsolete
 
 # Incremental targets for step-by-step building
 audio-only:
 	@echo "Building audio engine only..."
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/audio/AudioEngine.cpp -o src/audio/AudioEngine.o
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/audio/AudioEngineSimple.cpp -o src/audio/AudioEngine.o
 	@echo "✅ Audio engine compiled!"
 
 ui-only:
 	@echo "Building UI only..."
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/ui/MainWindow.cpp -o src/ui/MainWindow.o
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/gui/MainWindow.cpp -o src/gui/MainWindow.o
 	@echo "✅ UI compiled!"
 
 # Run the demo

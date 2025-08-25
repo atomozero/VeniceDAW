@@ -5,13 +5,14 @@
 #include <Application.h>
 #include <Alert.h>
 #include <Screen.h>
+#include <MessageRunner.h>
 #include "gui/WeatherBenchmarkWindow.h"
 
 using namespace HaikuDAW;
 
-class WeatherBenchmarkApp : public BApplication {
+class PerformanceBenchmarkApp : public BApplication {
 public:
-    WeatherBenchmarkApp() : BApplication("application/x-vnd.VeniceDAW-PerformanceStation") {}
+    PerformanceBenchmarkApp() : BApplication("application/x-vnd.VeniceDAW-PerformanceStation") {}
     
     virtual void ReadyToRun() override {
         // Center window on screen
@@ -24,16 +25,20 @@ public:
             (screenFrame.Height() - windowFrame.Height()) / 2
         );
         
-        WeatherBenchmarkWindow* window = new WeatherBenchmarkWindow(windowFrame);
+        PerformanceBenchmarkWindow* window = new PerformanceBenchmarkWindow(windowFrame);
         window->Show();
+        
+        // Auto-start benchmark immediately (tests already ran in terminal)
+        BMessage msg('arun');
+        BMessageRunner::StartSending(window, &msg, 500000, 1); // 0.5 seconds
     }
     
     virtual void AboutRequested() override {
         BAlert* alert = new BAlert("About", 
-            "🌤️ VeniceDAW Weather Performance Station\n"
-            "Revolutionary benchmark interface that makes\n"
-            "system performance as easy to understand\n"
-            "as checking the weather forecast!\n\n"
+            "📊 VeniceDAW Performance Station\n"
+            "Professional audio workstation performance\n"
+            "analysis and optimization tool\n"
+            "for Haiku OS\n\n"
             "Built with ❤️ for Haiku OS",
             "Cool!");
         alert->Go();
@@ -41,7 +46,7 @@ public:
 };
 
 int main() {
-    WeatherBenchmarkApp app;
+    PerformanceBenchmarkApp app;
     app.Run();
     return 0;
 }
