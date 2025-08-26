@@ -148,7 +148,7 @@ GUI_SRCS_NO_BENCHMARK = \
 # Removed benchmark-gui - use Performance Station instead
 
 # Performance Station (Professional UI with advanced analytics)
-PERFORMANCE_STATION_OBJS = src/main_weather_benchmark.o src/gui/WeatherBenchmarkWindow.o src/benchmark/PerformanceStation.o $(AUDIO_HAIKU_SRCS:.cpp=.o) $(GUI_SRCS_NO_BENCHMARK:.cpp=.o)
+PERFORMANCE_STATION_OBJS = src/main_performance_station.o src/gui/PerformanceStationWindow.o src/benchmark/PerformanceStation.o $(AUDIO_HAIKU_SRCS:.cpp=.o) $(GUI_SRCS_NO_BENCHMARK:.cpp=.o)
 
 benchmark-weather: $(PERFORMANCE_STATION_OBJS)
 	@echo "🎛️ Building VeniceDAW Performance Station..."
@@ -160,7 +160,7 @@ benchmark-weather: $(PERFORMANCE_STATION_OBJS)
 clean:
 	rm -f $(DEMO_OBJS) $(NATIVE_OBJS) $(FULL_OBJS) $(BENCHMARK_OBJS) $(APP_NAME) VeniceDAWDemo VeniceDAWNative VeniceDAWGUI VeniceDAWBenchmark VeniceDAWBenchmarkUnified VeniceDAWBenchmarkFull VeniceDAWBenchmarkGUI VeniceDAWBenchmark
 	rm -f src/gui/BenchmarkWindow.o
-	rm -f src/main_weather_benchmark.o src/gui/WeatherBenchmarkWindow.o
+	rm -f src/main_performance_station.o src/gui/PerformanceStationWindow.o
 	rm -f src/benchmark/PerformanceStation.o src/main_benchmark.o
 	@echo "🧹 Cleaned build files"
 
@@ -175,8 +175,8 @@ test-compile:
 test-performance: CXXFLAGS += -fsyntax-only
 test-performance:
 	@echo "Testing Performance Station compilation..."
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/gui/WeatherBenchmarkWindow.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/main_weather_benchmark.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/gui/PerformanceStationWindow.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/main_performance_station.cpp 2>/dev/null || echo "⚠️  Full compilation requires Haiku headers, but syntax structure is valid"
 	@echo "✅ Performance Station syntax structure validated!"
 
 # Removed modular benchmark - obsolete

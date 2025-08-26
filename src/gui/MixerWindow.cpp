@@ -81,7 +81,7 @@ void ToggleButton::SetToggleColors(rgb_color normal, rgb_color pressed)
 // =====================================
 
 ChannelStrip::ChannelStrip(SimpleTrack* track)
-    : BView(BRect(0, 0, 130, 380), track ? track->GetName() : "Unknown", B_FOLLOW_TOP_BOTTOM, B_WILL_DRAW)
+    : BView(BRect(0, 0, 130, 380), track ? track->GetName() : "EmptyStrip", B_FOLLOW_TOP_BOTTOM, B_WILL_DRAW)
     , fTrack(track)
     , fTrackName(nullptr)
     , fVolumeSlider(nullptr)
@@ -91,7 +91,10 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
     , fSoloButton(nullptr)
 {
     if (!track) {
-        printf("ChannelStrip: ERROR - Track is null!\n");
+        printf("ChannelStrip: WARNING - Creating empty channel strip\n");
+        // Create a disabled/empty strip view
+        SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT));
+        SetEnabled(false);
         return;
     }
     
@@ -123,6 +126,16 @@ void ChannelStrip::CreateControls()
     SetExplicitMinSize(BSize(120, 350));
     SetExplicitMaxSize(BSize(150, 450));
     SetExplicitPreferredSize(BSize(130, 380));
+    
+    // Check if track exists before creating controls
+    if (!fTrack) {
+        // Create placeholder for empty strip
+        BStringView* emptyLabel = new BStringView("empty", "No Track");
+        emptyLabel->SetAlignment(B_ALIGN_CENTER);
+        mainLayout->AddView(emptyLabel);
+        mainLayout->AddGlue();
+        return;
+    }
     
     // Track name at the top
     fTrackName = new BStringView("name", fTrack->GetName());

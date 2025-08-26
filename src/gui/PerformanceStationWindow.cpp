@@ -1,8 +1,8 @@
 /*
- * PerformanceBenchmarkWindow.cpp - Professional DAW Performance Analysis UI
+ * PerformanceStationWindow.cpp - Professional DAW Performance Analysis UI
  */
 
-#include "WeatherBenchmarkWindow.h"
+#include "PerformanceStationWindow.h"
 #include <Application.h>
 #include <LayoutBuilder.h>
 #include <GroupLayout.h>
@@ -3928,7 +3928,7 @@ void TechnicalDetailsView::AnimateExpansion(bool expand)
 }
 
 // PerformanceBenchmarkWindow implementation
-PerformanceBenchmarkWindow::PerformanceBenchmarkWindow(BRect frame)
+PerformanceStationWindow::PerformanceStationWindow(BRect frame)
     : BWindow(frame, "VeniceDAW Performance Station", 
               B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE),
       fPerformanceView(nullptr),
@@ -3949,7 +3949,7 @@ PerformanceBenchmarkWindow::PerformanceBenchmarkWindow(BRect frame)
     InitUI();
 }
 
-PerformanceBenchmarkWindow::~PerformanceBenchmarkWindow()
+PerformanceStationWindow::~PerformanceStationWindow()
 {
     if (fBenchmarkThread > 0) {
         kill_thread(fBenchmarkThread);
@@ -3958,13 +3958,13 @@ PerformanceBenchmarkWindow::~PerformanceBenchmarkWindow()
     delete fAnalysisEngine;
 }
 
-void PerformanceBenchmarkWindow::InitAnalysisSystem()
+void PerformanceStationWindow::InitAnalysisSystem()
 {
     fAnalysisEngine = new PerformanceAnalysisEngine();
     fBenchmark = new PerformanceStation();
 }
 
-void PerformanceBenchmarkWindow::InitUI()
+void PerformanceStationWindow::InitUI()
 {
     // Main container with Ableton dark background
     BView* mainView = new BView(Bounds(), "main", B_FOLLOW_ALL, B_WILL_DRAW);
@@ -4019,7 +4019,7 @@ void PerformanceBenchmarkWindow::InitUI()
     mainView->AddChild(fTechnicalView);
 }
 
-void PerformanceBenchmarkWindow::MessageReceived(BMessage* message)
+void PerformanceStationWindow::MessageReceived(BMessage* message)
 {
     switch (message->what) {
         case MSG_RUN_WEATHER_BENCHMARK:
@@ -4085,7 +4085,7 @@ void PerformanceBenchmarkWindow::MessageReceived(BMessage* message)
     }
 }
 
-bool PerformanceBenchmarkWindow::QuitRequested()
+bool PerformanceStationWindow::QuitRequested()
 {
     if (fRunning && fBenchmarkThread > 0) {
         // Stop benchmark thread before quitting
@@ -4094,7 +4094,7 @@ bool PerformanceBenchmarkWindow::QuitRequested()
     return true;
 }
 
-void PerformanceBenchmarkWindow::RunBenchmark()
+void PerformanceStationWindow::RunBenchmark()
 {
     if (fRunning) return;
     
@@ -4113,21 +4113,21 @@ void PerformanceBenchmarkWindow::RunBenchmark()
     if (fEcosystemView) fEcosystemView->StartAnimation();
 }
 
-void PerformanceBenchmarkWindow::ToggleDetailLevel()
+void PerformanceStationWindow::ToggleDetailLevel()
 {
     // New professional UI: toggle results detail view
     fShowingDetails = !fShowingDetails;
     fResultsView->SetExpanded(fShowingDetails);
 }
 
-void PerformanceBenchmarkWindow::ShowTechnicalDetails()
+void PerformanceStationWindow::ShowTechnicalDetails()
 {
     // Toggle between professional and legacy view
     fShowingDetails = !fShowingDetails;
     fResultsView->SetExpanded(fShowingDetails);
 }
 
-void PerformanceBenchmarkWindow::UpdateAnalysisDisplay()
+void PerformanceStationWindow::UpdateAnalysisDisplay()
 {
     if (!fBenchmark || !fAnalysisEngine) return;
     
@@ -4176,7 +4176,7 @@ void PerformanceBenchmarkWindow::UpdateAnalysisDisplay()
     }
 }
 
-void PerformanceBenchmarkWindow::ExportPerformanceReport()
+void PerformanceStationWindow::ExportPerformanceReport()
 {
     if (!fAnalysisEngine) return;
     
@@ -4188,7 +4188,7 @@ void PerformanceBenchmarkWindow::ExportPerformanceReport()
     panel->Show();
 }
 
-void PerformanceBenchmarkWindow::ShowDetailedReport()
+void PerformanceStationWindow::ShowDetailedReport()
 {
     if (!fBenchmark || fBenchmark->GetResults().empty()) {
         BAlert* alert = new BAlert("No Data", "No benchmark results available.\nPlease run a test first.", 
@@ -4272,14 +4272,14 @@ void PerformanceBenchmarkWindow::ShowDetailedReport()
     reportWindow->Show();
 }
 
-int32 PerformanceBenchmarkWindow::BenchmarkThreadEntry(void* data)
+int32 PerformanceStationWindow::BenchmarkThreadEntry(void* data)
 {
     PerformanceBenchmarkWindow* window = static_cast<PerformanceBenchmarkWindow*>(data);
     window->RunBenchmarkTests();
     return 0;
 }
 
-void PerformanceBenchmarkWindow::RunBenchmarkTests()
+void PerformanceStationWindow::RunBenchmarkTests()
 {
     if (!fBenchmark) return;
     
@@ -4306,7 +4306,7 @@ void PerformanceBenchmarkWindow::RunBenchmarkTests()
     // Notify UI of benchmark completion
 }
 
-void PerformanceBenchmarkWindow::ProgressCallback(float progress, const char* testName, void* userData)
+void PerformanceStationWindow::ProgressCallback(float progress, const char* testName, void* userData)
 {
     PerformanceBenchmarkWindow* window = (PerformanceBenchmarkWindow*)userData;
     
@@ -4319,7 +4319,7 @@ void PerformanceBenchmarkWindow::ProgressCallback(float progress, const char* te
     window->PostMessage(&msg);
 }
 
-void PerformanceBenchmarkWindow::OnBenchmarkComplete()
+void PerformanceStationWindow::OnBenchmarkComplete()
 {
     // Handle benchmark completion event
     fRunning = false;

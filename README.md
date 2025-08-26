@@ -54,13 +54,17 @@ pkgman install glu_devel
 make gui
 ./VeniceDAWGUI
 
-# Or build the Performance Station benchmark tool
-make performance
+# Build the Performance Station benchmark tool  
+make performance  # or 'make station' for shortcut
 ./VeniceDAWBenchmark
 
-# For cross-platform testing
+# For cross-platform testing (no Haiku dependencies)
 make demo
 ./VeniceDAWDemo
+
+# Test native Haiku audio engine
+make native
+./VeniceDAWNative
 ```
 
 ## Architecture
@@ -101,14 +105,26 @@ plugins/                # Plugin architecture (planned)
 
 ### Build Targets
 
+VeniceDAW provides multiple entry points for different use cases:
+
 ```bash
-make gui            # Full VeniceDAW application with 3D mixer
-make performance    # Performance Station benchmark tool
-make demo           # Cross-platform demo (for testing)
-make native         # Native Haiku audio engine test
+make gui            # Full VeniceDAW with 3D mixer (main_gui.cpp)
+make performance    # Performance Station benchmark (main_performance_station.cpp)  
+make demo           # Cross-platform demo (main_simple.cpp)
+make native         # Native Haiku audio test (main_simple_native.cpp)
+make benchmark      # Basic benchmark suite (main_benchmark.cpp)
 make clean          # Clean build files
 make help           # Show all targets
 ```
+
+#### Entry Points Explained
+
+- **`main_gui.cpp`**: Full DAW with multiple mixer windows and 3D visualization
+- **`main_performance_station.cpp`**: Professional performance analysis tool
+- **`main_simple.cpp`**: Cross-platform console demo for testing audio engine
+- **`main_simple_native.cpp`**: Native Haiku audio engine test application
+- **`main_benchmark.cpp`**: Command-line benchmark suite
+- **`main.cpp`**: Basic audio engine demonstration
 
 ## Roadmap
 

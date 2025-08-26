@@ -6,13 +6,13 @@
 #include <Alert.h>
 #include <Screen.h>
 #include <MessageRunner.h>
-#include "gui/WeatherBenchmarkWindow.h"
+#include "gui/PerformanceStationWindow.h"
 
 using namespace HaikuDAW;
 
-class PerformanceBenchmarkApp : public BApplication {
+class PerformanceStationApp : public BApplication {
 public:
-    PerformanceBenchmarkApp() : BApplication("application/x-vnd.VeniceDAW-PerformanceStation") {}
+    PerformanceStationApp() : BApplication("application/x-vnd.VeniceDAW-PerformanceStation") {}
     
     virtual void ReadyToRun() override {
         // Center window on screen
@@ -25,7 +25,7 @@ public:
             (screenFrame.Height() - windowFrame.Height()) / 2
         );
         
-        PerformanceBenchmarkWindow* window = new PerformanceBenchmarkWindow(windowFrame);
+        PerformanceStationWindow* window = new PerformanceStationWindow(windowFrame);
         window->Show();
         
         // Auto-start benchmark immediately (tests already ran in terminal)
@@ -46,7 +46,7 @@ public:
 };
 
 int main() {
-    PerformanceBenchmarkApp app;
+    PerformanceStationApp app;
     app.Run();
     return 0;
 }

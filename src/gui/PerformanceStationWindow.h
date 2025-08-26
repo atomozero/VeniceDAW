@@ -2,8 +2,8 @@
  * PerformanceBenchmarkWindow.h - VeniceDAW Performance Station Interface
  */
 
-#ifndef PERFORMANCE_BENCHMARK_WINDOW_H
-#define PERFORMANCE_BENCHMARK_WINDOW_H
+#ifndef PERFORMANCE_STATION_WINDOW_H
+#define PERFORMANCE_STATION_WINDOW_H
 
 #include <Window.h>
 #include <View.h>
@@ -558,10 +558,10 @@ private:
 };
 
 // Main performance benchmark window
-class PerformanceBenchmarkWindow : public BWindow {
+class PerformanceStationWindow : public BWindow {
 public:
-    PerformanceBenchmarkWindow(BRect frame);
-    virtual ~PerformanceBenchmarkWindow();
+    PerformanceStationWindow(BRect frame);
+    virtual ~PerformanceStationWindow();
     
     virtual void MessageReceived(BMessage* message) override;
     virtual bool QuitRequested() override;
@@ -620,4 +620,4 @@ enum {
 
 } // namespace HaikuDAW
 
-#endif // WEATHER_BENCHMARK_WINDOW_H
+#endif // PERFORMANCE_STATION_WINDOW_H

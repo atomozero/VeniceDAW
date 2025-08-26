@@ -38,8 +38,9 @@ Mixer3DView::~Mixer3DView()
 {
     printf("Mixer3DView: Starting destruction...\n");
     
-    // Make sure we're not rendering
+    // Properly cleanup OpenGL context
     if (Window()) {
+        // Disable rendering updates first
         Window()->DisableUpdates();
         
         // Use RAII guard for safe OpenGL cleanup
@@ -47,25 +48,26 @@ Mixer3DView::~Mixer3DView()
         if (windowGuard) {
             GLContextGuard glGuard(this);
             if (glGuard) {
-                // Force all OpenGL operations to complete
+                // Ensure all GL commands are completed
                 glFinish();
-                glFlush();
                 
-                // Clear all OpenGL state (using only legacy OpenGL calls)
+                // Unbind any active textures
                 glBindTexture(GL_TEXTURE_2D, 0);
-                // Note: Modern OpenGL calls not available in Haiku legacy GL
                 
-                // Verify no OpenGL errors
-                GLenum error = glGetError();
-                if (error != GL_NO_ERROR) {
-                    printf("Mixer3DView: OpenGL error during cleanup: %d\n", error);
+                // Clear errors if any
+                while (glGetError() != GL_NO_ERROR) {
+                    // Clear error queue
                 }
             }
         }
+        
+        // Re-enable updates before window cleanup
+        Window()->EnableUpdates();
     }
     
-    // Increased wait time for llvmpipe threads based on agent analysis
-    snooze(500000); // 500ms instead of 100ms
+    // Allow time for OpenGL thread cleanup
+    // TODO: Replace with proper synchronization mechanism
+    snooze(100000); // 100ms temporary wait
     
     printf("Mixer3DView: Destroyed\n");
 }
