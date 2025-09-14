@@ -4274,7 +4274,7 @@ void PerformanceStationWindow::ShowDetailedReport()
 
 int32 PerformanceStationWindow::BenchmarkThreadEntry(void* data)
 {
-    PerformanceBenchmarkWindow* window = static_cast<PerformanceBenchmarkWindow*>(data);
+    PerformanceStationWindow* window = static_cast<PerformanceStationWindow*>(data);
     window->RunBenchmarkTests();
     return 0;
 }
@@ -4308,7 +4308,7 @@ void PerformanceStationWindow::RunBenchmarkTests()
 
 void PerformanceStationWindow::ProgressCallback(float progress, const char* testName, void* userData)
 {
-    PerformanceBenchmarkWindow* window = (PerformanceBenchmarkWindow*)userData;
+    PerformanceStationWindow* window = (PerformanceStationWindow*)userData;
     
     // Create progress message
     BMessage msg(MSG_BENCHMARK_PROGRESS);

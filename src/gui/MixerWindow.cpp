@@ -6,6 +6,7 @@
 #include "../audio/SimpleHaikuEngine.h"
 #include <Alert.h>
 #include <Application.h>
+#include <SpaceLayoutItem.h>
 #include <stdio.h>
 #include <algorithm>
 #include <cmath>
@@ -94,7 +95,7 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
         printf("ChannelStrip: WARNING - Creating empty channel strip\n");
         // Create a disabled/empty strip view
         SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT));
-        SetEnabled(false);
+        // SetEnabled(false); // Not available in BView
         return;
     }
     
@@ -133,7 +134,7 @@ void ChannelStrip::CreateControls()
         BStringView* emptyLabel = new BStringView("empty", "No Track");
         emptyLabel->SetAlignment(B_ALIGN_CENTER);
         mainLayout->AddView(emptyLabel);
-        mainLayout->AddGlue();
+        mainLayout->AddItem(BSpaceLayoutItem::CreateGlue());
         return;
     }
     
