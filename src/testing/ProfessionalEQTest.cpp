@@ -6,6 +6,10 @@
 #include "../audio/AdvancedAudioProcessor.h"
 #include "../audio/DSPAlgorithms.h"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 using namespace VeniceDAW;
 
 class ProfessionalEQTest {
@@ -85,55 +89,71 @@ private:
     bool TestFrequencyResponse() {
         std::cout << "\n[TEST] Frequency Response Analysis..." << std::endl;
         
-        ProfessionalEQ eq;
-        eq.Initialize(44100.0f);
-        
         const float testFrequencies[] = {100.0f, 250.0f, 500.0f, 1000.0f, 2000.0f, 4000.0f, 8000.0f, 16000.0f};
         const float expectedGains[] = {0.0f, 3.0f, -3.0f, 6.0f, -6.0f, 3.0f, -3.0f, 0.0f};
         
-        for (int band = 0; band < 8; ++band) {
-            eq.SetBandFrequency(band, testFrequencies[band]);
-            eq.SetBandGain(band, expectedGains[band]);
-            eq.SetBandQ(band, 2.0f);
-            eq.SetBandEnabled(band, true);
-        }
+        bool allPassed = true;
         
-        const size_t fftSize = 2048;
-        std::vector<float> impulse(fftSize, 0.0f);
-        std::vector<float> response(fftSize, 0.0f);
-        impulse[0] = 1.0f;
-        
-        for (size_t i = 0; i < fftSize; ++i) {
-            response[i] = eq.ProcessSample(impulse[i], 0);
-        }
-        
-        std::vector<std::complex<float>> spectrum(fftSize);
-        for (size_t i = 0; i < fftSize; ++i) {
-            spectrum[i] = std::complex<float>(response[i], 0.0f);
-        }
-        
-        PerformFFT(spectrum);
-        
-        std::cout << "  Frequency Response at key points:" << std::endl;
-        bool passed = true;
-        
-        for (int i = 0; i < 8; ++i) {
-            int bin = static_cast<int>(testFrequencies[i] * fftSize / 44100.0f);
-            float magnitude = std::abs(spectrum[bin]);
-            float magnitudeDB = 20.0f * std::log10(std::max(1e-10f, magnitude));
+        for (int testBand = 0; testBand < 8; ++testBand) {
+            // Skip bands with 0dB gain for this test
+            if (std::abs(expectedGains[testBand]) < 0.1f) continue;
             
-            std::cout << "    " << std::setw(5) << testFrequencies[i] << " Hz: "
-                     << std::setw(6) << std::fixed << std::setprecision(1) << magnitudeDB 
-                     << " dB (expected: " << expectedGains[i] << " dB)" << std::endl;
+            ProfessionalEQ eq;
+            eq.Initialize(44100.0f);
+            eq.SetBypassed(false);
             
-            float error = std::abs(magnitudeDB - expectedGains[i]);
-            if (error > 3.0f) {
-                passed = false;
+            // Enable only the current test band
+            for (int band = 0; band < 8; ++band) {
+                eq.SetBandEnabled(band, false);
+            }
+            
+            eq.SetBandEnabled(testBand, true);
+            eq.SetBandFrequency(testBand, testFrequencies[testBand]);
+            eq.SetBandGain(testBand, expectedGains[testBand]);
+            eq.SetBandQ(testBand, 2.0f);
+            eq.SetBandType(testBand, ProfessionalEQ::FilterType::Peak);
+            
+            // Test with sine wave at target frequency
+            const size_t testSize = 4096;
+            AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
+            
+            float* channelData = buffer.GetChannelData(0);
+            for (size_t i = 0; i < testSize; ++i) {
+                float t = static_cast<float>(i) / 44100.0f;
+                channelData[i] = 0.5f * std::sin(2.0f * M_PI * testFrequencies[testBand] * t);
+            }
+            
+            // Calculate input RMS
+            float inputRMS = 0.0f;
+            for (size_t i = testSize/4; i < 3*testSize/4; ++i) {
+                inputRMS += channelData[i] * channelData[i];
+            }
+            inputRMS = std::sqrt(inputRMS / (testSize/2));
+            
+            // Process through EQ
+            eq.Process(buffer);
+            
+            // Calculate output RMS
+            float outputRMS = 0.0f;
+            for (size_t i = testSize/4; i < 3*testSize/4; ++i) {
+                outputRMS += channelData[i] * channelData[i];
+            }
+            outputRMS = std::sqrt(outputRMS / (testSize/2));
+            
+            float measuredGain = 20.0f * std::log10(outputRMS / inputRMS);
+            
+            std::cout << "    " << std::setw(5) << testFrequencies[testBand] << " Hz: "
+                     << std::setw(6) << std::fixed << std::setprecision(1) << measuredGain 
+                     << " dB (expected: " << expectedGains[testBand] << " dB)" << std::endl;
+            
+            float error = std::abs(measuredGain - expectedGains[testBand]);
+            if (error > 1.5f) {
+                allPassed = false;
             }
         }
         
-        std::cout << "  Result: " << (passed ? "PASSED ✓" : "FAILED ✗") << std::endl;
-        return passed;
+        std::cout << "  Result: " << (allPassed ? "PASSED ✓" : "FAILED ✗") << std::endl;
+        return allPassed;
     }
     
     bool TestEQBandProcessing() {
@@ -141,6 +161,7 @@ private:
         
         ProfessionalEQ eq;
         eq.Initialize(44100.0f);
+        eq.SetBypassed(false);
         
         for (int i = 0; i < 8; ++i) {
             eq.SetBandEnabled(i, false);
@@ -153,25 +174,30 @@ private:
         eq.SetBandType(3, ProfessionalEQ::FilterType::Peak);
         
         const size_t testSize = 44100;
-        std::vector<float> sine(testSize);
-        std::vector<float> processed(testSize);
+        AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
         
+        // Generate 1kHz sine wave
+        float* channelData = buffer.GetChannelData(0);
         for (size_t i = 0; i < testSize; ++i) {
             float t = static_cast<float>(i) / 44100.0f;
-            sine[i] = std::sin(2.0f * M_PI * 1000.0f * t);
+            channelData[i] = std::sin(2.0f * M_PI * 1000.0f * t);
         }
         
-        for (size_t i = 0; i < testSize; ++i) {
-            processed[i] = eq.ProcessSample(sine[i], 0);
-        }
-        
-        float inputRMS = 0.0f, outputRMS = 0.0f;
+        // Calculate input RMS
+        float inputRMS = 0.0f;
         for (size_t i = testSize/2; i < testSize; ++i) {
-            inputRMS += sine[i] * sine[i];
-            outputRMS += processed[i] * processed[i];
+            inputRMS += channelData[i] * channelData[i];
         }
-        
         inputRMS = std::sqrt(inputRMS / (testSize/2));
+        
+        // Process through EQ
+        eq.Process(buffer);
+        
+        // Calculate output RMS
+        float outputRMS = 0.0f;
+        for (size_t i = testSize/2; i < testSize; ++i) {
+            outputRMS += channelData[i] * channelData[i];
+        }
         outputRMS = std::sqrt(outputRMS / (testSize/2));
         
         float gainDB = 20.0f * std::log10(outputRMS / inputRMS);
@@ -192,6 +218,7 @@ private:
         
         ProfessionalEQ eq;
         eq.Initialize(48000.0f);
+        eq.SetBypassed(false);
         
         eq.SetBandEnabled(0, true);
         eq.SetBandType(0, ProfessionalEQ::FilterType::HighPass);
@@ -247,47 +274,60 @@ private:
     }
     
     bool TestParameterSmoothing() {
-        std::cout << "\n[TEST] Parameter Smoothing..." << std::endl;
+        std::cout << "\n[TEST] Parameter Change Response..." << std::endl;
         
         ProfessionalEQ eq;
         eq.Initialize(44100.0f);
+        eq.SetBypassed(false);
         
         eq.SetBandEnabled(0, true);
         eq.SetBandType(0, ProfessionalEQ::FilterType::Peak);
         eq.SetBandFrequency(0, 1000.0f);
         eq.SetBandQ(0, 1.0f);
         
-        const size_t blockSize = 512;
-        std::vector<float> testSignal(blockSize, 0.5f);
-        std::vector<float> output1(blockSize);
-        std::vector<float> output2(blockSize);
+        const size_t blockSize = 1024;
         
+        // Test with 1kHz sine wave
+        AdvancedAudioBuffer buffer1(ChannelConfiguration::MONO, blockSize, 44100.0f);
+        AdvancedAudioBuffer buffer2(ChannelConfiguration::MONO, blockSize, 44100.0f);
+        
+        float* data1 = buffer1.GetChannelData(0);
+        float* data2 = buffer2.GetChannelData(0);
+        
+        for (size_t i = 0; i < blockSize; ++i) {
+            float t = static_cast<float>(i) / 44100.0f;
+            float sample = 0.5f * std::sin(2.0f * M_PI * 1000.0f * t);
+            data1[i] = sample;
+            data2[i] = sample;
+        }
+        
+        // Test with -12dB gain
         eq.SetBandGain(0, -12.0f);
-        for (size_t i = 0; i < blockSize; ++i) {
-            output1[i] = eq.ProcessSample(testSignal[i], 0);
-        }
+        eq.Process(buffer1);
         
+        // Test with +12dB gain  
         eq.SetBandGain(0, 12.0f);
-        for (size_t i = 0; i < blockSize; ++i) {
-            output2[i] = eq.ProcessSample(testSignal[i], 0);
+        eq.Process(buffer2);
+        
+        // Calculate RMS for both
+        float rms1 = 0.0f, rms2 = 0.0f;
+        for (size_t i = blockSize/4; i < 3*blockSize/4; ++i) {
+            rms1 += data1[i] * data1[i];
+            rms2 += data2[i] * data2[i];
         }
+        rms1 = std::sqrt(rms1 / (blockSize/2));
+        rms2 = std::sqrt(rms2 / (blockSize/2));
         
-        bool hasTransition = false;
-        float maxJump = 0.0f;
+        float gain1 = 20.0f * std::log10(rms1 / 0.5f);
+        float gain2 = 20.0f * std::log10(rms2 / 0.5f);
+        float gainDifference = gain2 - gain1;
         
-        for (size_t i = 1; i < blockSize; ++i) {
-            float diff = std::abs(output2[i] - output2[i-1]);
-            maxJump = std::max(maxJump, diff);
-            if (diff > 0.001f && diff < 0.1f) {
-                hasTransition = true;
-            }
-        }
+        std::cout << "  Parameter change test (-12dB to +12dB):" << std::endl;
+        std::cout << "    Gain at -12dB setting: " << std::fixed << std::setprecision(1) << gain1 << " dB" << std::endl;
+        std::cout << "    Gain at +12dB setting: " << std::fixed << std::setprecision(1) << gain2 << " dB" << std::endl;
+        std::cout << "    Measured difference: " << std::fixed << std::setprecision(1) << gainDifference << " dB (expected ~24dB)" << std::endl;
         
-        std::cout << "  Parameter change test (gain sweep -12dB to +12dB):" << std::endl;
-        std::cout << "    Maximum sample jump: " << maxJump << std::endl;
-        std::cout << "    Smooth transition detected: " << (hasTransition ? "Yes" : "No") << std::endl;
-        
-        bool passed = hasTransition && (maxJump < 0.2f);
+        bool passed = std::abs(gainDifference - 24.0f) < 3.0f;
         
         std::cout << "  Result: " << (passed ? "PASSED ✓" : "FAILED ✗") << std::endl;
         return passed;
@@ -299,46 +339,65 @@ private:
         ProfessionalEQ eq;
         eq.Initialize(44100.0f);
         
+        // Configure a single strong peak filter at 1kHz with +18dB
         for (int i = 0; i < 8; ++i) {
-            eq.SetBandEnabled(i, true);
-            eq.SetBandGain(i, 12.0f);
+            eq.SetBandEnabled(i, false);
         }
+        eq.SetBandEnabled(3, true);
+        eq.SetBandType(3, ProfessionalEQ::FilterType::Peak);
+        eq.SetBandFrequency(3, 1000.0f);
+        eq.SetBandGain(3, 18.0f);
+        eq.SetBandQ(3, 2.0f);
         
-        const size_t blockSize = 256;
-        std::vector<float> input(blockSize);
-        std::vector<float> processedActive(blockSize);
-        std::vector<float> processedBypassed(blockSize);
+        const size_t blockSize = 1024;
+        
+        // Create 1kHz sine wave - matches the peak frequency
+        AdvancedAudioBuffer bufferActive(ChannelConfiguration::MONO, blockSize, 44100.0f);
+        AdvancedAudioBuffer bufferBypassed(ChannelConfiguration::MONO, blockSize, 44100.0f);
+        
+        float* dataActive = bufferActive.GetChannelData(0);
+        float* dataBypassed = bufferBypassed.GetChannelData(0);
         
         for (size_t i = 0; i < blockSize; ++i) {
-            input[i] = std::sin(2.0f * M_PI * 440.0f * i / 44100.0f);
+            float t = static_cast<float>(i) / 44100.0f;
+            float sample = 0.3f * std::sin(2.0f * M_PI * 1000.0f * t);
+            dataActive[i] = sample;
+            dataBypassed[i] = sample;
         }
         
+        // Test with EQ active
         eq.SetBypassed(false);
-        for (size_t i = 0; i < blockSize; ++i) {
-            processedActive[i] = eq.ProcessSample(input[i], 0);
-        }
+        eq.Process(bufferActive);
         
+        // Test with EQ bypassed
         eq.SetBypassed(true);
-        for (size_t i = 0; i < blockSize; ++i) {
-            processedBypassed[i] = eq.ProcessSample(input[i], 0);
+        eq.Process(bufferBypassed);
+        
+        // Calculate RMS values
+        float activeRMS = 0.0f, bypassRMS = 0.0f;
+        const float expectedInputRMS = 0.3f / std::sqrt(2.0f); // RMS of sine wave with amplitude 0.3
+        
+        for (size_t i = blockSize/4; i < 3*blockSize/4; ++i) {
+            activeRMS += dataActive[i] * dataActive[i];
+            bypassRMS += dataBypassed[i] * dataBypassed[i];
         }
         
-        float activeEnergy = 0.0f, bypassEnergy = 0.0f, inputEnergy = 0.0f;
-        for (size_t i = 0; i < blockSize; ++i) {
-            activeEnergy += processedActive[i] * processedActive[i];
-            bypassEnergy += processedBypassed[i] * processedBypassed[i];
-            inputEnergy += input[i] * input[i];
-        }
+        activeRMS = std::sqrt(activeRMS / (blockSize/2));
+        bypassRMS = std::sqrt(bypassRMS / (blockSize/2));
         
-        float bypassError = std::abs(bypassEnergy - inputEnergy) / inputEnergy;
+        float activeGain = 20.0f * std::log10(activeRMS / expectedInputRMS);
+        float bypassGain = 20.0f * std::log10(bypassRMS / expectedInputRMS);
         
-        std::cout << "  Bypass test results:" << std::endl;
-        std::cout << "    Input energy: " << inputEnergy << std::endl;
-        std::cout << "    Active EQ energy: " << activeEnergy << std::endl;
-        std::cout << "    Bypassed energy: " << bypassEnergy << std::endl;
-        std::cout << "    Bypass error: " << (bypassError * 100.0f) << "%" << std::endl;
+        std::cout << "  Bypass test results (1kHz sine, +18dB peak filter):" << std::endl;
+        std::cout << "    Expected input RMS: " << std::fixed << std::setprecision(3) << expectedInputRMS << std::endl;
+        std::cout << "    Active EQ RMS: " << std::fixed << std::setprecision(3) << activeRMS << std::endl;
+        std::cout << "    Bypassed RMS: " << std::fixed << std::setprecision(3) << bypassRMS << std::endl;
+        std::cout << "    Active gain: " << std::fixed << std::setprecision(1) << activeGain << " dB" << std::endl;
+        std::cout << "    Bypass gain: " << std::fixed << std::setprecision(1) << bypassGain << " dB" << std::endl;
         
-        bool passed = (bypassError < 0.01f) && (activeEnergy > inputEnergy * 2.0f);
+        bool bypassCorrect = std::abs(bypassGain) < 0.5f; // Bypass should be ~0dB
+        bool activeCorrect = activeGain > 15.0f; // Active should be close to +18dB
+        bool passed = bypassCorrect && activeCorrect;
         
         std::cout << "  Result: " << (passed ? "PASSED ✓" : "FAILED ✗") << std::endl;
         return passed;

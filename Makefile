@@ -363,7 +363,22 @@ test-eq: clean-phase3-objects ProfessionalEQTest
 # Clean only Phase 3 object files
 clean-phase3-objects:
 	@echo "🧹 Cleaning Phase 3 object files..."
-	rm -f src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o
+	rm -f src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/testing/QuickEQTest.o
+
+# Quick simple EQ test
+QuickEQTest: src/testing/QuickEQTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o
+	@echo "⚡ Building Quick EQ Test..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) -fPIC src/testing/QuickEQTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o $(TEST_LIBS) -o QuickEQTest; \
+	else \
+		$(CXX) $(TEST_CXXFLAGS) src/testing/QuickEQTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o -o QuickEQTest; \
+	fi
+	@echo "✅ Quick EQ Test built!"
+
+test-eq-quick: clean-phase3-objects QuickEQTest
+	@echo "⚡ Running Quick EQ Test..."
+	./QuickEQTest
+	@echo "✅ Quick test completed!"
 
 # Build complete optimization suite
 VeniceDAWOptimizer: src/optimization_runner.o src/testing/AudioOptimizer.o
@@ -596,4 +611,12 @@ src/testing/ProfessionalEQTest.o: src/testing/ProfessionalEQTest.cpp
 		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
 	fi
 
-.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer Phase3FoundationTest ProfessionalEQTest test-eq clean-phase3-objects
+src/testing/QuickEQTest.o: src/testing/QuickEQTest.cpp
+	@echo "⚡ Compiling Quick EQ test..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -fPIC -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer Phase3FoundationTest ProfessionalEQTest test-eq clean-phase3-objects QuickEQTest test-eq-quick
