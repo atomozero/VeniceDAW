@@ -20,7 +20,7 @@ LIBS = -lbe -lmedia -lroot -ltracker -lGL -lGLU
 BENCHMARK_CXXFLAGS = $(CXXFLAGS) -DBENCHMARK_MODE
 
 # Testing framework flags
-TEST_CXXFLAGS = $(CXXFLAGS) -DTESTING_MODE
+TEST_CXXFLAGS = $(CXXFLAGS) -DTESTING_MODE -fPIC
 TEST_LIBS = $(LIBS)
 
 # Include paths
@@ -309,6 +309,36 @@ optimize-complete: VeniceDAWOptimizer
 	@echo "🚀 Running complete VeniceDAW optimization suite..."
 	./VeniceDAWOptimizer --output complete_optimization.json
 	@echo "✅ Complete optimization suite completed - see complete_optimization.json"
+
+# Phase 3.1 foundation testing
+test-phase3-foundation: Phase3FoundationTest
+	@echo "🧪 Running Phase 3.1 foundation validation..."
+	./Phase3FoundationTest --comprehensive --output phase3_foundation_results.json
+	@echo "✅ Phase 3.1 foundation validation completed"
+
+# Quick Phase 3 foundation test
+test-phase3-quick: Phase3FoundationTest
+	@echo "⚡ Running quick Phase 3.1 foundation test..."
+	./Phase3FoundationTest --quick --verbose
+	@echo "✅ Quick Phase 3.1 test completed"
+
+# Phase 3 performance validation
+test-phase3-performance: Phase3FoundationTest
+	@echo "⚡ Running Phase 3.1 performance validation..."
+	./Phase3FoundationTest --performance --output phase3_performance.json
+	@echo "✅ Phase 3.1 performance validation completed"
+
+# Build Phase 3.1 foundation test
+Phase3FoundationTest: src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o
+	@echo "🧪 Building Phase 3.1 Foundation Test Suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		echo "✅ Building on native Haiku with real BeAPI"; \
+		$(CXX) $(TEST_CXXFLAGS) src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o $(TEST_LIBS) -o Phase3FoundationTest; \
+	else \
+		echo "⚠️ Building on non-Haiku system with mock APIs"; \
+		$(CXX) $(TEST_CXXFLAGS) src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o -o Phase3FoundationTest; \
+	fi
+	@echo "✅ Phase 3.1 Foundation Test Suite built!"
 
 # Build complete optimization suite
 VeniceDAWOptimizer: src/optimization_runner.o src/testing/AudioOptimizer.o
