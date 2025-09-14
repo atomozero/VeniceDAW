@@ -19,6 +19,10 @@ LIBS = -lbe -lmedia -lroot -ltracker -lGL -lGLU
 # Benchmark-specific flags
 BENCHMARK_CXXFLAGS = $(CXXFLAGS) -DBENCHMARK_MODE
 
+# Testing framework flags
+TEST_CXXFLAGS = $(CXXFLAGS) -DTESTING_MODE
+TEST_LIBS = $(LIBS)
+
 # Include paths
 INCLUDES = -I. -Isrc
 
@@ -28,6 +32,15 @@ AUDIO_SRCS = \
 
 DEMO_SRCS = \
 	src/main_simple.cpp
+
+# Testing framework sources
+TESTING_FRAMEWORK_SRCS = \
+	src/testing/VeniceDAWTestFramework.cpp \
+	src/testing/ThreadSafetyTests.cpp \
+	src/testing/PerformanceStationScalingTests.cpp \
+	src/testing/Phase2GoNoGoEvaluator.cpp
+
+TESTING_FRAMEWORK_OBJS = $(TESTING_FRAMEWORK_SRCS:.cpp=.o)
 
 # For full Haiku version (when on native Haiku) - SIMPLE VERSION
 AUDIO_HAIKU_SRCS = \
@@ -76,12 +89,21 @@ TEST_SRCS = \
 	src/benchmark/tests/RealtimePerformanceTest.cpp \
 	src/benchmark/tests/CPUScalingTest.cpp
 
+# Phase 2 Testing Framework sources (100% Haiku native)
+TESTING_FRAMEWORK_SRCS = \
+	src/testing/VeniceDAWTestFramework.cpp \
+	src/testing/ThreadSafetyTests.cpp \
+	src/testing/PerformanceStationScalingTests.cpp \
+	src/testing/Phase2GoNoGoEvaluator.cpp \
+	src/main_test_runner.cpp
+
 # Object files
 DEMO_OBJS = $(DEMO_ALL_SRCS:.cpp=.o)
 NATIVE_OBJS = $(NATIVE_ALL_SRCS:.cpp=.o)
 FULL_OBJS = $(FULL_SRCS:.cpp=.o)
 BENCHMARK_OBJS = $(BENCHMARK_ALL_SRCS:.cpp=.o)
 TEST_OBJS = $(TEST_SRCS:.cpp=.o)
+TESTING_FRAMEWORK_OBJS = $(TESTING_FRAMEWORK_SRCS:.cpp=.o)
 
 # Default target - cross-platform demo
 all: demo
@@ -158,11 +180,12 @@ benchmark-weather: $(PERFORMANCE_STATION_OBJS)
 
 # Clean build files
 clean:
-	rm -f $(DEMO_OBJS) $(NATIVE_OBJS) $(FULL_OBJS) $(BENCHMARK_OBJS) $(APP_NAME) VeniceDAWDemo VeniceDAWNative VeniceDAWGUI VeniceDAWBenchmark VeniceDAWBenchmarkUnified VeniceDAWBenchmarkFull VeniceDAWBenchmarkGUI VeniceDAWBenchmark
+	rm -f $(DEMO_OBJS) $(NATIVE_OBJS) $(FULL_OBJS) $(BENCHMARK_OBJS) $(TESTING_FRAMEWORK_OBJS) $(APP_NAME) VeniceDAWDemo VeniceDAWNative VeniceDAWGUI VeniceDAWBenchmark VeniceDAWBenchmarkUnified VeniceDAWBenchmarkFull VeniceDAWBenchmarkGUI VeniceDAWBenchmark VeniceDAWTestRunner
 	rm -f src/gui/BenchmarkWindow.o
 	rm -f src/main_performance_station.o src/gui/PerformanceStationWindow.o
 	rm -f src/benchmark/PerformanceStation.o src/main_benchmark.o
-	@echo "🧹 Cleaned build files"
+	rm -rf reports/
+	@echo "🧹 Cleaned build files and test reports"
 
 # Quick test build (compile only, no linking)
 test-compile: CXXFLAGS += -fsyntax-only
@@ -216,6 +239,104 @@ performance: benchmark-weather
 station: benchmark-weather
 	@echo "✅ Performance Station ready!"
 
+# ============================================================================
+# Phase 2 Testing Framework Targets
+# ============================================================================
+
+# Main test runner (comprehensive testing framework)
+test-framework: VeniceDAWTestRunner
+	@echo "✅ VeniceDAW Phase 2 Testing Framework ready!"
+	@echo "Usage: ./VeniceDAWTestRunner [--quick|--full|--memory-stress|--performance-scaling|--thread-safety|--gui-automation]"
+
+VeniceDAWTestRunner: src/simple_test_runner.o
+	@echo "🧪 Building VeniceDAW Simple Testing Framework..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		echo "✅ Building on native Haiku with real BeAPI"; \
+		$(CXX) $(TEST_CXXFLAGS) src/simple_test_runner.o $(TEST_LIBS) -o VeniceDAWTestRunner; \
+	else \
+		echo "⚠️  Building with mock headers - for syntax checking only"; \
+		echo "   Real testing requires native Haiku OS!"; \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) src/simple_test_runner.o -o VeniceDAWTestRunner; \
+	fi
+	@echo "✅ Simple Testing Framework built!"
+
+# Quick validation (< 5 minutes)
+test-framework-quick: VeniceDAWTestRunner
+	@echo "⚡ Running quick Phase 2 validation..."
+	./VeniceDAWTestRunner --quick --json-output quick_validation.json
+	@echo "✅ Quick validation completed - see quick_validation.json for results"
+
+# Full validation suite (8+ hours)
+test-framework-full: VeniceDAWTestRunner
+	@echo "🏁 Running full Phase 2 validation suite..."
+	@echo "⚠️  This will take 8+ hours to complete"
+	./VeniceDAWTestRunner --full --json-output full_validation.json --html-report full_validation.html
+	@echo "✅ Full validation completed - see full_validation.json and full_validation.html"
+
+# Memory stress testing
+test-memory-stress: VeniceDAWTestRunner
+	@echo "🧠 Running 8-hour memory stress test..."
+	./scripts/memory_debug_setup.sh setup
+	./VeniceDAWTestRunner --memory-stress
+	@echo "✅ Memory stress test completed"
+
+# Performance scaling validation
+test-performance-scaling: VeniceDAWTestRunner
+	@echo "🎛️ Testing Performance Station 8-track scaling..."
+	./VeniceDAWTestRunner --performance-scaling --verbose
+	@echo "✅ Performance scaling test completed"
+
+# Thread safety validation
+test-thread-safety: VeniceDAWTestRunner
+	@echo "🔒 Running thread safety validation..."
+	./VeniceDAWTestRunner --thread-safety --verbose
+	@echo "✅ Thread safety validation completed"
+
+# GUI automation testing
+test-gui-automation: VeniceDAWTestRunner gui
+	@echo "🖥️ Running GUI automation tests using hey tool..."
+	./VeniceDAWTestRunner --gui-automation
+	@echo "✅ GUI automation tests completed"
+
+# Phase 2 Go/No-Go evaluation
+test-evaluate-phase2: VeniceDAWTestRunner
+	@echo "🎯 Running Phase 2 Go/No-Go evaluation..."
+	./VeniceDAWTestRunner --evaluate-phase2 --json-output phase2_evaluation.json --html-report phase2_evaluation.html
+	@echo "✅ Phase 2 evaluation completed - see phase2_evaluation.json and phase2_evaluation.html"
+
+# Setup memory debugging environment
+setup-memory-debug:
+	@echo "🔧 Setting up Haiku memory debugging environment..."
+	chmod +x scripts/memory_debug_setup.sh
+	./scripts/memory_debug_setup.sh setup
+	@echo "✅ Memory debug environment configured"
+
+# Clean test artifacts
+clean-tests:
+	rm -rf reports/
+	rm -f *_validation.json *_validation.html
+	rm -f phase2_evaluation.json phase2_evaluation.html
+	rm -f junit_results.xml
+	@echo "🧹 Cleaned test artifacts"
+
+# Test infrastructure validation
+validate-test-setup: 
+	@echo "🔍 Validating test infrastructure setup..."
+	@echo "Checking for required tools and libraries:"
+	@which hey >/dev/null 2>&1 && echo "✅ hey tool found" || echo "❌ hey tool not found - GUI automation tests will fail"
+	@test -f /boot/system/lib/libroot_debug.so && echo "✅ libroot_debug.so found" || echo "❌ libroot_debug.so not found - memory debugging will be limited"
+	@echo "Checking build environment:"
+	@$(CXX) --version | head -1
+	@echo "Available VeniceDAW targets:"
+	@for target in VeniceDAWBenchmark VeniceDAWGUI VeniceDAWNative VeniceDAW; do \
+		if [ -f "./$$target" ]; then \
+			echo "  ✅ $$target"; \
+		else \
+			echo "  ❌ $$target (run 'make $$target' to build)"; \
+		fi \
+	done
+	@echo "✅ Test infrastructure validation completed"
+
 # Help target
 help:
 	@echo "VeniceDAW Build System - Modern Audio Workstation"
@@ -248,6 +369,19 @@ help:
 	@echo "  make benchmark-weather  - 🎛️ Performance Station (full target name)"
 	@echo "  make test-performance   - Test syntax only"
 	@echo ""
+	@echo "Phase 2 Testing Framework (100% Native Haiku):"
+	@echo "  make test-framework           - 🧪 Build native Haiku testing framework"
+	@echo "  make test-framework-quick     - ⚡ Quick validation (< 5 min)"
+	@echo "  make test-framework-full      - 🏁 Full validation (8+ hours)"
+	@echo "  make test-memory-stress       - 🧠 Memory stress test with malloc_debug"
+	@echo "  make test-performance-scaling - 🎛️ Performance Station 8-track scaling"
+	@echo "  make test-thread-safety       - 🔒 BeAPI thread safety validation"
+	@echo "  make test-gui-automation      - 🖥️ GUI automation with hey tool"
+	@echo "  make test-evaluate-phase2     - 🎯 Quantitative Go/No-Go evaluation"
+	@echo "  make setup-memory-debug       - 🔧 Setup Haiku malloc_debug environment"
+	@echo "  make validate-test-setup      - 🔍 Validate native Haiku test environment"
+	@echo "  make clean-tests              - 🧹 Clean test artifacts"
+	@echo ""
 	@echo "Other Benchmarks (legacy):"
 	@echo "  make benchmark-unified  - Complete suite"
 	@echo "  make benchmark-gui      - Traditional GUI"
@@ -257,6 +391,30 @@ help:
 	@echo "  2. Run: make native"
 	@echo "  3. Run: ./VeniceDAWNative"
 	@echo ""
+	@echo "🧪 FOR PHASE 2 VALIDATION (REQUIRES HAIKU OS):"
+	@echo "  1. Copy project to native Haiku system"
+	@echo "  2. Run: make test-framework-quick (5-min validation with BeAPI)"
+	@echo "  3. Run: make test-framework-full (8+ hour comprehensive test)"
+	@echo "  4. Check phase2_evaluation.json for quantitative Go/No-Go results"
+	@echo ""
 	@echo "Debug build enabled by default for development"
 
-.PHONY: all clean test-compile audio-only ui-only run install help
+# Pattern rules for testing framework
+src/testing/%.o: src/testing/%.cpp
+	@echo "🧪 Compiling test module: $<"
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+# Simple test runner compilation
+src/simple_test_runner.o: src/simple_test_runner.cpp
+	@echo "🧪 Compiling simple test runner..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests
