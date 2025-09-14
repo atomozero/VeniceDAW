@@ -184,6 +184,8 @@ clean:
 	rm -f src/gui/BenchmarkWindow.o
 	rm -f src/main_performance_station.o src/gui/PerformanceStationWindow.o
 	rm -f src/benchmark/PerformanceStation.o src/main_benchmark.o
+	rm -f src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o
+	rm -f Phase3FoundationTest
 	rm -rf reports/
 	@echo "🧹 Cleaned build files and test reports"
 
@@ -524,6 +526,31 @@ src/testing/AudioOptimizer.o: src/testing/AudioOptimizer.cpp
 # Optimization runner compilation
 src/optimization_runner.o: src/optimization_runner.cpp
 	@echo "🎯 Compiling optimization runner..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+# Phase 3.1 foundation compilation rules
+src/phase3_foundation_test.o: src/phase3_foundation_test.cpp
+	@echo "🧪 Compiling Phase 3.1 foundation test..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+src/testing/AdvancedAudioProcessorTest.o: src/testing/AdvancedAudioProcessorTest.cpp
+	@echo "🧪 Compiling AdvancedAudioProcessor test suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+src/audio/AdvancedAudioProcessor.o: src/audio/AdvancedAudioProcessor.cpp
+	@echo "🎵 Compiling AdvancedAudioProcessor..."
 	@if [ "$(shell uname)" = "Haiku" ]; then \
 		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
 	else \

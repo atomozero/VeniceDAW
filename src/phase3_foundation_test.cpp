@@ -93,7 +93,12 @@ int main(int argc, char* argv[]) {
     
 #ifdef __HAIKU__
     // Initialize BApplication for BeAPI context
-    Phase3TestApp app;
+    // Note: BApplication is needed but we don't run it in a separate thread for tests
+    Phase3TestApp* app = new Phase3TestApp();
+    if (app->InitCheck() != B_OK) {
+        std::cerr << "❌ Failed to initialize BApplication\n";
+        return 1;
+    }
     std::cout << "✅ Running on native Haiku with real BeAPI\n\n";
 #else
     std::cout << "⚠️ Running on non-Haiku system with mock APIs\n";

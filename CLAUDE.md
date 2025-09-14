@@ -1,94 +1,10 @@
-# CLAUDE.md – VeniceDAW Guidelines
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Vision
-VeniceDAW is a Digital Audio Workstation native to **Haiku OS**, built around three key principles:
-- **Strudel Graph per track** (intrinsic modularity)  
-- **Cortex Integration** (system-level routing)  
-- **3D Audio as core feature** (native spatialization)
 
 ## Project Overview
 
 VeniceDAW is a professional audio workstation and 3D mixing application built natively for Haiku OS. It's a modern C++ application using native Haiku APIs for audio processing and GUI.
-
-## MVP (Minimum Viable Product)
-- **Strudel Graph**  
-  - Linear FX chain per track (architecture ready to become full graph)
-  - Basic effect slots: gain, EQ, pan
-
-- **Cortex Integration**  
-  - VeniceDAW registered as `BMediaNode`
-  - Input device → VeniceDAW Track → Master → Output device
-
-- **3D Audio (base)**  
-  - 2D panning with distance attenuation
-  - Basic parameters per track: L/R position, distance
-
-## Future Roadmap
-- **Advanced Strudel**  
-  - Graphical editor Max/MSP style
-  - Plugin support as nodes (VST, LV2)
-  - Free modular routing
-
-- **Advanced Cortex**  
-  - Inter-app routing (VeniceDAW ↔ other apps)
-  - Track parameters exposed as `BParameter` for external control
-
-- **Advanced 3D Audio**  
-  - Open-source HRTF support (SOFA, CIPIC)
-  - Multichannel output (5.1, 7.1)
-  - Spatial audio for VR/AR
-
-- **AI Integration (optional)**  
-  - AI nodes for assisted mixing, mastering and sound design
-
-## Architecture Overview
-
-```ascii
-                ┌────────────────────┐
-                │   Input Device      │
-                └─────────┬───────────┘
-                          │
-                          ▼
-                  ┌─────────────────┐
-                  │    Cortex        │
-                  │ (System Routing) │
-                  └───────┬─────────┘
-                          │
-                          ▼
-                  ┌─────────────────┐
-                  │ VeniceDAW Track │
-                  └───────┬─────────┘
-                          │
-                ┌─────────┴───────────┐
-                │ Strudel FX Chain     │
-                │ (MVP: linear slots)  │
-                └─────────┬───────────┘
-                          │
-                          ▼
-                ┌─────────────────────┐
-                │  3D Spatial Engine  │
-                │ (MVP: 2D panning)   │
-                └─────────┬───────────┘
-                          │
-                          ▼
-                  ┌─────────────────┐
-                  │  VeniceDAW Master│
-                  └───────┬─────────┘
-                          │
-                          ▼
-                  ┌─────────────────┐
-                  │    Cortex        │
-                  │   (Output Node)  │
-                  └───────┬─────────┘
-                          │
-                          ▼
-                ┌────────────────────┐
-                │   Output Device     │
-                │ (Stereo/Binaural)   │
-                └────────────────────┘
-```
 
 ## Essential Commands
 
@@ -100,11 +16,22 @@ make install           # Install to Desktop
 make clean             # Clean build artifacts
 ```
 
+### Cross-Platform Development
+```bash
+make -f Makefile.cross syntax-check    # Validate syntax without Haiku
+./run_cross_tests.sh                   # Run automated test suite
+```
+
 ### VeniceDAW Performance Station
 ```bash
 make performance        # Build Performance Station (recommended)
 make station           # Same as above (shortcut)
 make test-weather      # Test syntax only
+```
+
+### Testing
+```bash
+./run_cross_tests.sh    # Runs 8 comprehensive tests for cross-compilation
 ```
 
 ## Architecture & Key Components
@@ -168,7 +95,8 @@ The VeniceDAW Performance Station (formerly UnifiedBenchmark) provides comprehen
 ### Making Audio Engine Changes
 1. Check `play.cpp` for BSoundPlayer implementation
 2. Review `channel.cpp` for buffer management
-3. Build with `make DEBUG=1` for debugging
+3. Test with `./run_cross_tests.sh` for syntax validation
+4. Build with `make DEBUG=1` for debugging
 
 ### Adding DSP Features
 1. DSP modules are standalone C/C++ files in root
@@ -181,9 +109,41 @@ The VeniceDAW Performance Station (formerly UnifiedBenchmark) provides comprehen
 3. Track-specific UI in `track_view.cpp`
 4. Window management in `wave_window.cpp`
 
+## Testing Strategy
+
+**CRITICAL: NEVER TRY TO COMPILE VeniceDAW IN WSL/Linux ENVIRONMENTS**
+
+VeniceDAW is a NATIVE Haiku OS application and MUST be compiled on real Haiku systems only.
+
+### Cross-Platform Development (Syntax Only)
+For syntax validation on non-Haiku systems:
+```bash
+make -f Makefile.cross syntax-check    # Syntax validation only
+./run_cross_tests.sh                   # Automated syntax tests
+```
+
+### Real Compilation (Haiku Only)
+All actual compilation MUST be done on native Haiku:
+```bash
+# ON HAIKU VM/SYSTEM ONLY:
+make                    # Release build
+make DEBUG=1           # Debug build
+make optimize-quick    # Audio optimization suite
+make performance       # Performance Station
+```
+
+**Why this restriction exists:**
+1. VeniceDAW uses native Haiku BeAPI calls that don't exist on Linux
+2. Audio system requires real BSoundPlayer and BMediaKit APIs
+3. GUI components need genuine BView/BWindow classes
+4. Thread management uses Haiku-specific scheduler APIs
+
+**Mock headers in `src/testing/HaikuMockHeaders.h` are ONLY for syntax checking - they don't provide real functionality.**
+
 ## Known Issues & Constraints
 
 - **MIDI Support**: Disabled due to deprecated legacy MIDI APIs
+- **Cross-Compilation**: Some features only testable on actual Haiku system
 - **Buffer Timing**: Real-time audio requires careful semaphore management in `play.cpp`
 
 ## TSoundView 3D GUI Critical Notes
@@ -233,69 +193,69 @@ For mouse events to work properly:
 
 ### Architectural Synergy
 
-**Cortex** = System audio router (manages connections between media nodes)
-**VeniceDAW** = Creative mixer with 3D visualization
+**Cortex** = Router audio di sistema (gestisce connessioni tra nodi media)
+**VeniceDAW** = Mixer creativo con visualizzazione 3D
 
-The natural integration:
-- Cortex handles **routing** (hardware input → VeniceDAW, VeniceDAW → output)
-- VeniceDAW handles **creativity** (spatial mixing, effects, automation)
+L'integrazione naturale:
+- Cortex gestisce **routing** (input hardware → VeniceDAW, VeniceDAW → output)
+- VeniceDAW gestisce **creatività** (mixaggio spaziale, effetti, automazione)
 
-### Optimal Integration Pattern
+### Pattern di integrazione ottimale
 
-#### 1. VeniceDAW as specialized media node
-- Each VeniceDAW track appears as separate node in Cortex
-- Flexible routing: microphones → specific tracks, tracks → headphone monitoring
-- 3D parameters (position, distance) exposed as BParameter controllable from Cortex
+#### 1. VeniceDAW come nodo media specializzato
+- Ogni track di VeniceDAW appare come nodo separato in Cortex
+- Routing flessibile: microfoni → track specifici, track → monitor cuffie
+- Parametri 3D (posizione, distanza) esposti come BParameter controllabili da Cortex
 
-#### 2. Professional Workflow
+#### 2. Workflow professionale
 ```
 Hardware Input → Cortex → VeniceDAW Tracks → VeniceDAW Master → Cortex → Output Device
                     ↑                              ↓
               Send/Return effects           Bounce to disk
 ```
 
-### Integration Benefits
+### Vantaggi dell'integrazione
 
-#### For Musicians:
-- **Complex setups**: Multi-channel routing with spatial control
-- **Live performance**: Cortex for quick routing, VeniceDAW for expressive mixing
-- **Recording sessions**: Direct input from multi-channel interfaces
+#### Per i musicisti:
+- **Setup complessi**: Routing multicanale con controllo spaziale
+- **Live performance**: Cortex per routing veloce, VeniceDAW per mixaggio espressivo
+- **Recording session**: Input diretto da interfacce multi-canale
 
-#### For the System:
-- **Zero-latency monitoring**: Direct hardware → Cortex → headphones routing
-- **Resource sharing**: Single Media Server for everything
-- **Natural synchronization**: Shared TimeSource automatically
+#### Per il sistema:
+- **Zero-latency monitoring**: Routing diretto hardware → Cortex → cuffie
+- **Condivisione risorse**: Un solo Media Server per tutto
+- **Sincronizzazione naturale**: TimeSource condivisa automaticamente
 
-### Interesting Technical Challenges
+### Sfide tecniche interessanti
 
-#### Compound Latency:
+#### Latenza composta:
 Hardware → Cortex → VeniceDAW → Cortex → Output
-Each hop adds ~2-5ms. Solution: bypass routing for direct monitoring.
+Ogni hop aggiunge ~2-5ms. Soluzione: routing bypass per monitoring diretto.
 
-#### Distributed Control:
-- Who manages master volume?
-- How to synchronize automation between the two apps?
-- Conflicts if both modify the same parameter?
+#### Controllo distribuito:
+- Chi gestisce il master volume?
+- Come sincronizzare automazione tra le due app?
+- Conflitti se entrambe modificano lo stesso parametro?
 
-### 3D Mixer as Killer Feature
+### Il mixer 3D come killer feature
 
-The most interesting aspect: **spatialization controlled by Cortex**
+L'aspetto più interessante: **spazializzazione controllata da Cortex**
 
-Possibilities:
-- Surround microphones automatically mapped to 3D positions
-- Spatial automation via OSC/MIDI controllable from Cortex
-- **Virtual soundstage**: each musician in specific 3D position during live recording
+Possibilità:
+- Microfoni surround mappati automaticamente su posizioni 3D
+- Automazione spaziale via OSC/MIDI controllabile da Cortex
+- **Virtual soundstage**: ogni musicista in posizione 3D specifica durante live recording
 
-### Impact on Haiku Ecosystem
+### Impatto sull'ecosistema Haiku
 
-This integration would demonstrate that:
-1. **BMediaKit scales** for professional applications
-2. **Haiku is credible** as serious audio platform
-3. **Modular architecture** enables innovation above solid foundation
+Questa integrazione dimostrerebbe che:
+1. **BMediaKit scala** per applicazioni professionali
+2. **Haiku è credibile** come piattaforma audio seria
+3. **Architettura modulare** permette innovazione sopra base solida
 
-The integration could establish **standard patterns** for future native audio applications, making Haiku attractive to professional music software developers.
+L'integrazione potrebbe stabilire **pattern standard** per future applicazioni audio native, rendendo Haiku attraente per sviluppatori di software musicale professionale.
 
-The key is **not duplicating functionality** but creating **complementary synergy** between routing (Cortex) and creativity (VeniceDAW).
+La chiave è **non duplicare funzionalità** ma creare **sinergia complementare** tra routing (Cortex) e creatività (VeniceDAW).
 
 ## File Organization
 
@@ -303,5 +263,5 @@ The key is **not duplicating functionality** but creating **complementary synerg
 - **DSP Modules**: `*.c` files (fft, fht, etc.) in root directory
 - **GUI Components**: `*_view.cpp`, `*_window.cpp` files
 - **Headers**: Corresponding `.h` files for each component
-- **Build**: `Makefile` for Haiku native environment
-- **Testing**: Native Haiku testing framework
+- **Build**: `Makefile`, `Makefile.cross` for different environments
+- **Testing**: `run_cross_tests.sh`, `tests/` directory
