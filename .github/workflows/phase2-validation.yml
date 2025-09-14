@@ -1,0 +1,389 @@
+# VeniceDAW Phase 2 Readiness Validation Pipeline
+# Automated testing system with Go/No-Go evaluation
+
+name: VeniceDAW Phase 2 Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run full validation daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type to run'
+        required: true
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+          - memory-stress
+          - performance-scaling
+          - thread-safety
+          - gui-automation
+
+jobs:
+  # Quick validation for PRs (< 5 minutes)
+  quick-validation:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'quick')
+    runs-on: [self-hosted, haiku]
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Haiku build environment
+      run: |
+        echo "🔧 Setting up Haiku build environment"
+        export PATH="/boot/system/bin:/boot/common/bin:$PATH"
+        export LIBRARY_PATH="/boot/system/lib:/boot/common/lib"
+        
+    - name: Build VeniceDAW Performance Station
+      run: |
+        echo "🏗️ Building VeniceDAW Performance Station for testing"
+        make clean
+        make performance
+        ls -la VeniceDAWBenchmark || echo "❌ Build failed"
+        
+    - name: Setup memory debugging
+      run: |
+        echo "🧠 Configuring memory debug environment"
+        chmod +x scripts/memory_debug_setup.sh
+        ./scripts/memory_debug_setup.sh setup
+        
+    - name: Run quick validation suite
+      id: quick_test
+      run: |
+        echo "⚡ Running quick validation suite"
+        export LD_PRELOAD=libroot_debug.so
+        export MALLOC_DEBUG=ges10
+        
+        # Build and run test framework
+        make test-framework-quick
+        ./VeniceDAWTestRunner --quick
+        
+        echo "::set-output name=test_result::$?"
+        
+    - name: Parse test results
+      run: |
+        echo "📊 Parsing quick validation results"
+        if [ -f "phase2_validation_results.json" ]; then
+          cat phase2_validation_results.json
+          
+          # Extract key metrics for GitHub summary
+          OVERALL_SCORE=$(grep -o '"overall_score":[^,]*' phase2_validation_results.json | cut -d: -f2)
+          IS_READY=$(grep -o '"is_ready":[^,]*' phase2_validation_results.json | cut -d: -f2)
+          
+          echo "::notice title=Quick Validation Results::Overall Score: ${OVERALL_SCORE}%, Ready: ${IS_READY}"
+          
+          # Set job outputs
+          echo "::set-output name=overall_score::${OVERALL_SCORE}"
+          echo "::set-output name=is_ready::${IS_READY}"
+        else
+          echo "::error title=Test Results Missing::No validation results file found"
+          exit 1
+        fi
+        
+    - name: Upload test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: quick-validation-results
+        path: |
+          phase2_validation_results.json
+          phase2_validation_report.html
+          reports/memory_analysis/
+        retention-days: 7
+
+  # Full validation suite (8+ hours with stress tests)
+  full-validation:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'full')
+    runs-on: [self-hosted, haiku]
+    timeout-minutes: 600  # 10 hours timeout
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup extended test environment
+      run: |
+        echo "🔧 Setting up extended test environment for full validation"
+        export PATH="/boot/system/bin:/boot/common/bin:$PATH"
+        
+        # Ensure system has enough resources for 8-hour test
+        df -h
+        free -m || echo "Memory info not available"
+        
+    - name: Build all VeniceDAW components
+      run: |
+        echo "🏗️ Building all VeniceDAW components"
+        make clean
+        make performance    # Performance Station
+        make gui           # GUI components
+        make native        # Native audio engine
+        
+        echo "✅ Build verification:"
+        ls -la VeniceDAW* || echo "Some components missing"
+        
+    - name: Run comprehensive memory stability test
+      run: |
+        echo "🧠 Starting 8-hour memory stability test"
+        ./scripts/memory_debug_setup.sh stress &
+        STRESS_PID=$!
+        
+        echo "Memory stress test PID: $STRESS_PID"
+        echo "::set-output name=stress_pid::$STRESS_PID"
+        
+    - name: Run Performance Station scaling validation
+      run: |
+        echo "🎛️ Running Performance Station 8-track scaling test"
+        export LD_PRELOAD=libroot_debug.so
+        export MALLOC_DEBUG=ges20
+        
+        make test-performance-scaling
+        ./VeniceDAWTestRunner --performance-scaling
+        
+    - name: Run thread safety validation
+      run: |
+        echo "🔒 Running comprehensive thread safety validation"
+        make test-thread-safety
+        ./VeniceDAWTestRunner --thread-safety
+        
+    - name: Run GUI automation tests
+      run: |
+        echo "🖥️ Running GUI automation using hey tool"
+        ./VeniceDAWTestRunner --gui-automation
+        
+    - name: Wait for memory stress test completion
+      run: |
+        echo "⏱️ Waiting for 8-hour memory stress test to complete"
+        STRESS_PID=$(cat stress_test.pid 2>/dev/null || echo "")
+        
+        if [ -n "$STRESS_PID" ] && kill -0 $STRESS_PID 2>/dev/null; then
+          echo "Waiting for stress test process $STRESS_PID to complete..."
+          wait $STRESS_PID
+          echo "Stress test completed"
+        else
+          echo "Stress test already completed or not found"
+        fi
+        
+    - name: Generate comprehensive Phase 2 evaluation
+      id: phase2_eval
+      run: |
+        echo "🎯 Generating comprehensive Phase 2 Go/No-Go evaluation"
+        ./VeniceDAWTestRunner --evaluate-phase2
+        
+        # Extract final determination
+        if [ -f "phase2_validation_results.json" ]; then
+          IS_READY=$(grep -o '"is_ready":[^,]*' phase2_validation_results.json | cut -d: -f2)
+          READINESS_LEVEL=$(grep -o '"readiness_level":"[^"]*"' phase2_validation_results.json | cut -d'"' -f4)
+          OVERALL_SCORE=$(grep -o '"overall_score":[^,]*' phase2_validation_results.json | cut -d: -f2)
+          DAYS_TO_READY=$(grep -o '"estimated_days_to_ready":[^,]*' phase2_validation_results.json | cut -d: -f2)
+          
+          echo "::notice title=Phase 2 Evaluation::Ready: ${IS_READY}, Level: ${READINESS_LEVEL}, Score: ${OVERALL_SCORE}%, Days to ready: ${DAYS_TO_READY}"
+          
+          # Set outputs for downstream jobs
+          echo "::set-output name=is_ready::${IS_READY}"
+          echo "::set-output name=readiness_level::${READINESS_LEVEL}"
+          echo "::set-output name=overall_score::${OVERALL_SCORE}"
+          echo "::set-output name=days_to_ready::${DAYS_TO_READY}"
+          
+          # Create status badge data
+          mkdir -p badges
+          if [ "$IS_READY" = "true" ]; then
+            echo "Phase 2-Ready-brightgreen" > badges/phase2-status.txt
+          elif [ "$READINESS_LEVEL" = "CONDITIONAL" ]; then
+            echo "Phase 2-Conditional-yellow" > badges/phase2-status.txt
+          else
+            echo "Phase 2-Not Ready-red" > badges/phase2-status.txt
+          fi
+        else
+          echo "::error title=Evaluation Failed::No Phase 2 evaluation results found"
+          exit 1
+        fi
+        
+    - name: Create Phase 2 readiness issue
+      if: steps.phase2_eval.outputs.is_ready != 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const isReady = '${{ steps.phase2_eval.outputs.is_ready }}';
+          const readinessLevel = '${{ steps.phase2_eval.outputs.readiness_level }}';
+          const overallScore = '${{ steps.phase2_eval.outputs.overall_score }}';
+          const daysToReady = '${{ steps.phase2_eval.outputs.days_to_ready }}';
+          
+          const issueTitle = `VeniceDAW Phase 2 Readiness: ${readinessLevel}`;
+          const issueBody = `
+          ## Phase 2 Readiness Evaluation Results
+          
+          **Overall Score:** ${overallScore}%
+          **Readiness Level:** ${readinessLevel}
+          **Estimated Days to Ready:** ${daysToReady}
+          
+          ### Action Required
+          ${readinessLevel === 'CONDITIONAL' ? 
+            'Minor issues need to be addressed before Phase 2.' : 
+            'Significant issues need to be resolved before Phase 2.'}
+          
+          ### Detailed Results
+          See the full validation report in the artifacts of this workflow run.
+          
+          **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          `;
+          
+          // Check if issue already exists
+          const issues = await github.rest.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'open',
+            labels: ['phase-2', 'validation']
+          });
+          
+          if (issues.data.length === 0) {
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: issueTitle,
+              body: issueBody,
+              labels: ['phase-2', 'validation', readinessLevel.toLowerCase()]
+            });
+          }
+          
+    - name: Upload comprehensive test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: full-validation-results-${{ github.run_id }}
+        path: |
+          phase2_validation_results.json
+          phase2_validation_report.html
+          junit_results.xml
+          reports/
+          badges/
+        retention-days: 30
+
+  # Specialized test jobs for workflow_dispatch
+  memory-stress-only:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'memory-stress'
+    runs-on: [self-hosted, haiku]
+    timeout-minutes: 600
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build and run memory stress test
+      run: |
+        make performance
+        ./scripts/memory_debug_setup.sh stress
+        
+    - name: Upload memory analysis
+      uses: actions/upload-artifact@v4
+      with:
+        name: memory-stress-results
+        path: reports/memory_analysis/
+        
+  performance-scaling-only:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'performance-scaling'
+    runs-on: [self-hosted, haiku]
+    timeout-minutes: 60
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build and run performance scaling test
+      run: |
+        make performance
+        make test-performance-scaling
+        ./VeniceDAWTestRunner --performance-scaling
+        
+    - name: Upload scaling analysis
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-scaling-results
+        path: |
+          performance_scaling_results.json
+          reports/performance/
+          
+  thread-safety-only:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'thread-safety'
+    runs-on: [self-hosted, haiku]
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build and run thread safety tests
+      run: |
+        make performance
+        make test-thread-safety
+        ./VeniceDAWTestRunner --thread-safety
+        
+    - name: Upload thread safety results
+      uses: actions/upload-artifact@v4
+      with:
+        name: thread-safety-results
+        path: thread_safety_results.json
+        
+  gui-automation-only:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'gui-automation'
+    runs-on: [self-hosted, haiku]
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build and run GUI automation tests
+      run: |
+        make gui
+        ./VeniceDAWTestRunner --gui-automation
+        
+    - name: Upload GUI test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: gui-automation-results
+        path: gui_automation_results.json
+
+  # Results summary job
+  summarize-results:
+    if: always() && (needs.quick-validation.result != 'skipped' || needs.full-validation.result != 'skipped')
+    needs: [quick-validation, full-validation]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      
+    - name: Generate results summary
+      run: |
+        echo "# VeniceDAW Phase 2 Validation Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f "full-validation-results-*/phase2_validation_results.json" ]; then
+          echo "## Full Validation Results" >> $GITHUB_STEP_SUMMARY
+          RESULTS_FILE=$(find . -name "phase2_validation_results.json" -path "*/full-validation-results-*" | head -1)
+          
+          if [ -f "$RESULTS_FILE" ]; then
+            OVERALL_SCORE=$(grep -o '"overall_score":[^,]*' "$RESULTS_FILE" | cut -d: -f2)
+            IS_READY=$(grep -o '"is_ready":[^,]*' "$RESULTS_FILE" | cut -d: -f2)
+            READINESS_LEVEL=$(grep -o '"readiness_level":"[^"]*"' "$RESULTS_FILE" | cut -d'"' -f4)
+            
+            echo "- **Overall Score:** ${OVERALL_SCORE}%" >> $GITHUB_STEP_SUMMARY
+            echo "- **Phase 2 Ready:** ${IS_READY}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Readiness Level:** ${READINESS_LEVEL}" >> $GITHUB_STEP_SUMMARY
+          fi
+        elif [ -f "quick-validation-results/phase2_validation_results.json" ]; then
+          echo "## Quick Validation Results" >> $GITHUB_STEP_SUMMARY
+          # Similar processing for quick results
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "See individual job artifacts for detailed reports." >> $GITHUB_STEP_SUMMARY

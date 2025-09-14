@@ -184,7 +184,7 @@ clean:
 	rm -f src/gui/BenchmarkWindow.o
 	rm -f src/main_performance_station.o src/gui/PerformanceStationWindow.o
 	rm -f src/benchmark/PerformanceStation.o src/main_benchmark.o
-	rm -f src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o
+	rm -f src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o
 	rm -f Phase3FoundationTest
 	rm -rf reports/
 	@echo "🧹 Cleaned build files and test reports"
@@ -331,16 +331,39 @@ test-phase3-performance: Phase3FoundationTest
 	@echo "✅ Phase 3.1 performance validation completed"
 
 # Build Phase 3.1 foundation test
-Phase3FoundationTest: src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o
-	@echo "🧪 Building Phase 3.1 Foundation Test Suite..."
+Phase3FoundationTest: src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o
+	@echo "🧪 Building Phase 3.2 DSP Test Suite..."
 	@if [ "$(shell uname)" = "Haiku" ]; then \
 		echo "✅ Building on native Haiku with real BeAPI"; \
-		$(CXX) $(TEST_CXXFLAGS) src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o $(TEST_LIBS) -o Phase3FoundationTest; \
+		$(CXX) $(TEST_CXXFLAGS) -fPIC src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o $(TEST_LIBS) -o Phase3FoundationTest; \
 	else \
 		echo "⚠️ Building on non-Haiku system with mock APIs"; \
-		$(CXX) $(TEST_CXXFLAGS) src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o -o Phase3FoundationTest; \
+		$(CXX) $(TEST_CXXFLAGS) src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o -o Phase3FoundationTest; \
 	fi
-	@echo "✅ Phase 3.1 Foundation Test Suite built!"
+	@echo "✅ Phase 3.2 DSP Test Suite built!"
+
+# Build EQ-specific test
+ProfessionalEQTest: src/testing/ProfessionalEQTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o
+	@echo "🎛️ Building Professional EQ Test Suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		echo "✅ Building on native Haiku with real BeAPI"; \
+		$(CXX) $(TEST_CXXFLAGS) -fPIC src/testing/ProfessionalEQTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o $(TEST_LIBS) -o ProfessionalEQTest; \
+	else \
+		echo "⚠️ Building on non-Haiku system with mock APIs"; \
+		$(CXX) $(TEST_CXXFLAGS) src/testing/ProfessionalEQTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o -o ProfessionalEQTest; \
+	fi
+	@echo "✅ Professional EQ Test Suite built!"
+
+# Quick test of EQ with clean build
+test-eq: clean-phase3-objects ProfessionalEQTest
+	@echo "🎛️ Running Professional EQ DSP tests..."
+	./ProfessionalEQTest
+	@echo "✅ EQ tests completed!"
+
+# Clean only Phase 3 object files
+clean-phase3-objects:
+	@echo "🧹 Cleaning Phase 3 object files..."
+	rm -f src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o
 
 # Build complete optimization suite
 VeniceDAWOptimizer: src/optimization_runner.o src/testing/AudioOptimizer.o
@@ -552,9 +575,25 @@ src/testing/AdvancedAudioProcessorTest.o: src/testing/AdvancedAudioProcessorTest
 src/audio/AdvancedAudioProcessor.o: src/audio/AdvancedAudioProcessor.cpp
 	@echo "🎵 Compiling AdvancedAudioProcessor..."
 	@if [ "$(shell uname)" = "Haiku" ]; then \
-		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -fPIC -c $< -o $@; \
 	else \
 		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
 	fi
 
-.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer
+src/audio/DSPAlgorithms.o: src/audio/DSPAlgorithms.cpp
+	@echo "🔧 Compiling DSP algorithms..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -fPIC -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	fi
+
+src/testing/ProfessionalEQTest.o: src/testing/ProfessionalEQTest.cpp
+	@echo "🎛️ Compiling Professional EQ test suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -fPIC -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer Phase3FoundationTest ProfessionalEQTest test-eq clean-phase3-objects

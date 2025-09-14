@@ -21,6 +21,7 @@
 #include <atomic>
 #include <array>
 #include <string>
+#include "DSPAlgorithms.h"
 
 namespace VeniceDAW {
 
@@ -99,17 +100,31 @@ protected:
 // Professional EQ effect
 class ProfessionalEQ : public AudioEffect {
 public:
+    enum class FilterType {
+        LowPass,
+        HighPass,
+        LowShelf,
+        HighShelf,
+        Peak,
+        Notch,
+        BandPass,
+        AllPass
+    };
+
     struct EQBand {
         float frequency;    // Center frequency in Hz
         float gain;         // Gain in dB
         float Q;           // Quality factor
+        FilterType type;   // Filter type
         bool enabled;
     };
     
     ProfessionalEQ();
     
+    void Initialize(float sampleRate);
     void Process(AdvancedAudioBuffer& buffer) override;
     void ProcessRealtime(AdvancedAudioBuffer& buffer) override;
+    float ProcessSample(float input, size_t channel);
     
     void SetParameter(const std::string& param, float value) override;
     float GetParameter(const std::string& param) const override;
@@ -118,16 +133,32 @@ public:
     
     // EQ-specific methods
     void SetBand(size_t band, float freq, float gain, float Q);
+    void SetBandFrequency(size_t band, float freq);
+    void SetBandGain(size_t band, float gain);
+    void SetBandQ(size_t band, float Q);
+    void SetBandType(size_t band, FilterType type);
+    void SetBandEnabled(size_t band, bool enabled);
+    void SetBypassed(bool bypassed);
+    
     EQBand GetBand(size_t band) const;
     void EnableBand(size_t band, bool enabled);
+    float GetFrequencyResponse(float frequency) const;
 
 private:
     static const size_t MAX_BANDS = 8;
     std::array<EQBand, MAX_BANDS> fBands;
-    std::vector<std::vector<float>> fDelayLines;  // Per-channel delay lines
+    std::vector<std::array<DSP::BiquadFilter, MAX_BANDS>> fFilters;  // Per-channel filters
+    std::vector<DSP::DCBlocker> fDCBlockers;  // Per-channel DC blockers
     
+    float fSampleRate{44100.0f};
+    bool fInitialized{false};
+    std::atomic<bool> fNeedsUpdate{true};
+    
+    void InitializeChannels(size_t channelCount);
     void UpdateFilters();
+    void UpdateBandFilter(size_t band);
     float ProcessBandFilter(size_t band, size_t channel, float input);
+    DSP::BiquadFilter::FilterType ConvertFilterType(FilterType type) const;
 };
 
 // Dynamic range processor (compressor/limiter)

@@ -111,9 +111,15 @@ The VeniceDAW Performance Station (formerly UnifiedBenchmark) provides comprehen
 
 ## Testing Strategy
 
-**CRITICAL: NEVER TRY TO COMPILE VeniceDAW IN WSL/Linux ENVIRONMENTS**
+**CRITICAL: NEVER TRY TO COMPILE OR EXECUTE VeniceDAW IN WSL/Linux ENVIRONMENTS**
 
 VeniceDAW is a NATIVE Haiku OS application and MUST be compiled on real Haiku systems only.
+
+**NOTA FONDAMENTALE PER CLAUDE CODE:**
+- NON eseguire MAI comandi di build come `make`, `g++`, o eseguibili come `./ProfessionalEQTest` in ambiente WSL
+- NON tentare MAI di compilare o eseguire il codice VeniceDAW al di fuori di Haiku nativo
+- I test e l'esecuzione del codice devono avvenire ESCLUSIVAMENTE su sistemi Haiku reali
+- WSL può essere usato SOLO per editing di codice e analisi statica, mai per compilazione o esecuzione
 
 ### Cross-Platform Development (Syntax Only)
 For syntax validation on non-Haiku systems:

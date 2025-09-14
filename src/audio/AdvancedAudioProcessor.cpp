@@ -1,14 +1,16 @@
 /*
  * AdvancedAudioProcessor.cpp - Phase 3 Professional Audio Processing Engine
  * 
- * Advanced audio processing foundation implementation for VeniceDAW Phase 3.1.
- * Supports surround sound, professional effects, and spatial audio processing.
+ * Advanced audio processing foundation implementation for VeniceDAW Phase 3.2.
+ * Implements real DSP algorithms for professional audio effects.
  */
 
 #include "AdvancedAudioProcessor.h"
 #include <algorithm>
 #include <cstring>
 #include <cmath>
+
+static constexpr float M_PI_F = 3.14159265358979323846f;
 
 namespace VeniceDAW {
 
@@ -54,65 +56,290 @@ AudioEffect::AudioEffect(const std::string& name) : fName(name) {}
 
 // ProfessionalEQ implementation
 ProfessionalEQ::ProfessionalEQ() : AudioEffect("ProfessionalEQ") {
-    // Initialize EQ bands with default settings
-    for (size_t i = 0; i < MAX_BANDS; ++i) {
-        fBands[i] = {1000.0f * (i + 1), 0.0f, 1.0f, false};
-    }
+    // Initialize EQ bands with professional default settings
+    fBands[0] = {60.0f, 0.0f, 0.707f, FilterType::HighPass, false};      // HPF at 60Hz
+    fBands[1] = {150.0f, 0.0f, 1.0f, FilterType::LowShelf, false};       // Low shelf
+    fBands[2] = {500.0f, 0.0f, 2.0f, FilterType::Peak, false};           // Low-mid peak
+    fBands[3] = {1000.0f, 0.0f, 2.0f, FilterType::Peak, false};          // Mid peak
+    fBands[4] = {2000.0f, 0.0f, 2.0f, FilterType::Peak, false};          // High-mid peak
+    fBands[5] = {4000.0f, 0.0f, 2.0f, FilterType::Peak, false};          // Presence peak
+    fBands[6] = {8000.0f, 0.0f, 1.0f, FilterType::HighShelf, false};     // High shelf
+    fBands[7] = {16000.0f, 0.0f, 0.707f, FilterType::LowPass, false};    // Anti-aliasing LPF
+}
+
+void ProfessionalEQ::Initialize(float sampleRate) {
+    fSampleRate = sampleRate;
+    fInitialized = true;
+    fNeedsUpdate.store(true);
 }
 
 void ProfessionalEQ::Process(AdvancedAudioBuffer& buffer) {
-    // Stub implementation - basic passthrough
-    // Real implementation would apply EQ filtering
+    if (fBypassed.load() || !fInitialized) {
+        return;
+    }
+    
+    InitializeChannels(buffer.GetChannelCount());
+    
+    if (fNeedsUpdate.load()) {
+        UpdateFilters();
+        fNeedsUpdate.store(false);
+    }
+    
+    for (size_t channel = 0; channel < buffer.GetChannelCount(); ++channel) {
+        float* channelData = buffer.GetChannelData(channel);
+        
+        for (size_t frame = 0; frame < buffer.frameCount; ++frame) {
+            float sample = channelData[frame];
+            
+            // DC blocking
+            sample = fDCBlockers[channel].ProcessSample(sample);
+            
+            // Process through all enabled EQ bands
+            for (size_t band = 0; band < MAX_BANDS; ++band) {
+                if (fBands[band].enabled) {
+                    sample = fFilters[channel][band].ProcessSample(sample);
+                }
+            }
+            
+            channelData[frame] = sample;
+        }
+    }
 }
 
 void ProfessionalEQ::ProcessRealtime(AdvancedAudioBuffer& buffer) {
     Process(buffer);
 }
 
+float ProfessionalEQ::ProcessSample(float input, size_t channel) {
+    if (fBypassed.load() || !fInitialized || channel >= fFilters.size()) {
+        return input;
+    }
+    
+    if (fNeedsUpdate.load()) {
+        UpdateFilters();
+        fNeedsUpdate.store(false);
+    }
+    
+    float sample = input;
+    
+    // DC blocking
+    sample = fDCBlockers[channel].ProcessSample(sample);
+    
+    // Process through all enabled EQ bands
+    for (size_t band = 0; band < MAX_BANDS; ++band) {
+        if (fBands[band].enabled) {
+            sample = fFilters[channel][band].ProcessSample(sample);
+        }
+    }
+    
+    return sample;
+}
+
 void ProfessionalEQ::SetParameter(const std::string& param, float value) {
-    // Stub implementation for parameter setting
+    // Parse parameter name to extract band and parameter type
+    if (param.length() >= 7 && param.substr(0, 4) == "band") {
+        size_t band = static_cast<size_t>(param[4] - '0');
+        if (band < MAX_BANDS) {
+            std::string paramType = param.substr(6);
+            
+            if (paramType == "freq") {
+                SetBandFrequency(band, value);
+            } else if (paramType == "gain") {
+                SetBandGain(band, value);
+            } else if (paramType == "q") {
+                SetBandQ(band, value);
+            } else if (paramType == "enabled") {
+                SetBandEnabled(band, value > 0.5f);
+            }
+        }
+    } else if (param == "bypass") {
+        SetBypassed(value > 0.5f);
+    }
 }
 
 float ProfessionalEQ::GetParameter(const std::string& param) const {
-    // Stub implementation for parameter getting
+    if (param.length() >= 7 && param.substr(0, 4) == "band") {
+        size_t band = static_cast<size_t>(param[4] - '0');
+        if (band < MAX_BANDS) {
+            std::string paramType = param.substr(6);
+            
+            if (paramType == "freq") {
+                return fBands[band].frequency;
+            } else if (paramType == "gain") {
+                return fBands[band].gain;
+            } else if (paramType == "q") {
+                return fBands[band].Q;
+            } else if (paramType == "enabled") {
+                return fBands[band].enabled ? 1.0f : 0.0f;
+            }
+        }
+    } else if (param == "bypass") {
+        return fBypassed.load() ? 1.0f : 0.0f;
+    }
+    
     return 0.0f;
 }
 
 std::vector<std::string> ProfessionalEQ::GetParameterList() const {
-    return {"band0_freq", "band0_gain", "band0_q", "band1_freq", "band1_gain", "band1_q"};
+    std::vector<std::string> params;
+    
+    for (size_t i = 0; i < MAX_BANDS; ++i) {
+        std::string prefix = "band" + std::to_string(i) + "_";
+        params.push_back(prefix + "freq");
+        params.push_back(prefix + "gain");
+        params.push_back(prefix + "q");
+        params.push_back(prefix + "enabled");
+    }
+    
+    params.push_back("bypass");
+    
+    return params;
 }
 
 void ProfessionalEQ::Reset() {
-    // Clear delay lines and reset state
-    fDelayLines.clear();
+    for (auto& channelFilters : fFilters) {
+        for (auto& filter : channelFilters) {
+            filter.Reset();
+        }
+    }
+    
+    for (auto& dcBlocker : fDCBlockers) {
+        dcBlocker.Reset();
+    }
 }
 
 void ProfessionalEQ::SetBand(size_t band, float freq, float gain, float Q) {
     if (band < MAX_BANDS) {
-        fBands[band] = {freq, gain, Q, true};
+        fBands[band].frequency = std::max(20.0f, std::min(20000.0f, freq));
+        fBands[band].gain = std::max(-24.0f, std::min(24.0f, gain));
+        fBands[band].Q = std::max(0.1f, std::min(20.0f, Q));
+        fBands[band].enabled = true;
+        fNeedsUpdate.store(true);
     }
+}
+
+void ProfessionalEQ::SetBandFrequency(size_t band, float freq) {
+    if (band < MAX_BANDS) {
+        fBands[band].frequency = std::max(20.0f, std::min(20000.0f, freq));
+        fNeedsUpdate.store(true);
+    }
+}
+
+void ProfessionalEQ::SetBandGain(size_t band, float gain) {
+    if (band < MAX_BANDS) {
+        fBands[band].gain = std::max(-24.0f, std::min(24.0f, gain));
+        fNeedsUpdate.store(true);
+    }
+}
+
+void ProfessionalEQ::SetBandQ(size_t band, float Q) {
+    if (band < MAX_BANDS) {
+        fBands[band].Q = std::max(0.1f, std::min(20.0f, Q));
+        fNeedsUpdate.store(true);
+    }
+}
+
+void ProfessionalEQ::SetBandType(size_t band, FilterType type) {
+    if (band < MAX_BANDS) {
+        fBands[band].type = type;
+        fNeedsUpdate.store(true);
+    }
+}
+
+void ProfessionalEQ::SetBandEnabled(size_t band, bool enabled) {
+    if (band < MAX_BANDS) {
+        fBands[band].enabled = enabled;
+        fNeedsUpdate.store(true);
+    }
+}
+
+void ProfessionalEQ::SetBypassed(bool bypassed) {
+    fBypassed.store(bypassed);
 }
 
 ProfessionalEQ::EQBand ProfessionalEQ::GetBand(size_t band) const {
     if (band < MAX_BANDS) {
         return fBands[band];
     }
-    return {0.0f, 0.0f, 1.0f, false};
+    return {0.0f, 0.0f, 1.0f, FilterType::Peak, false};
 }
 
 void ProfessionalEQ::EnableBand(size_t band, bool enabled) {
-    if (band < MAX_BANDS) {
-        fBands[band].enabled = enabled;
+    SetBandEnabled(band, enabled);
+}
+
+float ProfessionalEQ::GetFrequencyResponse(float frequency) const {
+    if (!fInitialized || fFilters.empty()) {
+        return 1.0f;
+    }
+    
+    float magnitude = 1.0f;
+    
+    for (size_t band = 0; band < MAX_BANDS; ++band) {
+        if (fBands[band].enabled) {
+            magnitude *= fFilters[0][band].GetMagnitudeResponse(frequency, fSampleRate);
+        }
+    }
+    
+    return magnitude;
+}
+
+void ProfessionalEQ::InitializeChannels(size_t channelCount) {
+    if (fFilters.size() != channelCount) {
+        fFilters.resize(channelCount);
+        fDCBlockers.resize(channelCount);
+        
+        for (size_t channel = 0; channel < channelCount; ++channel) {
+            fDCBlockers[channel].SetCutoff(20.0f, fSampleRate);
+        }
+        
+        fNeedsUpdate.store(true);
     }
 }
 
 void ProfessionalEQ::UpdateFilters() {
-    // Stub - real implementation would recalculate filter coefficients
+    for (size_t band = 0; band < MAX_BANDS; ++band) {
+        UpdateBandFilter(band);
+    }
+}
+
+void ProfessionalEQ::UpdateBandFilter(size_t band) {
+    if (band >= MAX_BANDS) return;
+    
+    const EQBand& bandData = fBands[band];
+    DSP::BiquadFilter::FilterType dspType = ConvertFilterType(bandData.type);
+    
+    for (auto& channelFilters : fFilters) {
+        channelFilters[band].CalculateCoefficients(
+            dspType, 
+            fSampleRate, 
+            bandData.frequency, 
+            bandData.Q, 
+            bandData.gain
+        );
+    }
 }
 
 float ProfessionalEQ::ProcessBandFilter(size_t band, size_t channel, float input) {
-    // Stub - real implementation would apply biquad filtering
-    return input;
+    if (band >= MAX_BANDS || channel >= fFilters.size()) {
+        return input;
+    }
+    
+    return fFilters[channel][band].ProcessSample(input);
+}
+
+DSP::BiquadFilter::FilterType ProfessionalEQ::ConvertFilterType(FilterType type) const {
+    switch (type) {
+        case FilterType::LowPass:    return DSP::BiquadFilter::LowPass;
+        case FilterType::HighPass:   return DSP::BiquadFilter::HighPass;
+        case FilterType::LowShelf:   return DSP::BiquadFilter::LowShelf;
+        case FilterType::HighShelf:  return DSP::BiquadFilter::HighShelf;
+        case FilterType::Peak:       return DSP::BiquadFilter::Peak;
+        case FilterType::Notch:      return DSP::BiquadFilter::Notch;
+        case FilterType::BandPass:   return DSP::BiquadFilter::BandPass;
+        case FilterType::AllPass:    return DSP::BiquadFilter::AllPass;
+        default:                     return DSP::BiquadFilter::Peak;
+    }
 }
 
 // DynamicsProcessor implementation
