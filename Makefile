@@ -281,10 +281,52 @@ test-memory-stress: VeniceDAWTestRunner
 	@echo "✅ Memory stress test completed"
 
 # Performance scaling validation
-test-performance-scaling: VeniceDAWTestRunner
+test-performance-scaling: VeniceDAWPerformanceRunner
 	@echo "🎛️ Testing Performance Station 8-track scaling..."
-	./VeniceDAWTestRunner --performance-scaling --verbose
+	./VeniceDAWPerformanceRunner --duration 30 --json-output scaling_results.json
 	@echo "✅ Performance scaling test completed"
+
+# Build advanced performance test runner
+VeniceDAWPerformanceRunner: src/performance_test_runner.o src/testing/AdvancedPerformanceTests.o
+	@echo "🎛️ Building VeniceDAW Performance Station Test Runner..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		echo "✅ Building on native Haiku with real BeAPI"; \
+		$(CXX) $(TEST_CXXFLAGS) src/performance_test_runner.o src/testing/AdvancedPerformanceTests.o $(TEST_LIBS) -o VeniceDAWPerformanceRunner; \
+	else \
+		echo "⚠️  Building with mock headers - for syntax checking only"; \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) src/performance_test_runner.o src/testing/AdvancedPerformanceTests.o -o VeniceDAWPerformanceRunner; \
+	fi
+	@echo "✅ Performance Station Test Runner built!"
+
+# Quick performance test (10 seconds per track)
+test-performance-quick: VeniceDAWPerformanceRunner
+	@echo "⚡ Running quick Performance Station test..."
+	./VeniceDAWPerformanceRunner --quick --json-output quick_performance.json
+	@echo "✅ Quick performance test completed - see quick_performance.json"
+
+# Complete optimization suite (Phase 2 certification)
+optimize-complete: VeniceDAWOptimizer
+	@echo "🚀 Running complete VeniceDAW optimization suite..."
+	./VeniceDAWOptimizer --output complete_optimization.json
+	@echo "✅ Complete optimization suite completed - see complete_optimization.json"
+
+# Build complete optimization suite
+VeniceDAWOptimizer: src/optimization_runner.o src/testing/AudioOptimizer.o
+	@echo "🎯 Building VeniceDAW Complete Optimization Suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		echo "✅ Building on native Haiku with real BeAPI"; \
+		$(CXX) $(TEST_CXXFLAGS) src/optimization_runner.o src/testing/AudioOptimizer.o $(TEST_LIBS) -o VeniceDAWOptimizer; \
+	else \
+		echo "⚠️  Building with mock headers - for syntax checking only"; \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) src/optimization_runner.o src/testing/AudioOptimizer.o -o VeniceDAWOptimizer; \
+	fi
+	@echo "✅ Complete Optimization Suite built!"
+
+# Quick optimization (conservative settings)
+optimize-quick: VeniceDAWOptimizer
+	@echo "⚡ Running quick optimization (conservative)..."
+	./VeniceDAWOptimizer --optimization-level conservative --output quick_optimization.json
+	@echo "✅ Quick optimization completed"
 
 # Thread safety validation
 test-thread-safety: VeniceDAWTestRunner
@@ -374,7 +416,12 @@ help:
 	@echo "  make test-framework-quick     - ⚡ Quick validation (< 5 min)"
 	@echo "  make test-framework-full      - 🏁 Full validation (8+ hours)"
 	@echo "  make test-memory-stress       - 🧠 Memory stress test with malloc_debug"
-	@echo "  make test-performance-scaling - 🎛️ Performance Station 8-track scaling"
+	@echo "  make test-performance-scaling - 🎛️ Performance Station 8-track scaling (30s/track)"
+	@echo "  make test-performance-quick   - ⚡ Quick Performance Station test (10s/track)"
+	@echo ""
+	@echo "🚀 VeniceDAW Complete Optimization Suite (Phase 2 Certification):"
+	@echo "  make optimize-complete        - 🎯 Complete optimization suite (all 3 optimizations)"
+	@echo "  make optimize-quick           - ⚡ Quick optimization (conservative settings)"
 	@echo "  make test-thread-safety       - 🔒 BeAPI thread safety validation"
 	@echo "  make test-gui-automation      - 🖥️ GUI automation with hey tool"
 	@echo "  make test-evaluate-phase2     - 🎯 Quantitative Go/No-Go evaluation"
@@ -417,4 +464,40 @@ src/simple_test_runner.o: src/simple_test_runner.cpp
 		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
 	fi
 
-.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests
+# Performance test runner compilation
+src/performance_test_runner.o: src/performance_test_runner.cpp
+	@echo "🎛️ Compiling performance test runner..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+# Advanced performance tests compilation
+src/testing/AdvancedPerformanceTests.o: src/testing/AdvancedPerformanceTests.cpp
+	@echo "🎯 Compiling advanced performance tests..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+# Audio optimizer compilation
+src/testing/AudioOptimizer.o: src/testing/AudioOptimizer.cpp
+	@echo "🚀 Compiling audio optimization suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+# Optimization runner compilation
+src/optimization_runner.o: src/optimization_runner.cpp
+	@echo "🎯 Compiling optimization runner..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer

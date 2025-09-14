@@ -27,6 +27,7 @@ typedef int32_t int32;
 #define B_OK 0
 #define B_ERROR -1
 #define B_REAL_TIME_PRIORITY 10
+#define B_NORMAL_PRIORITY 7
 #define B_LOW_PRIORITY 5
 
 // Mock BeAPI classes - NON FUNZIONANTI
@@ -111,6 +112,7 @@ public:
 // Mock system functions
 inline thread_id find_thread(const char* name) { return std::hash<std::thread::id>{}(std::this_thread::get_id()); }
 inline status_t set_thread_priority(thread_id thread, int32_t priority) { return B_OK; }
+inline status_t suggest_thread_priority(int32_t priority) { return B_OK; }
 inline thread_id spawn_thread(int32_t (*func)(void*), const char* name, int32_t priority, void* data) { return 1; }
 inline status_t resume_thread(thread_id thread) { return B_OK; }
 inline status_t wait_for_thread(thread_id thread, status_t* result) { return B_OK; }
@@ -127,6 +129,7 @@ struct thread_info {
     thread_id thread;
     int32_t user_time;
     int32_t kernel_time;
+    int32_t priority;
 };
 
 struct system_info {
@@ -144,12 +147,23 @@ inline status_t get_team_info(int32_t team, team_info* info) {
     return B_OK; 
 }
 
+inline status_t get_thread_info(thread_id thread, thread_info* info) {
+    if (info) {
+        info->thread = thread;
+        info->user_time = 1000;
+        info->kernel_time = 500;
+        info->priority = B_NORMAL_PRIORITY;
+    }
+    return B_OK;
+}
+
 inline status_t get_next_thread_info(int32_t team, int32_t* cookie, thread_info* info) { 
     if (*cookie >= 5) return B_ERROR; // Simulate 5 threads
     if (info) {
         info->thread = *cookie;
         info->user_time = 1000;
         info->kernel_time = 500;
+        info->priority = B_NORMAL_PRIORITY;
     }
     (*cookie)++;
     return B_OK; 
