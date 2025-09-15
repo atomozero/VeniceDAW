@@ -68,7 +68,9 @@ SpatialMixer3DView::SpatialMixer3DView(BRect frame, SimpleHaikuEngine* engine,
     // Initialize room size to reasonable defaults
     fRoomSize = Vector3D(10.0f, 8.0f, 3.0f);
     
-    UpdateSpatialTracks();
+    // IMPORTANT: First populate base tracks from engine
+    UpdateTracks();  // This creates f3DTracks from engine tracks
+    UpdateSpatialTracks();  // Then create spatial tracks from f3DTracks
 }
 
 SpatialMixer3DView::~SpatialMixer3DView()
@@ -99,12 +101,12 @@ void SpatialMixer3DView::Draw(BRect updateRect)
     // Update spatial parameters for all tracks
     UpdateSpatialTracks();
     
-    // Call parent Draw() which sets up OpenGL context
-    Mixer3DView::Draw(updateRect);
+    // Do NOT call parent Draw() - we handle everything ourselves
+    // Mixer3DView::Draw(updateRect);  // REMOVED - was causing double rendering
     
-    // Render our enhanced spatial scene
+    // Render our complete spatial scene
     LockGL();
-    RenderSpatialScene();
+    RenderSpatialScene();  // This renders everything we need
     SwapBuffers();
     UnlockGL();
     
@@ -166,7 +168,8 @@ void SpatialMixer3DView::DrawSpatialTrack(const SpatialTrack3D& track)
     
     glPushMatrix();
     
-    // Position in 3D space
+    // Position in 3D space - debug print to verify
+    // printf("Drawing track at (%.2f, %.2f, %.2f)\n", track.x, track.y, track.z);
     glTranslatef(track.x, track.y, track.z);
     glScalef(track.scale, track.scale, track.scale);
     glRotatef(track.rotation, 0.0f, 0.0f, 1.0f);
@@ -414,11 +417,17 @@ void SpatialMixer3DView::UpdateSpatialTracks()
     
     // Resize spatial tracks vector if needed
     size_t trackCount = f3DTracks.size();  // From parent class
+    
     if (fSpatialTracks.size() != trackCount) {
         fSpatialTracks.clear();
         for (size_t i = 0; i < trackCount; i++) {
             fSpatialTracks.emplace_back(f3DTracks[i].track);
             fSpatialTracks[i].Track3D::operator=(f3DTracks[i]);  // Copy base Track3D data
+            
+            // IMPORTANT: Set spatialPosition to match the 3D coordinates
+            fSpatialTracks[i].spatialPosition.x = f3DTracks[i].x;
+            fSpatialTracks[i].spatialPosition.y = f3DTracks[i].z;  // OpenGL Y->Z mapping
+            fSpatialTracks[i].spatialPosition.z = f3DTracks[i].y;  // OpenGL Z->Y mapping
         }
     }
     
@@ -430,14 +439,13 @@ void SpatialMixer3DView::UpdateSpatialTracks()
 
 void SpatialMixer3DView::UpdateTrackSpatialParameters(SpatialTrack3D& track)
 {
-    if (!track.spatialEnabled || !fAudioProcessor) return;
+    // DON'T update from processor - it overwrites our unique positions!
+    // Just keep the positions we set in UpdateTracks()
     
-    // Get current spatial parameters from audio processor
-    const SurroundProcessor& processor = fAudioProcessor->GetSurroundProcessor();
-    track.UpdateSpatialParameters(processor);
-    
-    // Calculate spherical coordinates for this track
-    CalculateSphericalCoordinates(track);
+    // We can still calculate spherical coordinates if needed
+    if (track.spatialEnabled) {
+        CalculateSphericalCoordinates(track);
+    }
 }
 
 void SpatialMixer3DView::CalculateSphericalCoordinates(SpatialTrack3D& track)
@@ -584,9 +592,22 @@ void SpatialMixer3DView::KeyDown(const char* bytes, int32 numBytes)
 {
     if (numBytes > 0) {
         switch (bytes[0]) {
+            case '+':
+            case '=':
+                // Zoom in (handled by parent)
+                Mixer3DView::KeyDown(bytes, numBytes);
+                break;
+                
+            case '-':
+            case '_':
+                // Zoom out (handled by parent)
+                Mixer3DView::KeyDown(bytes, numBytes);
+                break;
+                
             case 'r':
             case 'R':
-                // Reset listener to origin
+                // Reset camera AND listener to origin
+                ResetCamera();  // Reset camera view
                 QueueParameterUpdate(SpatialParameterUpdate::ListenerPosition(Vector3D(0.0f, 0.0f, 0.0f)));
                 Invalidate();
                 break;

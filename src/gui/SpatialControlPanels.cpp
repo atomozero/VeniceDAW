@@ -606,7 +606,10 @@ void SpatialMixer3DWindow::CreateMenuBar()
     
     // View menu  
     BMenu* viewMenu = new BMenu("View");
-    viewMenu->AddItem(new BMenuItem("Reset Camera", nullptr, 'R'));
+    viewMenu->AddItem(new BMenuItem("Zoom In", new BMessage('zmin'), '+'));
+    viewMenu->AddItem(new BMenuItem("Zoom Out", new BMessage('zmot'), '-'));
+    viewMenu->AddSeparatorItem();
+    viewMenu->AddItem(new BMenuItem("Reset Camera", new BMessage('rset'), 'R'));
     viewMenu->AddItem(new BMenuItem("Toggle Fullscreen 3D", nullptr, 'F'));
     viewMenu->AddSeparatorItem();
     viewMenu->AddItem(new BMenuItem("Show Performance Metrics", nullptr));
@@ -638,9 +641,35 @@ bool SpatialMixer3DWindow::QuitRequested()
 
 void SpatialMixer3DWindow::MessageReceived(BMessage* message)
 {
+    // Define zoom message constants from Mixer3DWindow
+    const uint32 MSG_ZOOM_IN = 'zmin';
+    const uint32 MSG_ZOOM_OUT = 'zmot';
+    const uint32 MSG_RESET_CAMERA = 'rset';
+    
     switch (message->what) {
         case MSG_UPDATE_SPATIAL:
             UpdateSpatialVisualization();
+            break;
+            
+        case MSG_ZOOM_IN:
+            if (fSpatialView) {
+                fSpatialView->ZoomCamera(-2.0f);  // Negative = zoom in (closer)
+                printf("SpatialMixer3DWindow: Zoomed in\n");
+            }
+            break;
+            
+        case MSG_ZOOM_OUT:
+            if (fSpatialView) {
+                fSpatialView->ZoomCamera(3.0f);   // Positive = zoom out (farther)
+                printf("SpatialMixer3DWindow: Zoomed out\n");
+            }
+            break;
+            
+        case MSG_RESET_CAMERA:
+            if (fSpatialView) {
+                fSpatialView->ResetCamera();
+                printf("SpatialMixer3DWindow: Camera reset\n");
+            }
             break;
             
         case MSG_OPEN_AUDIO_FILE:
@@ -743,6 +772,9 @@ void SpatialMixer3DWindow::MessageReceived(BMessage* message)
 void SpatialMixer3DWindow::UpdateSpatialVisualization()
 {
     if (fSpatialView && fSpatialView->LockLooper()) {
+        // IMPORTANT: First update the base tracks from engine!
+        fSpatialView->UpdateTracks();  // This populates f3DTracks with actual tracks
+        // Then update spatial tracks from the base tracks
         fSpatialView->UpdateSpatialTracks();
         fSpatialView->Invalidate();
         fSpatialView->UnlockLooper();

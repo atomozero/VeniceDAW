@@ -18,7 +18,7 @@ namespace HaikuDAW {
 // =====================================
 
 Mixer3DView::Mixer3DView(BRect frame, SimpleHaikuEngine* engine)
-    : BGLView(frame, "3d_mixer", B_FOLLOW_ALL, B_WILL_DRAW | B_FRAME_EVENTS, BGL_RGB | BGL_DEPTH | BGL_DOUBLE)
+    : BGLView(frame, "3d_mixer", B_FOLLOW_ALL, B_WILL_DRAW | B_FRAME_EVENTS | B_NAVIGABLE, BGL_RGB | BGL_DEPTH | BGL_DOUBLE)
     , fEngine(engine)
     , fCameraAngleX(30.0f)
     , fCameraAngleY(45.0f)
@@ -75,6 +75,9 @@ Mixer3DView::~Mixer3DView()
 void Mixer3DView::AttachedToWindow()
 {
     BGLView::AttachedToWindow();
+    
+    // Make the view focusable to receive keyboard events
+    MakeFocus(true);
     
     LockGL();
     InitGL();
@@ -156,7 +159,6 @@ void Mixer3DView::UpdateTracks()
     
     // Get tracks from engine and create 3D representations
     int trackCount = fEngine->GetTrackCount();
-    printf("Mixer3DView: Creating 3D tracks for %d audio tracks\n", trackCount);
     
     // Position tracks in a circle using REAL tracks from engine
     for (int i = 0; i < trackCount; i++) {
@@ -172,10 +174,10 @@ void Mixer3DView::UpdateTracks()
         track3D.z = sin(angle) * 8.0f;
         track3D.y = 0.0f;
         
-        f3DTracks.push_back(track3D);
+        // Vary scale slightly for visual distinction
+        track3D.scale = 0.8f + (i * 0.1f);
         
-        printf("Mixer3DView: Track %d positioned at (%.2f, %.2f, %.2f)\n", 
-               i, track3D.x, track3D.y, track3D.z);
+        f3DTracks.push_back(track3D);
     }
 }
 
@@ -432,6 +434,36 @@ void Mixer3DView::ResetCamera()
     }
     
     printf("Mixer3DView: Camera reset to distance %.1f\n", fCameraDistance);
+}
+
+void Mixer3DView::KeyDown(const char* bytes, int32 numBytes)
+{
+    if (numBytes > 0) {
+        switch (bytes[0]) {
+            case '+':
+            case '=':
+                // Zoom in
+                ZoomCamera(-2.0f);
+                break;
+                
+            case '-':
+            case '_':
+                // Zoom out
+                ZoomCamera(3.0f);
+                break;
+                
+            case 'r':
+            case 'R':
+                // Reset camera
+                ResetCamera();
+                break;
+                
+            default:
+                // Pass unhandled keys to parent
+                BGLView::KeyDown(bytes, numBytes);
+                break;
+        }
+    }
 }
 
 // =====================================

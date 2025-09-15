@@ -65,6 +65,9 @@ public:
     virtual void MouseUp(BPoint where);
     virtual void MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage);
     
+    // Keyboard interaction
+    virtual void KeyDown(const char* bytes, int32 numBytes);
+    
     // 3D scene management
     void InitGL();
     void RenderScene();
