@@ -363,7 +363,7 @@ test-eq: clean-phase3-objects ProfessionalEQTest
 # Clean only Phase 3 object files
 clean-phase3-objects:
 	@echo "🧹 Cleaning Phase 3 object files..."
-	rm -f src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/testing/QuickEQTest.o src/testing/DynamicsProcessorTest.o
+	rm -f src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/testing/QuickEQTest.o src/testing/DynamicsProcessorTest.o src/testing/SpatialAudioTest.o
 
 # Quick simple EQ test
 QuickEQTest: src/testing/QuickEQTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o
@@ -390,6 +390,16 @@ DynamicsProcessorTest: src/testing/DynamicsProcessorTest.o src/audio/AdvancedAud
 	fi
 	@echo "✅ Dynamics Processor Test Suite built!"
 
+# Phase 3.4 Spatial Audio Test Suite  
+SpatialAudioTest: src/testing/SpatialAudioTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o
+	@echo "🎯 Building Spatial Audio Test Suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) src/testing/SpatialAudioTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o $(TEST_LIBS) -o SpatialAudioTest; \
+	else \
+		$(CXX) $(TEST_CXXFLAGS) src/testing/SpatialAudioTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o -o SpatialAudioTest; \
+	fi
+	@echo "✅ Spatial Audio Test Suite built!"
+
 test-dynamics: clean-phase3-objects DynamicsProcessorTest
 	@echo "🎚️ Running Dynamics Processor DSP tests..."
 	./DynamicsProcessorTest
@@ -400,8 +410,24 @@ test-dynamics-quick: clean-phase3-objects DynamicsProcessorTest
 	./DynamicsProcessorTest
 	@echo "✅ Quick dynamics test completed!"
 
-# Complete Phase 3 test suite
-test-phase3-complete: clean-phase3-objects ProfessionalEQTest DynamicsProcessorTest
+# Phase 3.4 Spatial Audio Testing
+test-spatial: clean-phase3-objects SpatialAudioTest
+	@echo "🎯 Running Spatial Audio Processing tests..."
+	./SpatialAudioTest
+	@echo "✅ Spatial audio tests completed!"
+
+test-spatial-quick: clean-phase3-objects SpatialAudioTest
+	@echo "⚡ Running Quick Spatial Audio Test..."
+	./SpatialAudioTest
+	@echo "✅ Quick spatial test completed!"
+
+test-binaural: clean-phase3-objects SpatialAudioTest
+	@echo "🎧 Running Binaural HRTF Processing tests..."
+	./SpatialAudioTest
+	@echo "✅ Binaural tests completed!"
+
+# Complete Phase 3 test suite (including spatial)
+test-phase3-complete: clean-phase3-objects ProfessionalEQTest DynamicsProcessorTest SpatialAudioTest
 	@echo "🎯 Running Complete Phase 3 Test Suite..."
 	@echo "📊 Testing Professional EQ..."
 	./ProfessionalEQTest
@@ -409,10 +435,13 @@ test-phase3-complete: clean-phase3-objects ProfessionalEQTest DynamicsProcessorT
 	@echo "🎚️ Testing Dynamics Processor..."
 	./DynamicsProcessorTest
 	@echo ""
-	@echo "🎉 Phase 3 Complete Test Suite finished!"
+	@echo "🎯 Testing Spatial Audio Processing..."
+	./SpatialAudioTest
+	@echo ""
+	@echo "🎉 Phase 3 Complete Test Suite finished! All professional audio processing components validated."
 
 # Quick Phase 3 validation
-test-phase3-quick: clean-phase3-objects QuickEQTest DynamicsProcessorTest  
+test-phase3-quick: clean-phase3-objects QuickEQTest DynamicsProcessorTest SpatialAudioTest
 	@echo "⚡ Running Quick Phase 3 Validation..."
 	@echo "🎛️ Quick EQ Test..."
 	./QuickEQTest
@@ -420,7 +449,10 @@ test-phase3-quick: clean-phase3-objects QuickEQTest DynamicsProcessorTest
 	@echo "🎚️ Quick Dynamics Test..."  
 	./DynamicsProcessorTest
 	@echo ""
-	@echo "✅ Phase 3 Quick Validation completed!"
+	@echo "🎯 Quick Spatial Audio Test..."
+	./SpatialAudioTest
+	@echo ""
+	@echo "✅ Phase 3 Quick Validation completed! All components functional."
 
 # Build complete optimization suite
 VeniceDAWOptimizer: src/optimization_runner.o src/testing/AudioOptimizer.o
@@ -669,4 +701,12 @@ src/testing/DynamicsProcessorTest.o: src/testing/DynamicsProcessorTest.cpp
 		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
 	fi
 
-.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer Phase3FoundationTest ProfessionalEQTest test-eq clean-phase3-objects QuickEQTest test-eq-quick DynamicsProcessorTest test-dynamics test-dynamics-quick
+src/testing/SpatialAudioTest.o: src/testing/SpatialAudioTest.cpp
+	@echo "🎯 Compiling Spatial Audio test suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -fPIC -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer Phase3FoundationTest ProfessionalEQTest test-eq clean-phase3-objects QuickEQTest test-eq-quick DynamicsProcessorTest test-dynamics test-dynamics-quick SpatialAudioTest test-spatial test-spatial-quick test-binaural test-phase3-complete

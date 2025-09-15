@@ -144,6 +144,96 @@ private:
     float m_R;
 };
 
+// Spatial Audio Processing Components
+class DelayLine {
+public:
+    DelayLine(size_t maxDelaySamples);
+    ~DelayLine();
+    
+    void SetDelay(float delaySamples);
+    float ProcessSample(float input);
+    void ProcessBlock(const float* input, float* output, size_t numSamples);
+    void Reset();
+    
+private:
+    float* m_buffer;
+    size_t m_bufferSize;
+    size_t m_writeIndex;
+    float m_delay;
+    
+    float InterpolatedRead(float delaySamples) const;
+};
+
+class ConvolutionEngine {
+public:
+    ConvolutionEngine(size_t maxImpulseLength);
+    ~ConvolutionEngine();
+    
+    void SetImpulseResponse(const float* impulse, size_t length);
+    float ProcessSample(float input);
+    void ProcessBlock(const float* input, float* output, size_t numSamples);
+    void Reset();
+    
+private:
+    float* m_impulseResponse;
+    float* m_delayLine;
+    size_t m_impulseLength;
+    size_t m_bufferSize;
+    size_t m_writeIndex;
+};
+
+struct Vector3D {
+    float x, y, z;
+    
+    Vector3D(float x = 0.0f, float y = 0.0f, float z = 0.0f) : x(x), y(y), z(z) {}
+    
+    float Distance(const Vector3D& other) const;
+    Vector3D Normalize() const;
+    float Magnitude() const;
+    Vector3D operator-(const Vector3D& other) const;
+    Vector3D operator+(const Vector3D& other) const;
+    Vector3D operator*(float scalar) const;
+    float Dot(const Vector3D& other) const;
+    Vector3D Cross(const Vector3D& other) const;
+};
+
+struct SphericalCoordinate {
+    float azimuth;    // Horizontal angle in radians (-π to π)
+    float elevation;  // Vertical angle in radians (-π/2 to π/2)
+    float distance;   // Distance in meters
+    
+    SphericalCoordinate(float az = 0.0f, float el = 0.0f, float dist = 1.0f)
+        : azimuth(az), elevation(el), distance(dist) {}
+    
+    static SphericalCoordinate FromCartesian(const Vector3D& cartesian);
+    Vector3D ToCartesian() const;
+};
+
+class SpatialAudioMath {
+public:
+    // Distance-based attenuation calculations
+    static float CalculateDistanceAttenuation(float distance, float referenceDistance = 1.0f);
+    
+    // Air absorption for high frequencies
+    static float CalculateAirAbsorption(float distance, float frequency, float humidity = 50.0f);
+    
+    // Doppler effect calculation
+    static float CalculateDopplerShift(const Vector3D& sourceVelocity, 
+                                      const Vector3D& listenerVelocity,
+                                      const Vector3D& sourceToListener,
+                                      float speedOfSound = 343.0f);
+    
+    // HRTF angle calculations
+    static SphericalCoordinate CalculateRelativePosition(const Vector3D& source,
+                                                        const Vector3D& listener,
+                                                        const Vector3D& listenerForward,
+                                                        const Vector3D& listenerUp);
+    
+    // Interaural calculations
+    static float CalculateInterauralTimeDifference(float azimuth, float headRadius = 0.0875f);
+    static float CalculateInterauralLevelDifference(float azimuth, float elevation);
+};
+
 inline float dBToLinear(float dB) {
     return std::pow(10.0f, dB / 20.0f);
 }

@@ -249,20 +249,34 @@ private:
     float ReadLookaheadSample(size_t channel);
 };
 
-// Surround sound processor for multi-channel audio
+// Professional spatial audio processor for multi-channel and 3D audio
 class SurroundProcessor {
 public:
-    SurroundProcessor(ChannelConfiguration config);
-    ~SurroundProcessor() = default;
+    enum class SpatialMode {
+        BASIC_SURROUND,     // Basic surround upmixing/downmixing
+        SPATIAL_3D,         // Full 3D spatial positioning
+        BINAURAL_HRTF,      // HRTF-based binaural processing
+        AMBISONICS          // Ambisonic encoding/decoding
+    };
     
-    // Channel management
+    SurroundProcessor(ChannelConfiguration config);
+    ~SurroundProcessor();
+    
+    // Initialization and configuration
+    void Initialize(float sampleRate);
     void SetChannelConfiguration(ChannelConfiguration config);
     ChannelConfiguration GetChannelConfiguration() const { return fChannelConfig; }
+    void SetSpatialMode(SpatialMode mode);
+    SpatialMode GetSpatialMode() const { return fSpatialMode; }
     
-    // Surround processing
+    // Core surround processing
     void ProcessStereoToSurround(const AdvancedAudioBuffer& stereo, AdvancedAudioBuffer& surround);
     void ProcessSurroundToStereo(const AdvancedAudioBuffer& surround, AdvancedAudioBuffer& stereo);
     void ProcessSurroundDownmix(const AdvancedAudioBuffer& input, AdvancedAudioBuffer& output);
+    
+    // 3D Spatial processing
+    void ProcessSpatial3D(AdvancedAudioBuffer& buffer);
+    void ProcessBinauralHRTF(const AdvancedAudioBuffer& mono, AdvancedAudioBuffer& stereo);
     
     // Channel routing and mixing
     void SetChannelGain(size_t channel, float gain);
@@ -270,22 +284,109 @@ public:
     void MuteChannel(size_t channel, bool muted);
     bool IsChannelMuted(size_t channel) const;
     
-    // Distance and spatialization
-    void SetSpatialPosition(float x, float y, float z);
-    void SetListenerPosition(float x, float y, float z);
+    // 3D Spatial positioning
+    void SetSourcePosition(const DSP::Vector3D& position);
+    void SetListenerPosition(const DSP::Vector3D& position);
+    void SetListenerOrientation(const DSP::Vector3D& forward, const DSP::Vector3D& up);
+    void SetSourceVelocity(const DSP::Vector3D& velocity);
+    void SetListenerVelocity(const DSP::Vector3D& velocity);
+    
+    // Distance and environmental modeling
+    void SetRoomSize(float width, float height, float depth);
+    void SetReverberation(float amount, float decay);
+    void SetAirAbsorption(bool enabled, float humidity = 50.0f);
+    void SetDopplerEffect(bool enabled, float speedOfSound = 343.0f);
+    
+    // HRTF processing
+    void SetHRTFDatabase(const float* leftHRTF, const float* rightHRTF, size_t impulseLength, 
+                        float azimuth, float elevation);
+    void EnableCrossfeed(bool enabled, float amount = 0.3f);
+    
+    // Spatial parameters getters
+    DSP::Vector3D GetSourcePosition() const { return fSourcePosition; }
+    DSP::Vector3D GetListenerPosition() const { return fListenerPosition; }
+    DSP::SphericalCoordinate GetRelativePosition() const;
+    float GetDistance() const;
+    float GetAzimuth() const;
+    float GetElevation() const;
+    
+    // Performance monitoring
+    float GetProcessingLoad() const { return fProcessingLoad; }
+    size_t GetLatencySamples() const { return fLatencySamples; }
     
 private:
     ChannelConfiguration fChannelConfig;
+    SpatialMode fSpatialMode{SpatialMode::BASIC_SURROUND};
+    float fSampleRate{44100.0f};
+    bool fInitialized{false};
+    
     std::vector<float> fChannelGains;
     std::vector<bool> fChannelMuted;
     
-    // Spatial audio parameters
-    float fSourceX{0.0f}, fSourceY{0.0f}, fSourceZ{0.0f};
-    float fListenerX{0.0f}, fListenerY{0.0f}, fListenerZ{0.0f};
+    // 3D Spatial audio parameters
+    DSP::Vector3D fSourcePosition{0.0f, 0.0f, 0.0f};
+    DSP::Vector3D fListenerPosition{0.0f, 0.0f, 0.0f};
+    DSP::Vector3D fListenerForward{0.0f, 1.0f, 0.0f};  // Forward direction
+    DSP::Vector3D fListenerUp{0.0f, 0.0f, 1.0f};       // Up direction
+    DSP::Vector3D fSourceVelocity{0.0f, 0.0f, 0.0f};
+    DSP::Vector3D fListenerVelocity{0.0f, 0.0f, 0.0f};
     
+    // Environmental parameters
+    DSP::Vector3D fRoomSize{10.0f, 8.0f, 3.0f};  // Default room dimensions in meters
+    float fReverbAmount{0.2f};
+    float fReverbDecay{1.5f};
+    bool fAirAbsorptionEnabled{true};
+    float fHumidity{50.0f};
+    bool fDopplerEnabled{true};
+    float fSpeedOfSound{343.0f};
+    
+    // Delay lines for spatial processing
+    std::vector<std::unique_ptr<DSP::DelayLine>> fSpatialDelays;
+    
+    // HRTF convolution engines
+    std::unique_ptr<DSP::ConvolutionEngine> fLeftHRTF;
+    std::unique_ptr<DSP::ConvolutionEngine> fRightHRTF;
+    bool fHRTFEnabled{false};
+    
+    // Crossfeed processing
+    bool fCrossfeedEnabled{false};
+    float fCrossfeedAmount{0.3f};
+    std::vector<DSP::BiquadFilter> fCrossfeedFilters;
+    
+    // Performance monitoring
+    mutable std::atomic<float> fProcessingLoad{0.0f};
+    size_t fLatencySamples{0};
+    
+    // Internal processing methods
     void InitializeChannelMixing();
+    void InitializeSpatialProcessing();
+    void InitializeHRTFProcessing();
+    void UpdateSpatialParameters();
+    
+    // Spatial calculations
     float CalculateChannelDelay(size_t channel);
     float CalculateChannelGain(size_t channel);
+    float CalculateDistanceAttenuation();
+    float CalculateAirAbsorptionFactor(float frequency);
+    float CalculateDopplerFactor();
+    
+    // Channel-specific spatial processing
+    void ProcessChannelSpatial(size_t channel, float* buffer, size_t numSamples);
+    void ApplySpatialDelay(size_t channel, float* buffer, size_t numSamples);
+    void ApplySpatialGain(size_t channel, float* buffer, size_t numSamples);
+    
+    // HRTF processing methods
+    void ProcessHRTFConvolution(const float* monoInput, float* leftOutput, float* rightOutput, size_t numSamples);
+    void UpdateHRTFParameters(float azimuth, float elevation);
+    
+    // Advanced surround processing  
+    void ProcessIntelligentUpmix(const AdvancedAudioBuffer& stereo, AdvancedAudioBuffer& surround);
+    void ProcessBassManagement(AdvancedAudioBuffer& buffer);
+    
+public:
+    void ProcessCrossfeed(AdvancedAudioBuffer& stereo);
+    
+private:
 };
 
 // Advanced audio processor coordinator
