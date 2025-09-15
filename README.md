@@ -10,9 +10,9 @@ A digital audio workstation designed specifically for Haiku OS, featuring native
 
 VeniceDAW brings professional audio production capabilities to Haiku OS, built around three core principles:
 
-- **🔗 Strudel Graph per track**: Modular FX chains ready to evolve into full node-based processing
-- **🎛️ Cortex Integration**: Deep system-level routing through Haiku's BMediaKit architecture  
-- **🌐 3D Audio as core feature**: Native spatial mixing with binaural processing and HRTF support
+- **🔗 Modular Architecture**: Clean, extensible audio processing chains
+- **🎛️ Native Integration**: Deep integration with Haiku's BMediaKit audio system
+- **🌐 3D Audio Processing**: Spatial mixing with OpenGL visualization
 
 ## Overview
 
@@ -32,14 +32,9 @@ The **Performance Station** is the first component ready for use - a professiona
 
 ## Installation
 
-### From HaikuDepot (Recommended)
-VeniceDAW will be available through HaikuDepot for easy installation:
+### Quick Start
 
-1. Open HaikuDepot
-2. Search for "VeniceDAW"  
-3. Click "Install"
-
-*Note: Package submission to HaikuDepot is in progress*
+The easiest way to get started is building the demo application:
 
 ### Manual Build
 
@@ -49,8 +44,33 @@ VeniceDAW will be available through HaikuDepot for easy installation:
 - BMediaKit headers (included with Haiku)
 - GLU development library
 
+#### Development Environment Setup
+
+**QEMU/Virtual Machine Users:**
+If developing on Windows/Linux with QEMU, use the optimized launch scripts:
+- Windows: `start-haiku-windows.ps1` or `start-haiku.bat`
+- Linux/WSL: `start-haiku.sh`
+
+Copy your source code to Haiku:
+```bash
+# From Windows/Linux host
+scp -P 2222 -r ./HaikuMix user@localhost:/boot/home/
+```
+
 #### Installing Dependencies
 ```bash
+# Update package system
+pkgman update
+
+# Install development tools
+pkgman install gcc make cmake
+
+# Install Haiku development headers
+pkgman install haiku_devel
+
+# Install media development packages
+pkgman install media_kit_devel
+
 # Install GLU development package (required for 3D visualization)
 pkgman install glu_devel
 ```
@@ -90,16 +110,16 @@ VeniceDAW is built on several core principles:
   - **Performance Station**: Professional benchmark and monitoring
 - **3D Spatial Engine**: Revolutionary spatial audio interface with OpenGL and binaural processing
 
-### MVP Architecture Flow
+### Audio Processing Flow
 
 ```
-Input Device → Cortex → VeniceDAW Tracks → 3D Spatial Engine → Master → Cortex → Output
+Audio Input → VeniceDAW Mixer → 3D Spatial Processing → Audio Output
 ```
 
-Each track features:
-- Linear Strudel FX chain (gain, EQ, pan)
-- 3D spatial parameters (position, distance)  
-- Integration with Cortex as BMediaNode
+Each track provides:
+- Basic audio effects (gain, EQ, pan)
+- 3D spatial positioning
+- Real-time visualization
 
 ## Development
 
@@ -117,21 +137,23 @@ DSP modules/            # Root-level DSP components (fft.c, biquad.cpp)
 
 ### Build Targets
 
-VeniceDAW provides multiple entry points for different use cases:
+Main applications you can build:
 
 ```bash
-make gui            # Full VeniceDAW with 3D mixer (main_gui.cpp)
-make performance    # Performance Station benchmark (main_performance_station.cpp)  
-make native         # Native Haiku audio test (main_simple_native.cpp)
+make demo           # Simple audio demo (default)
+make native         # Native Haiku audio engine test
+make gui            # Full mixer with 3D visualization
+make performance    # Performance benchmark suite
 make clean          # Clean build files
 make help           # Show all targets
 ```
 
-#### Entry Points Explained
+#### Getting Started
 
-- **`main_gui.cpp`**: Full DAW with multiple mixer windows and 3D spatial visualization
-- **`main_performance_station.cpp`**: Professional performance analysis tool
-- **`main_simple_native.cpp`**: Native Haiku audio engine test application
+1. **Start with the demo**: `make demo && ./VeniceDAWDemo`
+2. **Test native audio**: `make native && ./VeniceDAWNative`
+3. **Try the full GUI**: `make gui && ./VeniceDAWGUI`
+4. **Run benchmarks**: `make performance`
 
 ## Roadmap
 
@@ -175,10 +197,32 @@ Contributions are welcome! VeniceDAW aims to demonstrate the potential of native
 ### Areas Needing Help
 - Native Haiku BMediaKit optimizations
 - Cortex integration implementation
-- 3D spatial audio algorithms  
+- 3D spatial audio algorithms
 - UI/UX improvements for the 3D mixer
 - Documentation and examples
 - Testing on various Haiku hardware configurations
+
+## Development Tips
+
+### QEMU Performance Optimization
+For best performance when developing in QEMU:
+- Allocate sufficient RAM (8GB+ recommended)
+- Use multiple CPU cores (`-smp 4` or more)
+- Enable hardware acceleration (KVM on Linux, WHPX on Windows)
+- Use virtio drivers for better I/O performance
+
+### Debugging Audio Issues
+If audio doesn't work in QEMU:
+```bash
+# Check audio system status
+/system/servers/media_addon_server --debug
+
+# Verify audio devices
+listdev | grep audio
+
+# Test basic audio
+/bin/SoundPlayer /system/data/sounds/Startup.wav
+```
 
 ## Technical Highlights
 
