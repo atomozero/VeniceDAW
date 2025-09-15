@@ -40,6 +40,24 @@ public:
     
     // Phase access (for audio engine)
     float& GetPhase() { return fPhase; }
+    
+    // Test signal type
+    enum SignalType {
+        SIGNAL_SINE,
+        SIGNAL_SQUARE,
+        SIGNAL_SAW,
+        SIGNAL_WHITE_NOISE,
+        SIGNAL_PINK_NOISE
+    };
+    
+    void SetSignalType(SignalType type) { fSignalType = type; }
+    SignalType GetSignalType() const { return fSignalType; }
+    
+    void SetFrequency(float freq) { fFrequency = freq; }
+    float GetFrequency() const { return fFrequency; }
+    
+    // For pink noise generator
+    float& GetPinkNoiseState(int index) { return fPinkNoiseState[index]; }
 
 private:
     int fId;
@@ -51,6 +69,9 @@ private:
     bool fSolo;
     float fPeakLevel, fRMSLevel;  // Real-time audio levels
     float fPhase;  // Individual phase for each track
+    SignalType fSignalType;  // Type of test signal
+    float fFrequency;  // Frequency for test signal
+    float fPinkNoiseState[7];  // State for pink noise generator
 };
 
 class SimpleHaikuEngine {
@@ -86,10 +107,14 @@ public:
     float GetMasterPeakRight() const { return fMasterPeakRight; }
     float GetMasterRMSLeft() const { return fMasterRMSLeft; }
     float GetMasterRMSRight() const { return fMasterRMSRight; }
+    
+    // Demo scene creation
+    void CreateDemoScene();
 
 private:
     static void AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format);
     void ProcessAudio(float* buffer, size_t frameCount);
+    float GenerateTestSignal(SimpleTrack* track, float sampleRate);
     
     BSoundPlayer* fSoundPlayer;
     std::vector<SimpleTrack*> fTracks;

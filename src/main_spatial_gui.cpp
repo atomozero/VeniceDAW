@@ -50,6 +50,11 @@ public:
         }
         printf("✅ Audio engine initialized successfully!\n");
         
+        // Create demo scene with test signals
+        printf("Creating demo scene with test signals...\n");
+        fEngine->CreateDemoScene();
+        printf("✅ Demo scene created with %d test tracks!\n", fEngine->GetTrackCount());
+        
         // Initialize advanced audio processor with spatial capabilities
         fAudioProcessor = new VeniceDAW::AdvancedAudioProcessor();
         fAudioProcessor->Initialize(44100.0f, 1024, VeniceDAW::ChannelConfiguration::STEREO);
@@ -74,7 +79,7 @@ public:
         fMainWindow = new HaikuDAW::SpatialMixer3DWindow(fEngine, fAudioProcessor);
         fMainWindow->Show();
         
-        printf("✅ Phase 4 spatial audio integration initialized successfully!\n");
+        printf("✅ Phase 5 spatial audio integration initialized successfully!\n");
         printf("\nFeatures available:\n");
         printf("• Interactive 3D spatial positioning with mouse control ✅\n");
         printf("• Real-time spatial parameter visualization ✅\n");  
@@ -82,6 +87,7 @@ public:
         printf("• Environmental modeling (room size, reverb, air absorption) ✅\n");
         printf("• Thread-safe audio parameter updates ✅\n");
         printf("• Integration with existing VeniceDAW 3D mixer interface ✅\n");
+        printf("• WORKING AUDIO: 5 test signals playing in 3D space! ✅\n");
         
         ShowWelcomeDialog();
     }
@@ -135,26 +141,31 @@ private:
     
     void ShowWelcomeDialog()
     {
-        BAlert* welcome = new BAlert("Welcome to Phase 4",
-            "Welcome to VeniceDAW Phase 4 Professional Spatial Audio!\n\n"
+        BAlert* welcome = new BAlert("Welcome to Phase 5!",
+            "🎵 VeniceDAW Phase 5: WORKING SPATIAL AUDIO! 🎵\n\n"
             
-            "This integration combines the production-ready Phase 3 spatial audio engine "
-            "with VeniceDAW's revolutionary 3D mixer interface.\n\n"
+            "You should now HEAR audio playing from the spatial mixer!\n"
+            "The system has automatically created 5 test tracks:\n\n"
             
-            "Key Features:\n"
-            "• Drag audio sources in 3D space for real-time positioning\n"
-            "• Professional HRTF binaural processing for headphones\n" 
-            "• Environmental modeling with room acoustics\n"
-            "• Thread-safe parameter updates maintaining low latency\n"
-            "• Full surround sound support (5.1, 7.1, Ambisonics)\n\n"
+            "🎹 Audio Test Signals:\n"
+            "• Sine Wave 220Hz (A3) - Left position\n"
+            "• Sine Wave 440Hz (A4) - Center position\n" 
+            "• Square Wave 880Hz (A5) - Right position\n"
+            "• White Noise - Left rear, elevated\n"
+            "• Pink Noise - Right rear, elevated\n\n"
             
-            "Use the tabs on the right to configure spatial processing modes, "
-            "HRTF settings, room parameters, and visualization options.\n\n"
+            "🎛️ Interactive Features:\n"
+            "• Drag the 3D spheres to move sounds in space\n"
+            "• Use track controls to adjust volume, pan, mute, solo\n"
+            "• Configure HRTF and room acoustics in the panels\n"
+            "• Experience true spatial separation with headphones\n\n"
             
-            "Phase 3 Audio Engine Status: 72/72 tests passing ✅\n"
-            "Phase 4 GUI Integration: Complete ✅",
+            "This demonstrates VeniceDAW as the FIRST native Haiku "
+            "spatial audio workstation with working 3D positioning!\n\n"
             
-            "Start Mixing!", nullptr, nullptr,
+            "Phase 5.1 Quick Win: COMPLETE! ✅",
+            
+            "Start Spatial Mixing!", nullptr, nullptr,
             B_WIDTH_AS_USUAL, B_INFO_ALERT);
             
         welcome->Go();

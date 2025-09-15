@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>  // For rand()
 
 namespace HaikuDAW {
 
@@ -14,9 +15,13 @@ namespace HaikuDAW {
 
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
-      fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f)
+      fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(SIGNAL_SINE), fFrequency(440.0f)
 {
     printf("SimpleTrack: Created '%s'\n", name);
+    // Initialize pink noise state
+    for (int i = 0; i < 7; i++) {
+        fPinkNoiseState[i] = 0.0f;
+    }
 }
 
 // === SimpleHaikuEngine ===
@@ -204,15 +209,14 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
     float masterRMSLeft = 0.0f;
     float masterRMSRight = 0.0f;
     
-    // Debug output disabled in audio callback for real-time performance
-    #ifdef DEBUG_AUDIO_VERBOSE
-    static int debugCounter = 0;
-    if (debugCounter++ % 44100 == 0) {  // Only once per second if debugging
-        printf("ProcessAudio: %d tracks active\n", (int)fTracks.size());
+    // Get sample rate from BSoundPlayer format
+    float sampleRate = 44100.0f;  // Default, will be updated if possible
+    if (fSoundPlayer) {
+        media_raw_audio_format format = fSoundPlayer->Format();
+        sampleRate = format.frame_rate;
     }
-    #endif
     
-    // Generate simple test tones for each track
+    // Generate test signals for each track
     for (size_t trackIndex = 0; trackIndex < fTracks.size(); trackIndex++) {
         SimpleTrack* track = fTracks[trackIndex];
         
@@ -229,11 +233,7 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
         
         if (!shouldPlay) continue;
         
-        // Different frequency for each track
-        float frequency = 220.0f + (trackIndex * 110.0f);
-        float phaseIncrement = (2.0f * M_PI * frequency) / 44100.0f;
-        
-        float volume = track->GetVolume() * fMasterVolume * 0.1f; // Low volume
+        float volume = track->GetVolume() * fMasterVolume * 0.1f; // Low volume for safety
         
         // Use track pan setting (-1 = left, 0 = center, +1 = right)
         float pan = track->GetPan();
@@ -246,7 +246,8 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
         float rmsSum = 0.0f;
         
         for (size_t i = 0; i < frameCount; i++) {
-            float sample = sinf(track->GetPhase()) * 0.5f;
+            // Generate the test signal based on track type
+            float sample = GenerateTestSignal(track, sampleRate);
             
             buffer[i * 2] += sample * leftGain;      // Left
             buffer[i * 2 + 1] += sample * rightGain; // Right
@@ -256,11 +257,6 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
             float displayLevel = fabsf(sample) * track->GetVolume();
             peakLevel = fmaxf(peakLevel, displayLevel);
             rmsSum += displayLevel * displayLevel;
-            
-            track->GetPhase() += phaseIncrement;
-            if (track->GetPhase() > 2.0f * M_PI) {
-                track->GetPhase() -= 2.0f * M_PI;
-            }
         }
         
         // Update track levels (smooth decay)
@@ -338,6 +334,141 @@ void SimpleHaikuEngine::SetTrackSolo(int trackIndex, bool solo)
         printf("SimpleHaikuEngine: Track %d ('%s') solo OFF. Current solo: %d\n", 
                trackIndex, targetTrack->GetName(), fSoloTrack);
     }
+}
+
+float SimpleHaikuEngine::GenerateTestSignal(SimpleTrack* track, float sampleRate)
+{
+    float sample = 0.0f;
+    float frequency = track->GetFrequency();
+    
+    switch (track->GetSignalType()) {
+        case SimpleTrack::SIGNAL_SINE:
+        {
+            // Sine wave generator
+            float phaseIncrement = (2.0f * M_PI * frequency) / sampleRate;
+            sample = sinf(track->GetPhase()) * 0.5f;
+            track->GetPhase() += phaseIncrement;
+            if (track->GetPhase() > 2.0f * M_PI) {
+                track->GetPhase() -= 2.0f * M_PI;
+            }
+            break;
+        }
+        
+        case SimpleTrack::SIGNAL_SQUARE:
+        {
+            // Square wave generator
+            float phaseIncrement = (2.0f * M_PI * frequency) / sampleRate;
+            sample = (sinf(track->GetPhase()) > 0.0f) ? 0.5f : -0.5f;
+            track->GetPhase() += phaseIncrement;
+            if (track->GetPhase() > 2.0f * M_PI) {
+                track->GetPhase() -= 2.0f * M_PI;
+            }
+            break;
+        }
+        
+        case SimpleTrack::SIGNAL_SAW:
+        {
+            // Sawtooth wave generator
+            float phaseIncrement = frequency / sampleRate;
+            track->GetPhase() += phaseIncrement;
+            if (track->GetPhase() > 1.0f) {
+                track->GetPhase() -= 1.0f;
+            }
+            sample = (track->GetPhase() * 2.0f - 1.0f) * 0.5f;
+            break;
+        }
+        
+        case SimpleTrack::SIGNAL_WHITE_NOISE:
+        {
+            // White noise generator
+            sample = ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f) * 0.3f;
+            break;
+        }
+        
+        case SimpleTrack::SIGNAL_PINK_NOISE:
+        {
+            // Pink noise generator (1/f spectrum)
+            // Using the Voss-McCartney algorithm
+            static float pink_max = 1.0f;
+            float white = ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f);
+            
+            track->GetPinkNoiseState(0) = 0.99886f * track->GetPinkNoiseState(0) + white * 0.0555179f;
+            track->GetPinkNoiseState(1) = 0.99332f * track->GetPinkNoiseState(1) + white * 0.0750759f;
+            track->GetPinkNoiseState(2) = 0.96900f * track->GetPinkNoiseState(2) + white * 0.1538520f;
+            track->GetPinkNoiseState(3) = 0.86650f * track->GetPinkNoiseState(3) + white * 0.3104856f;
+            track->GetPinkNoiseState(4) = 0.55000f * track->GetPinkNoiseState(4) + white * 0.5329522f;
+            track->GetPinkNoiseState(5) = -0.7616f * track->GetPinkNoiseState(5) - white * 0.0168980f;
+            
+            float pink = track->GetPinkNoiseState(0) + track->GetPinkNoiseState(1) + 
+                        track->GetPinkNoiseState(2) + track->GetPinkNoiseState(3) + 
+                        track->GetPinkNoiseState(4) + track->GetPinkNoiseState(5) + 
+                        track->GetPinkNoiseState(6) + white * 0.5362f;
+            
+            track->GetPinkNoiseState(6) = white * 0.115926f;
+            
+            // Normalize
+            sample = (pink / pink_max) * 0.3f;
+            
+            // Track maximum for normalization
+            float absval = fabsf(pink);
+            if (absval > pink_max) {
+                pink_max = absval;
+            }
+            break;
+        }
+    }
+    
+    return sample;
+}
+
+void SimpleHaikuEngine::CreateDemoScene()
+{
+    printf("SimpleHaikuEngine: Creating demo scene with test signals...\n");
+    
+    // Clear existing tracks
+    for (auto track : fTracks) {
+        delete track;
+    }
+    fTracks.clear();
+    fSoloTrack = -1;
+    
+    // Create 5 demo tracks with different signal types
+    struct DemoTrackConfig {
+        const char* name;
+        SimpleTrack::SignalType type;
+        float frequency;
+        float x, y, z;  // 3D position
+        float pan;
+        float volume;
+    };
+    
+    DemoTrackConfig configs[] = {
+        { "Sine 220Hz (A3)",     SimpleTrack::SIGNAL_SINE,        220.0f,  -2.0f,  0.0f,  2.0f, -0.7f, 0.8f },
+        { "Sine 440Hz (A4)",     SimpleTrack::SIGNAL_SINE,        440.0f,   0.0f,  0.0f,  3.0f,  0.0f, 0.7f },
+        { "Square 880Hz (A5)",   SimpleTrack::SIGNAL_SQUARE,      880.0f,   2.0f,  0.0f,  2.0f,  0.7f, 0.5f },
+        { "White Noise",         SimpleTrack::SIGNAL_WHITE_NOISE,   0.0f,  -1.0f,  2.0f,  1.0f, -0.3f, 0.4f },
+        { "Pink Noise",          SimpleTrack::SIGNAL_PINK_NOISE,    0.0f,   1.0f, -2.0f,  1.0f,  0.3f, 0.4f }
+    };
+    
+    for (int i = 0; i < 5; i++) {
+        SimpleTrack* track = new SimpleTrack(i + 1, configs[i].name);
+        track->SetSignalType(configs[i].type);
+        track->SetFrequency(configs[i].frequency);
+        track->SetPosition(configs[i].x, configs[i].y, configs[i].z);
+        track->SetPan(configs[i].pan);
+        track->SetVolume(configs[i].volume);
+        
+        AddTrack(track);
+        
+        printf("  Created: %s at position (%.1f, %.1f, %.1f)\n", 
+               configs[i].name, configs[i].x, configs[i].y, configs[i].z);
+    }
+    
+    printf("SimpleHaikuEngine: Demo scene created with %d test tracks\n", (int)fTracks.size());
+    printf("  -> Sine waves demonstrate tonal content\n");
+    printf("  -> Square wave shows harmonic richness\n");
+    printf("  -> White/Pink noise for testing spatial separation\n");
+    printf("  -> All tracks positioned in 3D space for spatial demo\n");
 }
 
 } // namespace HaikuDAW
