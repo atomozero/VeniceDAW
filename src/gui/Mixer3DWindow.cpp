@@ -22,7 +22,7 @@ Mixer3DView::Mixer3DView(BRect frame, SimpleHaikuEngine* engine)
     , fEngine(engine)
     , fCameraAngleX(30.0f)
     , fCameraAngleY(45.0f)
-    , fCameraDistance(10.0f)
+    , fCameraDistance(20.0f)  // Increased to see all spheres initially
     , fMouseDown(false)
     , fSelectedTrack(-1)
     , fAnimationTime(0.0f)
@@ -166,10 +166,10 @@ void Mixer3DView::UpdateTracks()
         
         Track3D track3D(realTrack);
         
-        // Position in circle
+        // Position in circle with larger radius for visibility
         float angle = (i / (float)trackCount) * 2.0f * M_PI;
-        track3D.x = cos(angle) * 3.0f;
-        track3D.z = sin(angle) * 3.0f;
+        track3D.x = cos(angle) * 8.0f;  // Increased radius
+        track3D.z = sin(angle) * 8.0f;
         track3D.y = 0.0f;
         
         f3DTracks.push_back(track3D);
@@ -404,18 +404,34 @@ void Mixer3DView::SetCameraAngle(float angleX, float angleY)
     }
 }
 
-void Mixer3DView::ResetCamera()
+void Mixer3DView::ZoomCamera(float zoom)
 {
-    fCameraAngleX = 30.0f;
-    fCameraAngleY = 45.0f;
-    fCameraDistance = 10.0f;
+    fCameraDistance += zoom;
+    
+    // Limit zoom range
+    if (fCameraDistance < 2.0f) fCameraDistance = 2.0f;
+    if (fCameraDistance > 50.0f) fCameraDistance = 50.0f;
     
     if (Window() && Window()->LockLooper()) {
         Invalidate();
         Window()->UnlockLooper();
     }
     
-    printf("Mixer3DView: Camera reset\n");
+    printf("Mixer3DView: Camera distance: %.1f\n", fCameraDistance);
+}
+
+void Mixer3DView::ResetCamera()
+{
+    fCameraAngleX = 30.0f;
+    fCameraAngleY = 45.0f;
+    fCameraDistance = 20.0f;  // Increased from 10.0f to see all spheres
+    
+    if (Window() && Window()->LockLooper()) {
+        Invalidate();
+        Window()->UnlockLooper();
+    }
+    
+    printf("Mixer3DView: Camera reset to distance %.1f\n", fCameraDistance);
 }
 
 // =====================================
@@ -466,6 +482,9 @@ void Mixer3DWindow::CreateMenuBar()
     
     // View menu
     BMenu* viewMenu = new BMenu("View");
+    viewMenu->AddItem(new BMenuItem("Zoom In", new BMessage(MSG_ZOOM_IN), '+'));
+    viewMenu->AddItem(new BMenuItem("Zoom Out", new BMessage(MSG_ZOOM_OUT), '-'));
+    viewMenu->AddSeparatorItem();
     viewMenu->AddItem(new BMenuItem("Reset Camera", new BMessage(MSG_RESET_CAMERA), 'R'));
     viewMenu->AddItem(new BMenuItem("Fullscreen 3D", new BMessage('full')));
     fMenuBar->AddItem(viewMenu);
@@ -593,10 +612,24 @@ void Mixer3DWindow::MessageReceived(BMessage* message)
             }
             break;
             
+        case MSG_ZOOM_IN:
+            if (f3DView) {
+                f3DView->ZoomCamera(-2.0f);  // Negative = zoom in (closer)
+                fInfoDisplay->SetText("🔍 Zoomed in");
+            }
+            break;
+            
+        case MSG_ZOOM_OUT:
+            if (f3DView) {
+                f3DView->ZoomCamera(3.0f);   // Positive = zoom out (farther)
+                fInfoDisplay->SetText("🔍 Zoomed out - should see all spheres!");
+            }
+            break;
+            
         case MSG_RESET_CAMERA:
             if (f3DView) {
                 f3DView->ResetCamera();
-                fInfoDisplay->SetText("📷 Camera reset to default position");
+                fInfoDisplay->SetText("📷 Camera reset to see all spheres");
             }
             break;
             

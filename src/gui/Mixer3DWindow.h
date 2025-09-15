@@ -152,6 +152,8 @@ private:
         MSG_PLAY = 'play',
         MSG_STOP = 'stop', 
         MSG_RESET_CAMERA = 'rset',
+        MSG_ZOOM_IN = 'zmin',
+        MSG_ZOOM_OUT = 'zmot',
         MSG_UPDATE_3D = 'up3d'
     };
 };
