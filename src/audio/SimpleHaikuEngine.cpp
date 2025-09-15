@@ -25,7 +25,7 @@ SimpleTrack::SimpleTrack(int id, const char* name)
         fPinkNoiseState[i] = 0.0f;
     }
     // Initialize file format
-    memset(&fFileFormat, 0, sizeof(media_format));
+    fFileFormat = media_format();
 }
 
 SimpleTrack::~SimpleTrack()
@@ -39,8 +39,10 @@ void SimpleTrack::UnloadFile()
     if (fFileLoaded) {
         printf("SimpleTrack: Unloading file '%s'\n", fFilePath.String());
         
-        delete fMediaTrack;
-        fMediaTrack = nullptr;
+        if (fMediaFile && fMediaTrack) {
+            fMediaFile->ReleaseTrack(fMediaTrack);
+            fMediaTrack = nullptr;
+        }
         
         delete fMediaFile;
         fMediaFile = nullptr;
@@ -147,7 +149,7 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
     fPlaybackFrame = 0;
     
     printf("SimpleTrack: Successfully loaded '%s'\n", ref.name);
-    printf("  Duration: %lld frames (%.2f seconds)\n", fFileDuration, 
+    printf("  Duration: %ld frames (%.2f seconds)\n", (long)fFileDuration, 
            (double)fFileDuration / fFileSampleRate);
     printf("  Sample rate: %.0f Hz\n", fFileSampleRate);
     printf("  Channels: %d\n", (int)rawFormat.channel_count);
