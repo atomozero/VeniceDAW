@@ -160,22 +160,8 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
             }
         }
         
-        // List available media formats
-        printf("SimpleTrack: Checking available media formats...\n");
-        BMediaFormats formats;
-        media_format format;
-        media_file_format fileFormatInfo;
-        int32 cookie = 0;
-        int formatCount = 0;
-        
-        while (formats.GetNextFormat(&fileFormatInfo, &cookie) == B_OK) {
-            if (fileFormatInfo.capabilities & media_file_format::B_READABLE) {
-                printf("  Available format: %s (%s)\n", 
-                       fileFormatInfo.pretty_name, fileFormatInfo.short_name);
-                formatCount++;
-            }
-        }
-        printf("SimpleTrack: Found %d readable media formats\n", formatCount);
+        // Skip media format enumeration for now - focus on file loading
+        printf("SimpleTrack: Media format enumeration skipped\n");
         
         delete fMediaFile;
         fMediaFile = nullptr;
@@ -237,8 +223,8 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
     fFileBuffer = new float[fFileBufferSize * 2];  // Stereo
     
     // Store file path for display
-    BPath path(&ref);
-    fFilePath.SetTo(path.Path());
+    BPath filePath(&ref);
+    fFilePath.SetTo(filePath.Path());
     
     fFileLoaded = true;
     fPlaybackFrame = 0;
