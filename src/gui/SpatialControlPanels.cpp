@@ -6,6 +6,7 @@
  */
 
 #include "SpatialMixer3DWindow.h"
+#include "../audio/SimpleHaikuEngine.h"
 #include <interface/Alert.h>
 #include <LayoutBuilder.h>
 #include <GroupLayoutBuilder.h>
@@ -535,10 +536,10 @@ SpatialMixer3DWindow::SpatialMixer3DWindow(SimpleHaikuEngine* engine,
              B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS)
     , fEngine(engine)
     , fAudioProcessor(processor)
-    , fOpenFilePanel(nullptr)
     , fSpatialView(nullptr)
     , fControlPanel(nullptr)
     , fUpdateRunner(nullptr)
+    , fOpenFilePanel(nullptr)
 {
     CreateInterface();
     
