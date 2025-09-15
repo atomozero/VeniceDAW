@@ -6,6 +6,9 @@
 #define SIMPLE_HAIKU_ENGINE_H
 
 #include <media/SoundPlayer.h>
+#include <media/MediaFile.h>
+#include <media/MediaTrack.h>
+#include <storage/Entry.h>
 #include <support/String.h>
 #include <vector>
 
@@ -14,6 +17,7 @@ namespace HaikuDAW {
 class SimpleTrack {
 public:
     SimpleTrack(int id, const char* name);
+    ~SimpleTrack();
     
     int GetId() const { return fId; }
     const char* GetName() const { return fName.String(); }
@@ -58,6 +62,22 @@ public:
     
     // For pink noise generator
     float& GetPinkNoiseState(int index) { return fPinkNoiseState[index]; }
+    
+    // Audio file loading and playback
+    status_t LoadAudioFile(const char* path);
+    status_t LoadAudioFile(const entry_ref& ref);
+    void UnloadFile();
+    bool HasFile() const { return fFileLoaded; }
+    const char* GetFilePath() const { return fFilePath.String(); }
+    
+    // File playback state
+    void SetPlaybackPosition(int64 frame) { fPlaybackFrame = frame; }
+    int64 GetPlaybackPosition() const { return fPlaybackFrame; }
+    int64 GetFileDuration() const { return fFileDuration; }
+    float GetFileSampleRate() const { return fFileSampleRate; }
+    
+    // File data access (for audio engine)
+    status_t ReadFileData(float* buffer, int32 frameCount, float sampleRate);
 
 private:
     int fId;
@@ -72,6 +92,18 @@ private:
     SignalType fSignalType;  // Type of test signal
     float fFrequency;  // Frequency for test signal
     float fPinkNoiseState[7];  // State for pink noise generator
+    
+    // Audio file playback members
+    BMediaFile* fMediaFile;
+    BMediaTrack* fMediaTrack;
+    media_format fFileFormat;
+    float* fFileBuffer;
+    int32 fFileBufferSize;
+    int64 fPlaybackFrame;
+    int64 fFileDuration;
+    float fFileSampleRate;
+    bool fFileLoaded;
+    BString fFilePath;
 };
 
 class SimpleHaikuEngine {
@@ -110,6 +142,10 @@ public:
     
     // Demo scene creation
     void CreateDemoScene();
+    
+    // Audio file loading
+    status_t LoadAudioFileAsTrack(const entry_ref& ref);
+    status_t LoadAudioFileAsTrack(const char* path);
 
 private:
     static void AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format);

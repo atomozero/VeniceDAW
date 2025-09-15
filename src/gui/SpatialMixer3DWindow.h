@@ -16,6 +16,8 @@
 #include <MenuField.h>
 #include <PopUpMenu.h>
 #include <TextControl.h>
+#include <FilePanel.h>
+#include <Alert.h>
 #include <atomic>
 #include <mutex>
 #include <queue>
@@ -303,9 +305,15 @@ private:
     // Update timer
     BMessageRunner* fUpdateRunner;
     
+    // File loading
+    BFilePanel* fOpenFilePanel;
+    
     // Message constants
     enum {
-        MSG_UPDATE_SPATIAL = 'upsp'
+        MSG_UPDATE_SPATIAL = 'upsp',
+        MSG_OPEN_AUDIO_FILE = 'oaf_',
+        MSG_OPEN_MULTIPLE_FILES = 'oamf',
+        MSG_FILE_REFS = 'refs'
     };
 };
 

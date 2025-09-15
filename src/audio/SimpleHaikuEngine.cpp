@@ -15,13 +15,182 @@ namespace HaikuDAW {
 
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
-      fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(SIGNAL_SINE), fFrequency(440.0f)
+      fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(SIGNAL_SINE), fFrequency(440.0f),
+      fMediaFile(nullptr), fMediaTrack(nullptr), fFileBuffer(nullptr), fFileBufferSize(0),
+      fPlaybackFrame(0), fFileDuration(0), fFileSampleRate(44100.0f), fFileLoaded(false)
 {
     printf("SimpleTrack: Created '%s'\n", name);
     // Initialize pink noise state
     for (int i = 0; i < 7; i++) {
         fPinkNoiseState[i] = 0.0f;
     }
+    // Initialize file format
+    memset(&fFileFormat, 0, sizeof(media_format));
+}
+
+SimpleTrack::~SimpleTrack()
+{
+    UnloadFile();
+    printf("SimpleTrack: Destroyed '%s'\n", fName.String());
+}
+
+void SimpleTrack::UnloadFile()
+{
+    if (fFileLoaded) {
+        printf("SimpleTrack: Unloading file '%s'\n", fFilePath.String());
+        
+        delete fMediaTrack;
+        fMediaTrack = nullptr;
+        
+        delete fMediaFile;
+        fMediaFile = nullptr;
+        
+        delete[] fFileBuffer;
+        fFileBuffer = nullptr;
+        fFileBufferSize = 0;
+        
+        fPlaybackFrame = 0;
+        fFileDuration = 0;
+        fFileLoaded = false;
+        fFilePath.SetTo("");
+    }
+}
+
+status_t SimpleTrack::LoadAudioFile(const char* path)
+{
+    entry_ref ref;
+    status_t status = get_ref_for_path(path, &ref);
+    if (status != B_OK) {
+        printf("SimpleTrack: Failed to get ref for path '%s': %s\n", path, strerror(status));
+        return status;
+    }
+    return LoadAudioFile(ref);
+}
+
+status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
+{
+    // Unload any existing file first
+    UnloadFile();
+    
+    printf("SimpleTrack: Loading audio file '%s'\n", ref.name);
+    
+    // Create BMediaFile
+    media_file_format fileFormat;
+    fMediaFile = new BMediaFile(&ref, &fileFormat);
+    status_t status = fMediaFile->InitCheck();
+    if (status != B_OK) {
+        printf("SimpleTrack: BMediaFile init failed: %s\n", strerror(status));
+        delete fMediaFile;
+        fMediaFile = nullptr;
+        return status;
+    }
+    
+    // Get first audio track
+    int32 numTracks = fMediaFile->CountTracks();
+    printf("SimpleTrack: Found %d tracks in file\n", (int)numTracks);
+    
+    fMediaTrack = nullptr;
+    for (int32 i = 0; i < numTracks; i++) {
+        BMediaTrack* track = fMediaFile->TrackAt(i);
+        if (!track) continue;
+        
+        media_format format;
+        status = track->DecodedFormat(&format);
+        if (status == B_OK && format.type == B_MEDIA_RAW_AUDIO) {
+            fMediaTrack = track;
+            fFileFormat = format;
+            printf("SimpleTrack: Found audio track %d, format: %d Hz, %d channels\n", 
+                   (int)i, (int)format.u.raw_audio.frame_rate, 
+                   (int)format.u.raw_audio.channel_count);
+            break;
+        } else {
+            fMediaFile->ReleaseTrack(track);
+        }
+    }
+    
+    if (!fMediaTrack) {
+        printf("SimpleTrack: No audio track found in file\n");
+        delete fMediaFile;
+        fMediaFile = nullptr;
+        return B_ERROR;
+    }
+    
+    // Configure for stereo float output
+    media_raw_audio_format& rawFormat = fFileFormat.u.raw_audio;
+    rawFormat.format = media_raw_audio_format::B_AUDIO_FLOAT;
+    rawFormat.channel_count = 2;  // Force stereo output
+    rawFormat.byte_order = B_MEDIA_HOST_ENDIAN;
+    
+    status = fMediaTrack->DecodedFormat(&fFileFormat);
+    if (status != B_OK) {
+        printf("SimpleTrack: Failed to set decoded format: %s\n", strerror(status));
+        fMediaFile->ReleaseTrack(fMediaTrack);
+        fMediaTrack = nullptr;
+        delete fMediaFile;
+        fMediaFile = nullptr;
+        return status;
+    }
+    
+    // Get file info
+    fFileSampleRate = rawFormat.frame_rate;
+    fFileDuration = fMediaTrack->CountFrames();
+    
+    // Create file buffer (1024 frames stereo)
+    fFileBufferSize = 1024;
+    fFileBuffer = new float[fFileBufferSize * 2];  // Stereo
+    
+    // Store file path for display
+    BPath path(&ref);
+    fFilePath.SetTo(path.Path());
+    
+    fFileLoaded = true;
+    fPlaybackFrame = 0;
+    
+    printf("SimpleTrack: Successfully loaded '%s'\n", ref.name);
+    printf("  Duration: %lld frames (%.2f seconds)\n", fFileDuration, 
+           (double)fFileDuration / fFileSampleRate);
+    printf("  Sample rate: %.0f Hz\n", fFileSampleRate);
+    printf("  Channels: %d\n", (int)rawFormat.channel_count);
+    
+    return B_OK;
+}
+
+status_t SimpleTrack::ReadFileData(float* buffer, int32 frameCount, float sampleRate)
+{
+    if (!fFileLoaded || !fMediaTrack || !buffer) {
+        // Fill with silence if no file loaded
+        memset(buffer, 0, frameCount * 2 * sizeof(float));
+        return B_OK;
+    }
+    
+    // Simple playback - read frames directly from file
+    int64 framesRead = 0;
+    media_header mh;
+    
+    status_t status = fMediaTrack->ReadFrames(buffer, &framesRead, &mh);
+    if (status != B_OK || framesRead == 0) {
+        // End of file or error - loop back to beginning
+        fMediaTrack->SeekToFrame(&fPlaybackFrame);
+        fPlaybackFrame = 0;
+        
+        // Try reading again from beginning
+        status = fMediaTrack->ReadFrames(buffer, &framesRead, &mh);
+        if (status != B_OK || framesRead == 0) {
+            // Still failed - fill with silence
+            memset(buffer, 0, frameCount * 2 * sizeof(float));
+            return B_OK;
+        }
+    }
+    
+    // Fill remaining buffer with silence if we read less than requested
+    if (framesRead < frameCount) {
+        float* remainingBuffer = buffer + (framesRead * 2);
+        int32 remainingFrames = frameCount - framesRead;
+        memset(remainingBuffer, 0, remainingFrames * 2 * sizeof(float));
+    }
+    
+    fPlaybackFrame += framesRead;
+    return B_OK;
 }
 
 // === SimpleHaikuEngine ===
@@ -338,6 +507,22 @@ void SimpleHaikuEngine::SetTrackSolo(int trackIndex, bool solo)
 
 float SimpleHaikuEngine::GenerateTestSignal(SimpleTrack* track, float sampleRate)
 {
+    // If track has a file loaded, we need to use a different approach
+    // The per-sample file reading will be replaced with buffer-level reading
+    // For now, if a file is loaded, generate a different test tone to indicate it's working
+    if (track->HasFile()) {
+        // Generate a distinctive tone for file-loaded tracks (higher frequency)
+        float frequency = 1000.0f;  // 1kHz to distinguish from test signals
+        float phaseIncrement = (2.0f * M_PI * frequency) / sampleRate;
+        float sample = sinf(track->GetPhase()) * 0.3f;  // Lower volume
+        track->GetPhase() += phaseIncrement;
+        if (track->GetPhase() > 2.0f * M_PI) {
+            track->GetPhase() -= 2.0f * M_PI;
+        }
+        return sample;
+    }
+    
+    // Generate test signals
     float sample = 0.0f;
     float frequency = track->GetFrequency();
     
@@ -469,6 +654,62 @@ void SimpleHaikuEngine::CreateDemoScene()
     printf("  -> Square wave shows harmonic richness\n");
     printf("  -> White/Pink noise for testing spatial separation\n");
     printf("  -> All tracks positioned in 3D space for spatial demo\n");
+}
+
+status_t SimpleHaikuEngine::LoadAudioFileAsTrack(const char* path)
+{
+    entry_ref ref;
+    status_t status = get_ref_for_path(path, &ref);
+    if (status != B_OK) {
+        printf("SimpleHaikuEngine: Failed to get ref for path '%s': %s\n", path, strerror(status));
+        return status;
+    }
+    return LoadAudioFileAsTrack(ref);
+}
+
+status_t SimpleHaikuEngine::LoadAudioFileAsTrack(const entry_ref& ref)
+{
+    printf("SimpleHaikuEngine: Loading audio file as new track: '%s'\n", ref.name);
+    
+    // Create new track for this file
+    int trackId = fTracks.size() + 1;
+    BString trackName;
+    trackName.SetToFormat("%s", ref.name);
+    
+    SimpleTrack* newTrack = new SimpleTrack(trackId, trackName.String());
+    
+    // Try to load the audio file
+    status_t status = newTrack->LoadAudioFile(ref);
+    if (status != B_OK) {
+        printf("SimpleHaikuEngine: Failed to load audio file: %s\n", strerror(status));
+        delete newTrack;
+        return status;
+    }
+    
+    // Position the track in 3D space (spread them out)
+    float angle = (float)fTracks.size() * 60.0f * M_PI / 180.0f;  // 60 degrees apart
+    float radius = 2.0f;
+    float x = sinf(angle) * radius;
+    float y = cosf(angle) * radius;
+    float z = 0.0f;
+    
+    newTrack->SetPosition(x, y, z);
+    newTrack->SetVolume(0.7f);  // Reasonable volume
+    newTrack->SetPan(0.0f);     // Centered pan
+    
+    // Add to engine
+    status = AddTrack(newTrack);
+    if (status != B_OK) {
+        printf("SimpleHaikuEngine: Failed to add track to engine: %s\n", strerror(status));
+        delete newTrack;
+        return status;
+    }
+    
+    printf("SimpleHaikuEngine: Successfully loaded '%s' as track %d\n", ref.name, trackId);
+    printf("  Positioned at (%.1f, %.1f, %.1f)\n", x, y, z);
+    printf("  Duration: %.2f seconds\n", (double)newTrack->GetFileDuration() / newTrack->GetFileSampleRate());
+    
+    return B_OK;
 }
 
 } // namespace HaikuDAW

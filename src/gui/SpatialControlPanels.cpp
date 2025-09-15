@@ -531,10 +531,11 @@ void SpatialControlPanel::UpdateFromProcessor()
 
 SpatialMixer3DWindow::SpatialMixer3DWindow(SimpleHaikuEngine* engine, 
                                          AdvancedAudioProcessor* processor)
-    : BWindow(BRect(100, 100, 1200, 800), "VeniceDAW Phase 4 - Professional Spatial Audio Mixer",
+    : BWindow(BRect(100, 100, 1200, 800), "VeniceDAW Phase 5 - Spatial Audio with File Loading",
              B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS)
     , fEngine(engine)
     , fAudioProcessor(processor)
+    , fOpenFilePanel(nullptr)
     , fSpatialView(nullptr)
     , fControlPanel(nullptr)
     , fUpdateRunner(nullptr)
@@ -551,6 +552,7 @@ SpatialMixer3DWindow::SpatialMixer3DWindow(SimpleHaikuEngine* engine,
 SpatialMixer3DWindow::~SpatialMixer3DWindow()
 {
     delete fUpdateRunner;
+    delete fOpenFilePanel;
     printf("SpatialMixer3DWindow: Spatial mixer window destroyed\n");
 }
 
@@ -592,6 +594,9 @@ void SpatialMixer3DWindow::CreateMenuBar()
     
     // File menu
     BMenu* fileMenu = new BMenu("File");
+    fileMenu->AddItem(new BMenuItem("Open Audio File...", new BMessage('oaf_')));
+    fileMenu->AddItem(new BMenuItem("Open Multiple Files...", new BMessage('oamf')));
+    fileMenu->AddSeparatorItem();
     fileMenu->AddItem(new BMenuItem("Save Spatial Configuration...", nullptr));
     fileMenu->AddItem(new BMenuItem("Load Spatial Configuration...", nullptr));
     fileMenu->AddSeparatorItem();
@@ -636,6 +641,97 @@ void SpatialMixer3DWindow::MessageReceived(BMessage* message)
         case MSG_UPDATE_SPATIAL:
             UpdateSpatialVisualization();
             break;
+            
+        case MSG_OPEN_AUDIO_FILE:
+        {
+            // Create file panel if it doesn't exist
+            if (!fOpenFilePanel) {
+                BMessage* selectMsg = new BMessage(MSG_FILE_REFS);
+                fOpenFilePanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this), nullptr,
+                                               B_FILE_NODE, false, selectMsg);
+                
+                // Set audio file filters
+                fOpenFilePanel->SetButtonLabel(B_DEFAULT_BUTTON, "Load Audio");
+            }
+            
+            fOpenFilePanel->Show();
+            break;
+        }
+        
+        case MSG_OPEN_MULTIPLE_FILES:
+        {
+            // Create file panel for multiple selection
+            if (!fOpenFilePanel) {
+                BMessage* selectMsg = new BMessage(MSG_FILE_REFS);
+                fOpenFilePanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this), nullptr,
+                                               B_FILE_NODE, true, selectMsg);  // true = allow multiple
+                
+                fOpenFilePanel->SetButtonLabel(B_DEFAULT_BUTTON, "Load Audio Files");
+            }
+            
+            fOpenFilePanel->Show();
+            break;
+        }
+        
+        case MSG_FILE_REFS:
+        case B_REFS_RECEIVED:
+        {
+            entry_ref ref;
+            int32 count = 0;
+            
+            // Count how many files we're loading
+            while (message->FindRef("refs", count, &ref) == B_OK) {
+                count++;
+            }
+            
+            printf("SpatialMixer3DWindow: Loading %d audio file(s)...\n", (int)count);
+            
+            // Load each file as a new track
+            int32 loadedCount = 0;
+            int32 failedCount = 0;
+            
+            for (int32 i = 0; i < count; i++) {
+                if (message->FindRef("refs", i, &ref) == B_OK) {
+                    status_t status = fEngine->LoadAudioFileAsTrack(ref);
+                    if (status == B_OK) {
+                        loadedCount++;
+                        printf("  ✓ Loaded: %s\n", ref.name);
+                    } else {
+                        failedCount++;
+                        printf("  ✗ Failed: %s (%s)\n", ref.name, strerror(status));
+                    }
+                }
+            }
+            
+            // Show result to user
+            BString resultMsg;
+            if (loadedCount > 0) {
+                resultMsg.SetToFormat("Successfully loaded %d audio file(s) as spatial tracks!", 
+                                     (int)loadedCount);
+                if (failedCount > 0) {
+                    resultMsg.Append(BString().SetToFormat("\n\n%d file(s) failed to load.", 
+                                                          (int)failedCount));
+                }
+                
+                BAlert* alert = new BAlert("Audio Loading", resultMsg.String(), "OK", 
+                                          nullptr, nullptr, B_WIDTH_AS_USUAL, B_INFO_ALERT);
+                alert->Go();
+                
+                // Update 3D view to show new tracks
+                UpdateSpatialVisualization();
+                
+            } else if (failedCount > 0) {
+                resultMsg.SetToFormat("Failed to load %d audio file(s).\n\n"
+                                     "Supported formats: WAV, AIFF, MP3 (if available).", 
+                                     (int)failedCount);
+                
+                BAlert* alert = new BAlert("Loading Error", resultMsg.String(), "OK", 
+                                          nullptr, nullptr, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+                alert->Go();
+            }
+            
+            break;
+        }
             
         default:
             BWindow::MessageReceived(message);
