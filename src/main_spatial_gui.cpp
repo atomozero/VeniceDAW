@@ -7,6 +7,7 @@
 
 #include <Application.h>
 #include <Alert.h>
+#include <Window.h>
 #include <stdio.h>
 
 #include "gui/SpatialMixer3DWindow.h"
