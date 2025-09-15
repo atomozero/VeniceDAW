@@ -71,6 +71,9 @@ public:
     bool HasFile() const { return fFileLoaded; }
     const char* GetFilePath() const { return fFilePath.String(); }
     
+    // Debug and fallback methods
+    status_t LoadAudioFileAlternative(const entry_ref& ref);
+    
     // File playback state
     void SetPlaybackPosition(int64 frame) { fPlaybackFrame = frame; }
     int64 GetPlaybackPosition() const { return fPlaybackFrame; }

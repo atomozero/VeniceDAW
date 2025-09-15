@@ -8,6 +8,8 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>  // For rand()
+#include <storage/File.h>
+#include <media/MediaFormats.h>
 
 namespace HaikuDAW {
 
@@ -76,12 +78,98 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
     
     printf("SimpleTrack: Loading audio file '%s'\n", ref.name);
     
-    // Create BMediaFile
+    // Get file info first
+    BPath path(&ref);
+    printf("SimpleTrack: Full path: %s\n", path.Path());
+    
+    // Check if file exists and is readable
+    BEntry entry(&ref);
+    if (!entry.Exists()) {
+        printf("SimpleTrack: File does not exist\n");
+        return B_ENTRY_NOT_FOUND;
+    }
+    
+    if (!entry.IsFile()) {
+        printf("SimpleTrack: Path is not a file\n");
+        return B_NOT_A_FILE;
+    }
+    
+    // Get file size
+    off_t fileSize;
+    if (entry.GetSize(&fileSize) != B_OK) {
+        printf("SimpleTrack: Cannot get file size\n");
+        return B_ERROR;
+    }
+    printf("SimpleTrack: File size: %lld bytes\n", fileSize);
+    
+    if (fileSize == 0) {
+        printf("SimpleTrack: File is empty\n");
+        return B_ERROR;
+    }
+    
+    // Try to create BMediaFile with detailed error reporting
     media_file_format fileFormat;
+    printf("SimpleTrack: Creating BMediaFile...\n");
     fMediaFile = new BMediaFile(&ref, &fileFormat);
+    
     status_t status = fMediaFile->InitCheck();
     if (status != B_OK) {
-        printf("SimpleTrack: BMediaFile init failed: %s\n", strerror(status));
+        printf("SimpleTrack: BMediaFile init failed: %s (0x%x)\n", strerror(status), (unsigned)status);
+        printf("SimpleTrack: This usually means:\n");
+        printf("  - Unsupported file format\n");
+        printf("  - Corrupted file header\n");
+        printf("  - Missing media codec\n");
+        printf("  - File access permissions\n");
+        
+        // Try to get more info about the file format
+        printf("SimpleTrack: Attempting format detection...\n");
+        
+        // Read first few bytes to check file signature
+        BFile file(&ref, B_READ_ONLY);
+        if (file.InitCheck() == B_OK) {
+            char header[16];
+            ssize_t bytesRead = file.Read(header, sizeof(header));
+            if (bytesRead >= 4) {
+                printf("SimpleTrack: File header: ");
+                for (int i = 0; i < min_c(bytesRead, 12); i++) {
+                    if (header[i] >= 32 && header[i] <= 126) {
+                        printf("%c", header[i]);
+                    } else {
+                        printf("\\x%02x", (unsigned char)header[i]);
+                    }
+                }
+                printf("\n");
+                
+                // Check for common audio file signatures
+                if (strncmp(header, "RIFF", 4) == 0) {
+                    printf("SimpleTrack: Detected RIFF/WAV format\n");
+                } else if (strncmp(header, "FORM", 4) == 0) {
+                    printf("SimpleTrack: Detected FORM/AIFF format\n");
+                } else if ((header[0] == 0xFF && (header[1] & 0xF0) == 0xF0)) {
+                    printf("SimpleTrack: Detected MP3 format\n");
+                } else {
+                    printf("SimpleTrack: Unknown file format\n");
+                }
+            }
+        }
+        
+        // List available media formats
+        printf("SimpleTrack: Checking available media formats...\n");
+        BMediaFormats formats;
+        media_format format;
+        media_file_format fileFormatInfo;
+        int32 cookie = 0;
+        int formatCount = 0;
+        
+        while (formats.GetNextFileFormat(&fileFormatInfo, &cookie) == B_OK) {
+            if (fileFormatInfo.capabilities & media_file_format::B_READABLE) {
+                printf("  Available format: %s (%s)\n", 
+                       fileFormatInfo.pretty_name, fileFormatInfo.short_name);
+                formatCount++;
+            }
+        }
+        printf("SimpleTrack: Found %d readable media formats\n", formatCount);
+        
         delete fMediaFile;
         fMediaFile = nullptr;
         return status;
@@ -683,9 +771,13 @@ status_t SimpleHaikuEngine::LoadAudioFileAsTrack(const entry_ref& ref)
     // Try to load the audio file
     status_t status = newTrack->LoadAudioFile(ref);
     if (status != B_OK) {
-        printf("SimpleHaikuEngine: Failed to load audio file: %s\n", strerror(status));
-        delete newTrack;
-        return status;
+        printf("SimpleHaikuEngine: Primary loading failed, trying alternative method...\n");
+        status = newTrack->LoadAudioFileAlternative(ref);
+        if (status != B_OK) {
+            printf("SimpleHaikuEngine: All loading methods failed: %s\n", strerror(status));
+            delete newTrack;
+            return status;
+        }
     }
     
     // Position the track in 3D space (spread them out)
@@ -710,6 +802,89 @@ status_t SimpleHaikuEngine::LoadAudioFileAsTrack(const entry_ref& ref)
     printf("SimpleHaikuEngine: Successfully loaded '%s' as track %d\n", ref.name, trackId);
     printf("  Positioned at (%.1f, %.1f, %.1f)\n", x, y, z);
     printf("  Duration: %.2f seconds\n", (double)newTrack->GetFileDuration() / newTrack->GetFileSampleRate());
+    
+    return B_OK;
+}
+
+status_t SimpleTrack::LoadAudioFileAlternative(const entry_ref& ref)
+{
+    printf("SimpleTrack: Trying alternative loading method for '%s'\n", ref.name);
+    
+    // Alternative approach: try different file format specifications
+    media_file_format fileFormat;
+    
+    // Try specific WAV format first
+    memset(&fileFormat, 0, sizeof(fileFormat));
+    strcpy(fileFormat.short_name, "wav");
+    strcpy(fileFormat.pretty_name, "WAV audio");
+    fileFormat.family = B_MISC_FORMAT_FAMILY;
+    
+    printf("SimpleTrack: Trying with WAV format specification...\n");
+    fMediaFile = new BMediaFile(&ref, &fileFormat);
+    status_t status = fMediaFile->InitCheck();
+    
+    if (status != B_OK) {
+        delete fMediaFile;
+        fMediaFile = nullptr;
+        
+        // Try with no format specification (let BMediaFile auto-detect)
+        printf("SimpleTrack: Trying with auto-detection...\n");
+        fMediaFile = new BMediaFile(&ref);
+        status = fMediaFile->InitCheck();
+        
+        if (status != B_OK) {
+            printf("SimpleTrack: Alternative method also failed: %s\n", strerror(status));
+            delete fMediaFile;
+            fMediaFile = nullptr;
+            return status;
+        }
+    }
+    
+    printf("SimpleTrack: Alternative method succeeded!\n");
+    
+    // Continue with normal track setup...
+    int32 numTracks = fMediaFile->CountTracks();
+    printf("SimpleTrack: Found %d tracks in file\n", (int)numTracks);
+    
+    // Get first audio track
+    fMediaTrack = nullptr;
+    for (int32 i = 0; i < numTracks; i++) {
+        BMediaTrack* track = fMediaFile->TrackAt(i);
+        if (!track) continue;
+        
+        media_format format;
+        status = track->DecodedFormat(&format);
+        if (status == B_OK && format.type == B_MEDIA_RAW_AUDIO) {
+            fMediaTrack = track;
+            fFileFormat = format;
+            printf("SimpleTrack: Found audio track %d, format: %d Hz, %d channels\n", 
+                   (int)i, (int)format.u.raw_audio.frame_rate, 
+                   (int)format.u.raw_audio.channel_count);
+            break;
+        } else {
+            fMediaFile->ReleaseTrack(track);
+        }
+    }
+    
+    if (!fMediaTrack) {
+        printf("SimpleTrack: No audio track found in file\n");
+        delete fMediaFile;
+        fMediaFile = nullptr;
+        return B_ERROR;
+    }
+    
+    // Set basic file info
+    fFileSampleRate = fFileFormat.u.raw_audio.frame_rate;
+    fFileDuration = fMediaTrack->CountFrames();
+    
+    BPath path(&ref);
+    fFilePath.SetTo(path.Path());
+    fFileLoaded = true;
+    fPlaybackFrame = 0;
+    
+    printf("SimpleTrack: Alternative loading successful!\n");
+    printf("  Sample rate: %.0f Hz\n", fFileSampleRate);
+    printf("  Duration: %ld frames\n", (long)fFileDuration);
     
     return B_OK;
 }
