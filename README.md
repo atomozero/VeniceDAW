@@ -46,16 +46,8 @@ The easiest way to get started is building the demo application:
 
 #### Development Environment Setup
 
-**QEMU/Virtual Machine Users:**
-If developing on Windows/Linux with QEMU, use the optimized launch scripts:
-- Windows: `start-haiku-windows.ps1` or `start-haiku.bat`
-- Linux/WSL: `start-haiku.sh`
-
-Copy your source code to Haiku:
-```bash
-# From Windows/Linux host
-scp -P 2222 -r ./HaikuMix user@localhost:/boot/home/
-```
+**Cross-platform Development:**
+VeniceDAW is designed specifically for Haiku OS. If you're developing from another platform, you'll need to transfer your source code to your Haiku system for compilation.
 
 #### Installing Dependencies
 ```bash
@@ -204,15 +196,8 @@ Contributions are welcome! VeniceDAW aims to demonstrate the potential of native
 
 ## Development Tips
 
-### QEMU Performance Optimization
-For best performance when developing in QEMU:
-- Allocate sufficient RAM (8GB+ recommended)
-- Use multiple CPU cores (`-smp 4` or more)
-- Enable hardware acceleration (KVM on Linux, WHPX on Windows)
-- Use virtio drivers for better I/O performance
-
 ### Debugging Audio Issues
-If audio doesn't work in QEMU:
+If you encounter audio problems on Haiku:
 ```bash
 # Check audio system status
 /system/servers/media_addon_server --debug
@@ -220,9 +205,15 @@ If audio doesn't work in QEMU:
 # Verify audio devices
 listdev | grep audio
 
-# Test basic audio
+# Test basic audio functionality
 /bin/SoundPlayer /system/data/sounds/Startup.wav
 ```
+
+### Performance Optimization
+For best development experience:
+- Use Haiku R1/Beta4 or later for optimal BMediaKit support
+- Ensure sufficient RAM (4GB+ recommended for complex projects)
+- Close unnecessary applications when testing real-time audio
 
 ## Technical Highlights
 
