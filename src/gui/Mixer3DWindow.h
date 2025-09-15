@@ -76,33 +76,36 @@ public:
     void ZoomCamera(float zoom);
     void ResetCamera();
 
-private:
-    // Engine reference
+protected:
+    // Engine reference (protected for SpatialMixer3DView access)
     SimpleHaikuEngine* fEngine;
     
-    // 3D tracks
+    // 3D tracks (protected for SpatialMixer3DView access)
     std::vector<Track3D> f3DTracks;
     
-    // Camera state
+    // Camera state (protected for SpatialMixer3DView access)
     float fCameraAngleX;
     float fCameraAngleY;
     float fCameraDistance;
     float fCameraTarget[3];
     
-    // Mouse interaction
+    // OpenGL helpers (protected for SpatialMixer3DView access)
+    void DrawTrack3D(const Track3D& track);
+    void ProjectPoint(float x, float y, float z, BPoint& screen);
+
+private:
+    // Mouse interaction (private)
     BPoint fLastMousePos;
     bool fMouseDown;
     int fSelectedTrack;
     
-    // Animation
+    // Animation (private)
     float fAnimationTime;
     
-    // OpenGL helpers
-    void DrawTrack3D(const Track3D& track);
+    // Private OpenGL helpers
     void DrawGrid();
     void DrawAxisLabels();
     Track3D* GetTrackAt(BPoint point);
-    void ProjectPoint(float x, float y, float z, BPoint& screen);
 };
 
 /*

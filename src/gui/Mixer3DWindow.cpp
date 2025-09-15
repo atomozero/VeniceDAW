@@ -658,4 +658,34 @@ void Mixer3DWindow::UpdateVisualization()
     }
 }
 
+// =====================================
+// Missing Mixer3DView Methods
+// =====================================
+
+void Mixer3DView::ProjectPoint(float x, float y, float z, BPoint& screen)
+{
+    // Project 3D world coordinates to 2D screen coordinates
+    // This is a simplified implementation for the spatial mixer
+    
+    GLdouble modelMatrix[16];
+    GLdouble projMatrix[16];
+    GLint viewport[4];
+    GLdouble winX, winY, winZ;
+    
+    // Get current OpenGL matrices
+    glGetDoublev(GL_MODELVIEW_MATRIX, modelMatrix);
+    glGetDoublev(GL_PROJECTION_MATRIX, projMatrix);
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    
+    // Project the 3D point to screen coordinates
+    if (gluProject(x, y, z, modelMatrix, projMatrix, viewport, &winX, &winY, &winZ) == GL_TRUE) {
+        screen.x = (float)winX;
+        screen.y = (float)(viewport[3] - winY); // Flip Y coordinate
+    } else {
+        // Fallback if projection fails
+        screen.x = Bounds().Width() / 2.0f + x * 50.0f;
+        screen.y = Bounds().Height() / 2.0f - y * 50.0f;
+    }
+}
+
 } // namespace HaikuDAW

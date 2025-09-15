@@ -2108,6 +2108,8 @@ void BenchmarkWindow::Test3DSimulation()
             for (int j = 0; j < 16; j++) {
                 matrix[j] = sinf(frame * 0.1f + i * 0.01f + j);
             }
+            // Use matrix to avoid warning (simulated matrix operation)
+            (void)matrix[0];
         }
     }
     
@@ -2144,7 +2146,7 @@ void BenchmarkWindow::ExportTXT()
     const auto& results = fBenchmark->GetResults();
     
     BString content;
-    content << "VeniceDAW Benchmark Results\n");
+    content << "VeniceDAW Benchmark Results\n";
     content << "Generated: " << system_time() / 1000000 << "\n\n";
     
     // System info
@@ -2197,7 +2199,7 @@ void BenchmarkWindow::ExportHTML()
     
     BString html;
     html << "<!DOCTYPE html>\n<html>\n<head>\n";
-    html << "<title>VeniceDAW Benchmark Results</title>\n");
+    html << "<title>VeniceDAW Benchmark Results</title>\n";
     html << "<style>\n";
     html << "body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }\n";
     html << ".header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }\n";
@@ -2210,7 +2212,7 @@ void BenchmarkWindow::ExportHTML()
     
     // Header
     html << "<div class='header'>\n";
-    html << "<h1>🎵 VeniceDAW Performance Station</h1>\n");
+    html << "<h1>🎵 VeniceDAW Performance Station</h1>\n";
     html << "<p>Complete system performance analysis for audio production</p>\n";
     html << "</div>\n";
     
