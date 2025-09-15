@@ -345,9 +345,83 @@ DSP::BiquadFilter::FilterType ProfessionalEQ::ConvertFilterType(FilterType type)
 // DynamicsProcessor implementation
 DynamicsProcessor::DynamicsProcessor() : AudioEffect("DynamicsProcessor") {}
 
+void DynamicsProcessor::Initialize(float sampleRate) {
+    fSampleRate = sampleRate;
+    fInitialized = true;
+    fNeedsUpdate.store(true);
+    
+    // Initialize lookahead parameters if needed
+    if (fLookaheadEnabled) {
+        UpdateLookaheadParameters();
+    }
+}
+
 void DynamicsProcessor::Process(AdvancedAudioBuffer& buffer) {
-    // Stub implementation - basic passthrough
-    // Real implementation would apply compression/limiting
+    if (fBypassed.load() || !fInitialized) {
+        return;
+    }
+    
+    InitializeChannels(buffer.GetChannelCount());
+    
+    // Initialize lookahead buffers if enabled
+    if (fLookaheadEnabled && (fLookaheadBuffers.empty() || fLookaheadBuffers.size() != buffer.GetChannelCount())) {
+        InitializeLookaheadBuffers(buffer.GetChannelCount());
+    }
+    
+    if (fNeedsUpdate.load()) {
+        UpdateEnvelopeFollowers();
+        fNeedsUpdate.store(false);
+    }
+    
+    // Reset level meters
+    fInputLevel = 0.0f;
+    fOutputLevel = 0.0f;
+    float maxGainReduction = 0.0f;
+    
+    for (size_t channel = 0; channel < buffer.GetChannelCount(); ++channel) {
+        float* channelData = buffer.GetChannelData(channel);
+        
+        for (size_t frame = 0; frame < buffer.frameCount; ++frame) {
+            float input = channelData[frame];
+            float output;
+            
+            // Track input level
+            float inputLevel = std::abs(input);
+            fInputLevel = std::max(fInputLevel, inputLevel);
+            
+            // Use lookahead processing for limiters when enabled
+            if (fLookaheadEnabled && fMode == Mode::LIMITER && !fLookaheadBuffers.empty()) {
+                output = ProcessLookaheadSample(channel, input);
+            } else {
+                // Standard processing path
+                // Process envelope
+                float envelope = ProcessEnvelope(channel, input);
+                
+                // Calculate gain reduction
+                float gainReduction = CalculateGainReduction(envelope);
+                maxGainReduction = std::max(maxGainReduction, gainReduction);
+                
+                // Apply gain reduction (gainReduction is positive for reduction)
+                float gain = std::pow(10.0f, -gainReduction / 20.0f); // Convert dB to linear
+                output = input * gain;
+                
+                // Apply makeup gain
+                if (fMakeupGain != 0.0f || fAutoMakeup) {
+                    float makeupLinear = std::pow(10.0f, fMakeupGain / 20.0f);
+                    output *= makeupLinear;
+                }
+            }
+            
+            // Track output level
+            float outputLevel = std::abs(output);
+            fOutputLevel = std::max(fOutputLevel, outputLevel);
+            
+            channelData[frame] = output;
+        }
+    }
+    
+    // Update gain reduction meter (use faster response for better accuracy)
+    fGainReduction = fGainReduction * 0.5f + maxGainReduction * 0.5f;
 }
 
 void DynamicsProcessor::ProcessRealtime(AdvancedAudioBuffer& buffer) {
@@ -355,11 +429,31 @@ void DynamicsProcessor::ProcessRealtime(AdvancedAudioBuffer& buffer) {
 }
 
 void DynamicsProcessor::SetParameter(const std::string& param, float value) {
-    if (param == "threshold") fThreshold = value;
-    else if (param == "ratio") fRatio = value;
-    else if (param == "attack") fAttack = value;
-    else if (param == "release") fRelease = value;
-    else if (param == "knee") fKnee = value;
+    if (param == "threshold") {
+        fThreshold = std::max(-60.0f, std::min(0.0f, value));
+        fNeedsUpdate.store(true);
+    } else if (param == "ratio") {
+        fRatio = std::max(1.0f, std::min(20.0f, value));
+    } else if (param == "attack") {
+        fAttack = std::max(0.1f, std::min(1000.0f, value));
+        fNeedsUpdate.store(true);
+    } else if (param == "release") {
+        fRelease = std::max(1.0f, std::min(5000.0f, value));
+        fNeedsUpdate.store(true);
+    } else if (param == "knee") {
+        fKnee = std::max(0.0f, std::min(10.0f, value));
+    } else if (param == "makeup") {
+        fMakeupGain = std::max(-20.0f, std::min(20.0f, value));
+    } else if (param == "auto_makeup") {
+        fAutoMakeup = value > 0.5f;
+    } else if (param == "lookahead_enabled") {
+        fLookaheadEnabled = value > 0.5f;
+        if (fInitialized && fLookaheadEnabled) {
+            UpdateLookaheadParameters();
+        }
+    } else if (param == "lookahead_time") {
+        SetLookaheadTime(value);
+    }
 }
 
 float DynamicsProcessor::GetParameter(const std::string& param) const {
@@ -368,26 +462,284 @@ float DynamicsProcessor::GetParameter(const std::string& param) const {
     else if (param == "attack") return fAttack;
     else if (param == "release") return fRelease;
     else if (param == "knee") return fKnee;
+    else if (param == "makeup") return fMakeupGain;
+    else if (param == "auto_makeup") return fAutoMakeup ? 1.0f : 0.0f;
+    else if (param == "lookahead_enabled") return fLookaheadEnabled ? 1.0f : 0.0f;
+    else if (param == "lookahead_time") return fLookaheadTime;
     return 0.0f;
 }
 
 std::vector<std::string> DynamicsProcessor::GetParameterList() const {
-    return {"threshold", "ratio", "attack", "release", "knee"};
+    return {"threshold", "ratio", "attack", "release", "knee", "makeup", "auto_makeup", "lookahead_enabled", "lookahead_time"};
 }
 
 void DynamicsProcessor::Reset() {
-    fEnvelope.clear();
+    for (auto& follower : fEnvelopeFollowers) {
+        follower.Reset();
+    }
     fGainReduction = 0.0f;
+    fInputLevel = 0.0f;
+    fOutputLevel = 0.0f;
+    
+    // Reset lookahead buffers
+    if (fLookaheadEnabled) {
+        for (auto& buffer : fLookaheadBuffers) {
+            std::fill(buffer.begin(), buffer.end(), 0.0f);
+        }
+        std::fill(fBufferWritePos.begin(), fBufferWritePos.end(), 0);
+        std::fill(fBufferReadPos.begin(), fBufferReadPos.end(), 0);
+        std::fill(fPeakBuffer.begin(), fPeakBuffer.end(), 0.0f);
+    }
+}
+
+void DynamicsProcessor::SetDetectionMode(DetectionMode mode) {
+    fDetectionMode = mode;
+    fNeedsUpdate.store(true);
+}
+
+void DynamicsProcessor::SetBypassed(bool bypassed) {
+    fBypassed.store(bypassed);
+}
+
+void DynamicsProcessor::InitializeChannels(size_t channelCount) {
+    if (fEnvelopeFollowers.size() != channelCount) {
+        fEnvelopeFollowers.clear();
+        fEnvelopeFollowers.reserve(channelCount);
+        
+        for (size_t i = 0; i < channelCount; ++i) {
+            fEnvelopeFollowers.emplace_back(fSampleRate);
+        }
+        
+        fNeedsUpdate.store(true);
+    }
+}
+
+void DynamicsProcessor::UpdateEnvelopeFollowers() {
+    for (auto& follower : fEnvelopeFollowers) {
+        follower.SetAttack(fAttack);
+        follower.SetRelease(fRelease);
+        
+        switch (fDetectionMode) {
+            case DetectionMode::PEAK:
+                follower.SetMode(false); // Peak mode
+                break;
+            case DetectionMode::RMS:
+                follower.SetMode(true);  // RMS mode
+                break;
+            case DetectionMode::PEAK_RMS_HYBRID:
+                follower.SetMode(true);  // Use RMS for now, can be enhanced
+                break;
+        }
+    }
 }
 
 float DynamicsProcessor::ProcessEnvelope(size_t channel, float input) {
-    // Stub - real implementation would track signal envelope
-    return std::abs(input);
+    if (channel >= fEnvelopeFollowers.size()) {
+        return std::abs(input);
+    }
+    
+    return fEnvelopeFollowers[channel].ProcessSample(input);
 }
 
 float DynamicsProcessor::CalculateGainReduction(float envelope) {
-    // Stub - real implementation would calculate compression curve
-    return 0.0f;
+    if (envelope <= 0.0f) {
+        return 0.0f;
+    }
+    
+    // Convert envelope to dB
+    float envelopedB = 20.0f * std::log10(envelope);
+    
+    switch (fMode) {
+        case Mode::COMPRESSOR:
+            return CalculateCompressorGain(envelopedB);
+        case Mode::LIMITER:
+            return CalculateLimiterGain(envelopedB);
+        case Mode::GATE:
+            return CalculateGateGain(envelopedB);
+        case Mode::EXPANDER:
+            return CalculateExpanderGain(envelopedB);
+        default:
+            return 0.0f;
+    }
+}
+
+float DynamicsProcessor::ApplyKnee(float input, float threshold, float knee) {
+    if (knee <= 0.0f) {
+        // Hard knee
+        return input >= threshold ? input : threshold;
+    }
+    
+    // Soft knee
+    float kneeStart = threshold - knee / 2.0f;
+    float kneeEnd = threshold + knee / 2.0f;
+    
+    if (input <= kneeStart) {
+        return input;
+    } else if (input >= kneeEnd) {
+        return threshold + (input - threshold) / fRatio;
+    } else {
+        // Smooth transition in knee region
+        float x = (input - kneeStart) / knee;
+        float y = x * x; // Quadratic curve
+        float reduction = y * (input - threshold) / fRatio;
+        return input - reduction;
+    }
+}
+
+float DynamicsProcessor::CalculateCompressorGain(float inputdB) {
+    if (inputdB <= fThreshold) {
+        return 0.0f; // No compression below threshold
+    }
+    
+    float overdB = inputdB - fThreshold;
+    float compressedOverdB = overdB / fRatio;
+    float gainReduction = overdB - compressedOverdB;
+    
+    // Apply knee if specified
+    if (fKnee > 0.0f) {
+        float kneeStart = fThreshold - fKnee / 2.0f;
+        float kneeEnd = fThreshold + fKnee / 2.0f;
+        
+        if (inputdB >= kneeStart && inputdB <= kneeEnd) {
+            // Soft knee interpolation
+            float x = (inputdB - kneeStart) / fKnee;
+            float softRatio = 1.0f + (fRatio - 1.0f) * x * x;
+            compressedOverdB = overdB / softRatio;
+            gainReduction = overdB - compressedOverdB;
+        }
+    }
+    
+    return gainReduction;
+}
+
+float DynamicsProcessor::CalculateLimiterGain(float inputdB) {
+    if (inputdB <= fThreshold) {
+        return 0.0f;
+    }
+    
+    // Hard limiting - prevent signal from exceeding threshold
+    return inputdB - fThreshold;
+}
+
+float DynamicsProcessor::CalculateGateGain(float inputdB) {
+    if (inputdB >= fThreshold) {
+        return 0.0f; // No gating above threshold
+    }
+    
+    // Downward expansion below threshold (gate reduces signal)
+    float belowdB = fThreshold - inputdB;
+    float expandedBelowdB = belowdB * fRatio;
+    // Return positive gain reduction (signal will be attenuated)
+    return expandedBelowdB - belowdB;
+}
+
+float DynamicsProcessor::CalculateExpanderGain(float inputdB) {
+    if (inputdB >= fThreshold) {
+        return 0.0f; // No expansion above threshold
+    }
+    
+    // Gentler expansion than gate (reduces signal but less aggressively)
+    float belowdB = fThreshold - inputdB;
+    float expandedBelowdB = belowdB * (1.0f + (fRatio - 1.0f) * 0.5f);
+    // Return positive gain reduction
+    return expandedBelowdB - belowdB;
+}
+
+// Lookahead functionality implementation
+void DynamicsProcessor::SetLookaheadTime(float milliseconds) {
+    fLookaheadTime = std::max(0.0f, std::min(milliseconds, 20.0f)); // Clamp to 0-20ms
+    if (fInitialized) {
+        UpdateLookaheadParameters();
+    }
+}
+
+void DynamicsProcessor::InitializeLookaheadBuffers(size_t channelCount) {
+    if (!fLookaheadEnabled) return;
+    
+    fLookaheadBuffers.clear();
+    fBufferWritePos.clear();
+    fBufferReadPos.clear();
+    fPeakBuffer.clear();
+    
+    fLookaheadBuffers.resize(channelCount);
+    fBufferWritePos.resize(channelCount, 0);
+    fBufferReadPos.resize(channelCount, 0);
+    fPeakBuffer.resize(fLookaheadSamples, 0.0f);
+    
+    for (size_t i = 0; i < channelCount; ++i) {
+        fLookaheadBuffers[i].resize(fLookaheadSamples, 0.0f);
+    }
+}
+
+void DynamicsProcessor::UpdateLookaheadParameters() {
+    fLookaheadSamples = static_cast<size_t>(fLookaheadTime * fSampleRate / 1000.0f);
+    
+    if (fLookaheadEnabled && !fLookaheadBuffers.empty()) {
+        // Reinitialize buffers with new size
+        size_t channelCount = fLookaheadBuffers.size();
+        InitializeLookaheadBuffers(channelCount);
+    }
+}
+
+float DynamicsProcessor::ProcessLookaheadSample(size_t channel, float input) {
+    if (!fLookaheadEnabled || channel >= fLookaheadBuffers.size()) {
+        return input; // Bypass if lookahead disabled or invalid channel
+    }
+    
+    // Write input sample to circular buffer
+    WriteLookaheadSample(channel, input);
+    
+    // Analyze peak in lookahead window
+    float lookaheadPeak = AnalyzeLookaheadPeak(channel);
+    
+    // Read delayed sample from buffer
+    float delayedSample = ReadLookaheadSample(channel);
+    
+    // Calculate gain reduction based on lookahead peak
+    float peakdB = 20.0f * std::log10(std::max(lookaheadPeak, 1e-6f));
+    float gainReduction = 0.0f;
+    
+    if (fMode == Mode::LIMITER && peakdB > fThreshold) {
+        // Apply immediate limiting for zero-latency response
+        gainReduction = fThreshold - peakdB;
+        gainReduction = std::max(gainReduction, -60.0f); // Limit maximum reduction
+    }
+    
+    // Apply gain reduction to delayed sample
+    float gainLinear = std::pow(10.0f, gainReduction / 20.0f);
+    return delayedSample * gainLinear;
+}
+
+float DynamicsProcessor::AnalyzeLookaheadPeak(size_t channel) {
+    if (channel >= fLookaheadBuffers.size()) return 0.0f;
+    
+    float peak = 0.0f;
+    size_t readPos = fBufferReadPos[channel];
+    
+    // Analyze peak in the lookahead window
+    for (size_t i = 0; i < fLookaheadSamples; ++i) {
+        size_t pos = (readPos + i) % fLookaheadSamples;
+        float sample = std::abs(fLookaheadBuffers[channel][pos]);
+        peak = std::max(peak, sample);
+    }
+    
+    return peak;
+}
+
+void DynamicsProcessor::WriteLookaheadSample(size_t channel, float sample) {
+    if (channel >= fLookaheadBuffers.size()) return;
+    
+    fLookaheadBuffers[channel][fBufferWritePos[channel]] = sample;
+    fBufferWritePos[channel] = (fBufferWritePos[channel] + 1) % fLookaheadSamples;
+}
+
+float DynamicsProcessor::ReadLookaheadSample(size_t channel) {
+    if (channel >= fLookaheadBuffers.size()) return 0.0f;
+    
+    float sample = fLookaheadBuffers[channel][fBufferReadPos[channel]];
+    fBufferReadPos[channel] = (fBufferReadPos[channel] + 1) % fLookaheadSamples;
+    
+    return sample;
 }
 
 // SurroundProcessor implementation

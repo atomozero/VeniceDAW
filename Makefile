@@ -363,7 +363,7 @@ test-eq: clean-phase3-objects ProfessionalEQTest
 # Clean only Phase 3 object files
 clean-phase3-objects:
 	@echo "🧹 Cleaning Phase 3 object files..."
-	rm -f src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/testing/QuickEQTest.o
+	rm -f src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/testing/QuickEQTest.o src/testing/DynamicsProcessorTest.o
 
 # Quick simple EQ test
 QuickEQTest: src/testing/QuickEQTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o
@@ -379,6 +379,48 @@ test-eq-quick: clean-phase3-objects QuickEQTest
 	@echo "⚡ Running Quick EQ Test..."
 	./QuickEQTest
 	@echo "✅ Quick test completed!"
+
+# Dynamics processor tests
+DynamicsProcessorTest: src/testing/DynamicsProcessorTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o
+	@echo "🎚️ Building Dynamics Processor Test Suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) -fPIC src/testing/DynamicsProcessorTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o $(TEST_LIBS) -o DynamicsProcessorTest; \
+	else \
+		$(CXX) $(TEST_CXXFLAGS) src/testing/DynamicsProcessorTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o -o DynamicsProcessorTest; \
+	fi
+	@echo "✅ Dynamics Processor Test Suite built!"
+
+test-dynamics: clean-phase3-objects DynamicsProcessorTest
+	@echo "🎚️ Running Dynamics Processor DSP tests..."
+	./DynamicsProcessorTest
+	@echo "✅ Dynamics tests completed!"
+
+test-dynamics-quick: clean-phase3-objects DynamicsProcessorTest
+	@echo "⚡ Running Quick Dynamics Test..."
+	./DynamicsProcessorTest
+	@echo "✅ Quick dynamics test completed!"
+
+# Complete Phase 3 test suite
+test-phase3-complete: clean-phase3-objects ProfessionalEQTest DynamicsProcessorTest
+	@echo "🎯 Running Complete Phase 3 Test Suite..."
+	@echo "📊 Testing Professional EQ..."
+	./ProfessionalEQTest
+	@echo ""
+	@echo "🎚️ Testing Dynamics Processor..."
+	./DynamicsProcessorTest
+	@echo ""
+	@echo "🎉 Phase 3 Complete Test Suite finished!"
+
+# Quick Phase 3 validation
+test-phase3-quick: clean-phase3-objects QuickEQTest DynamicsProcessorTest  
+	@echo "⚡ Running Quick Phase 3 Validation..."
+	@echo "🎛️ Quick EQ Test..."
+	./QuickEQTest
+	@echo ""
+	@echo "🎚️ Quick Dynamics Test..."  
+	./DynamicsProcessorTest
+	@echo ""
+	@echo "✅ Phase 3 Quick Validation completed!"
 
 # Build complete optimization suite
 VeniceDAWOptimizer: src/optimization_runner.o src/testing/AudioOptimizer.o
@@ -619,4 +661,12 @@ src/testing/QuickEQTest.o: src/testing/QuickEQTest.cpp
 		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
 	fi
 
-.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer Phase3FoundationTest ProfessionalEQTest test-eq clean-phase3-objects QuickEQTest test-eq-quick
+src/testing/DynamicsProcessorTest.o: src/testing/DynamicsProcessorTest.cpp
+	@echo "🎚️ Compiling Dynamics Processor test suite..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -fPIC -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+.PHONY: all clean test-compile audio-only ui-only run install help test-framework test-framework-quick test-framework-full test-memory-stress test-performance-scaling test-performance-quick test-thread-safety test-gui-automation test-evaluate-phase2 setup-memory-debug validate-test-setup clean-tests VeniceDAWPerformanceRunner optimize-complete optimize-quick VeniceDAWOptimizer Phase3FoundationTest ProfessionalEQTest test-eq clean-phase3-objects QuickEQTest test-eq-quick DynamicsProcessorTest test-dynamics test-dynamics-quick

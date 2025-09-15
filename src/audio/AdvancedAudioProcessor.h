@@ -171,8 +171,15 @@ public:
         EXPANDER
     };
     
+    enum class DetectionMode {
+        PEAK,
+        RMS,
+        PEAK_RMS_HYBRID
+    };
+    
     DynamicsProcessor();
     
+    void Initialize(float sampleRate);
     void Process(AdvancedAudioBuffer& buffer) override;
     void ProcessRealtime(AdvancedAudioBuffer& buffer) override;
     
@@ -183,22 +190,63 @@ public:
     
     // Dynamics-specific methods
     void SetMode(Mode mode) { fMode = mode; }
+    void SetDetectionMode(DetectionMode mode);
+    void SetBypassed(bool bypassed);
     float GetGainReduction() const { return fGainReduction; }
+    float GetInputLevel() const { return fInputLevel; }
+    float GetOutputLevel() const { return fOutputLevel; }
+    
+    // Lookahead functionality for zero-latency limiting
+    void SetLookaheadTime(float milliseconds);
+    float GetLookaheadTime() const { return fLookaheadTime; }
+    void EnableLookahead(bool enabled) { fLookaheadEnabled = enabled; }
+    bool IsLookaheadEnabled() const { return fLookaheadEnabled; }
 
 private:
     Mode fMode{Mode::COMPRESSOR};
+    DetectionMode fDetectionMode{DetectionMode::RMS};
     float fThreshold{-12.0f};     // dB
     float fRatio{4.0f};           // Compression ratio
     float fAttack{10.0f};         // ms
     float fRelease{100.0f};       // ms
     float fKnee{2.0f};           // dB
+    float fMakeupGain{0.0f};     // dB
+    bool fAutoMakeup{false};
     
-    std::vector<float> fEnvelope; // Per-channel envelope followers
+    std::vector<DSP::EnvelopeFollower> fEnvelopeFollowers; // Per-channel envelope followers
     float fGainReduction{0.0f};
+    float fInputLevel{0.0f};
+    float fOutputLevel{0.0f};
     float fSampleRate{44100.0f};
+    bool fInitialized{false};
+    std::atomic<bool> fNeedsUpdate{true};
     
+    // Lookahead buffer system for zero-latency limiting
+    bool fLookaheadEnabled{false};
+    float fLookaheadTime{5.0f};  // Default 5ms lookahead
+    size_t fLookaheadSamples{0}; // Lookahead time in samples
+    std::vector<std::vector<float>> fLookaheadBuffers;  // Per-channel circular buffers
+    std::vector<size_t> fBufferWritePos;  // Write position for each channel
+    std::vector<size_t> fBufferReadPos;   // Read position for each channel
+    std::vector<float> fPeakBuffer;       // Peak analysis buffer for lookahead
+    
+    void InitializeChannels(size_t channelCount);
+    void UpdateEnvelopeFollowers();
     float ProcessEnvelope(size_t channel, float input);
     float CalculateGainReduction(float envelope);
+    float ApplyKnee(float input, float threshold, float knee);
+    float CalculateCompressorGain(float input);
+    float CalculateLimiterGain(float input);
+    float CalculateGateGain(float input);
+    float CalculateExpanderGain(float input);
+    
+    // Lookahead processing methods
+    void InitializeLookaheadBuffers(size_t channelCount);
+    void UpdateLookaheadParameters();
+    float ProcessLookaheadSample(size_t channel, float input);
+    float AnalyzeLookaheadPeak(size_t channel);
+    void WriteLookaheadSample(size_t channel, float sample);
+    float ReadLookaheadSample(size_t channel);
 };
 
 // Surround sound processor for multi-channel audio
