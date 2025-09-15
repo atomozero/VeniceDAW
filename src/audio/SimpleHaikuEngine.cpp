@@ -91,8 +91,14 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
     
     if (!entry.IsFile()) {
         printf("SimpleTrack: Path is not a file\n");
-        return B_NOT_A_FILE;
+        return B_ERROR;
     }
+    
+    // Debug: print entry_ref details
+    printf("SimpleTrack: entry_ref details:\n");
+    printf("  device: %d\n", (int)ref.device);
+    printf("  directory: %lld\n", (long long)ref.directory);
+    printf("  name: '%s'\n", ref.name ? ref.name : "NULL");
     
     // Get file size
     off_t fileSize;
@@ -100,7 +106,7 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
         printf("SimpleTrack: Cannot get file size\n");
         return B_ERROR;
     }
-    printf("SimpleTrack: File size: %lld bytes\n", fileSize);
+    printf("SimpleTrack: File size: %ld bytes\n", (long)fileSize);
     
     if (fileSize == 0) {
         printf("SimpleTrack: File is empty\n");
@@ -108,9 +114,10 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
     }
     
     // Try to create BMediaFile with detailed error reporting
-    media_file_format fileFormat;
     printf("SimpleTrack: Creating BMediaFile...\n");
-    fMediaFile = new BMediaFile(&ref, &fileFormat);
+    
+    // Try the simplest approach first (no format specification)
+    fMediaFile = new BMediaFile(&ref);
     
     status_t status = fMediaFile->InitCheck();
     if (status != B_OK) {
@@ -161,7 +168,7 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
         int32 cookie = 0;
         int formatCount = 0;
         
-        while (formats.GetNextFileFormat(&fileFormatInfo, &cookie) == B_OK) {
+        while (formats.GetNextFormat(&fileFormatInfo, &cookie) == B_OK) {
             if (fileFormatInfo.capabilities & media_file_format::B_READABLE) {
                 printf("  Available format: %s (%s)\n", 
                        fileFormatInfo.pretty_name, fileFormatInfo.short_name);
@@ -877,8 +884,8 @@ status_t SimpleTrack::LoadAudioFileAlternative(const entry_ref& ref)
     fFileSampleRate = fFileFormat.u.raw_audio.frame_rate;
     fFileDuration = fMediaTrack->CountFrames();
     
-    BPath path(&ref);
-    fFilePath.SetTo(path.Path());
+    BPath altPath(&ref);
+    fFilePath.SetTo(altPath.Path());
     fFileLoaded = true;
     fPlaybackFrame = 0;
     
