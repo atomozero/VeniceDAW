@@ -119,6 +119,11 @@ public:
     status_t Stop();
     bool IsRunning() const { return fRunning; }
     
+    // Playback controls  
+    void ResetAllTracks();     // Reset playback position of all loaded files
+    void SetMasterVolume(float volume) { fMasterVolume = volume; }
+    float GetMasterVolume() const { return fMasterVolume; }
+    
     status_t AddTrack(SimpleTrack* track);
     status_t RemoveTrack(int index);  // Remove track at index
     int GetTrackCount() const { return fTracks.size(); }

@@ -353,6 +353,10 @@ status_t SimpleHaikuEngine::Start()
     }
     
     fRunning = true;
+    
+    // Reset all file tracks to beginning when starting playback
+    ResetAllTracks();
+    
     printf("SimpleHaikuEngine: Started successfully!\n");
     return B_OK;
 }
@@ -372,6 +376,18 @@ status_t SimpleHaikuEngine::Stop()
     fRunning = false;
     printf("SimpleHaikuEngine: Stopped\n");
     return B_OK;
+}
+
+void SimpleHaikuEngine::ResetAllTracks()
+{
+    printf("SimpleHaikuEngine: Resetting all track positions to beginning\n");
+    
+    for (SimpleTrack* track : fTracks) {
+        if (track && track->HasFile()) {
+            track->SetPlaybackPosition(0);
+            printf("  Reset '%s' to beginning\n", track->GetName());
+        }
+    }
 }
 
 status_t SimpleHaikuEngine::AddTrack(SimpleTrack* track)
@@ -468,7 +484,7 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
         sampleRate = format.frame_rate;
     }
     
-    // Generate test signals for each track
+    // Process audio for each track
     for (size_t trackIndex = 0; trackIndex < fTracks.size(); trackIndex++) {
         SimpleTrack* track = fTracks[trackIndex];
         
@@ -485,7 +501,7 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
         
         if (!shouldPlay) continue;
         
-        float volume = track->GetVolume() * fMasterVolume * 0.1f; // Low volume for safety
+        float volume = track->GetVolume() * fMasterVolume * 0.3f; // Increased from 0.1f for audible files
         
         // Use track pan setting (-1 = left, 0 = center, +1 = right)
         float pan = track->GetPan();
@@ -493,22 +509,49 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
         float leftGain = (1.0f - pan) * 0.5f * volume;
         float rightGain = (1.0f + pan) * 0.5f * volume;
         
-        // Generate and mix audio + calculate levels
+        // Process audio based on track type
         float peakLevel = 0.0f;
         float rmsSum = 0.0f;
         
-        for (size_t i = 0; i < frameCount; i++) {
-            // Generate the test signal based on track type
-            float sample = GenerateTestSignal(track, sampleRate);
+        if (track->HasFile()) {
+            // FILE PLAYBACK: Read actual audio data from loaded file
+            float* trackBuffer = new float[frameCount * 2]; // Stereo buffer
+            memset(trackBuffer, 0, frameCount * 2 * sizeof(float));
             
-            buffer[i * 2] += sample * leftGain;      // Left
-            buffer[i * 2 + 1] += sample * rightGain; // Right
+            // Read audio data from file
+            status_t status = track->ReadFileData(trackBuffer, frameCount, sampleRate);
             
-            // Calculate levels for VU meter display
-            // Use track volume only (not master or 0.1 factor) for visual feedback
-            float displayLevel = fabsf(sample) * track->GetVolume();
-            peakLevel = fmaxf(peakLevel, displayLevel);
-            rmsSum += displayLevel * displayLevel;
+            if (status == B_OK) {
+                // Mix file audio into main buffer
+                for (size_t i = 0; i < frameCount; i++) {
+                    float leftSample = trackBuffer[i * 2];
+                    float rightSample = trackBuffer[i * 2 + 1];
+                    
+                    buffer[i * 2] += leftSample * leftGain;      // Left
+                    buffer[i * 2 + 1] += rightSample * rightGain; // Right
+                    
+                    // Calculate levels for VU meter using mixed samples
+                    float mixedSample = (leftSample + rightSample) * 0.5f;
+                    float displayLevel = fabsf(mixedSample) * track->GetVolume();
+                    peakLevel = fmaxf(peakLevel, displayLevel);
+                    rmsSum += displayLevel * displayLevel;
+                }
+            }
+            
+            delete[] trackBuffer;
+        } else {
+            // TEST SIGNAL GENERATION: For tracks without files
+            for (size_t i = 0; i < frameCount; i++) {
+                float sample = GenerateTestSignal(track, sampleRate);
+                
+                buffer[i * 2] += sample * leftGain;      // Left
+                buffer[i * 2 + 1] += sample * rightGain; // Right
+                
+                // Calculate levels for VU meter display
+                float displayLevel = fabsf(sample) * track->GetVolume();
+                peakLevel = fmaxf(peakLevel, displayLevel);
+                rmsSum += displayLevel * displayLevel;
+            }
         }
         
         // Update track levels (smooth decay)
@@ -521,9 +564,9 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
         track->UpdateLevels(smoothPeak, smoothRMS);
     }
     
-    // Calculate master levels from final buffer
-    // Normalize by the 0.1 factor used in audio processing to get visual levels
-    const float displayGain = 10.0f;  // Compensate for the 0.1 factor in volume calculation
+    // Calculate master levels from final buffer  
+    // Normalize by the 0.3 factor used in audio processing to get visual levels
+    const float displayGain = 3.33f;  // Compensate for the 0.3 factor in volume calculation
     
     for (size_t i = 0; i < frameCount; i++) {
         float leftSample = fabsf(buffer[i * 2]) * displayGain;     // Left channel

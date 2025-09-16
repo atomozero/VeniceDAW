@@ -32,17 +32,39 @@ make test-weather      # Test syntax only
 ### Testing
 ```bash
 ./run_cross_tests.sh    # Runs 8 comprehensive tests for cross-compilation
+./run_tests.sh          # Complete automated test suite for audio and 3D systems
 ```
+
+### Phase 5.3/5.4 Completed Features
+**✅ Actual File Playback Implementation**
+- Real audio file playback instead of test tones
+- Multi-track file mixing with proper gain staging  
+- Automatic file looping and position management
+- Enhanced volume control (0.3x factor for audible files)
+
+**✅ 3D Visualization System** 
+- Multiple sphere positioning in circular arrangement
+- Camera zoom controls (keyboard +/- and menu)
+- Camera reset functionality (R key and menu)
+- Proper track scaling and visual distinction
+- Fixed coordinate preservation during updates
+
+**✅ Automated Testing Suite**
+- Comprehensive audio playback testing
+- 3D mixer and camera control validation
+- Cross-platform syntax verification
+- Build system integrity checks
 
 ## Architecture & Key Components
 
 ### Audio Engine Architecture
 The audio system uses modern Haiku Media Kit APIs:
 
-- **Core Audio**: `play.cpp` - BSoundPlayer-based real-time audio with semaphore synchronization
-- **Buffer Management**: Fixed 2048-byte buffers at 44.1kHz stereo
-- **Channel System**: `channel.cpp` - Audio channel abstraction layer
-- **Track Objects**: `track_obj.cpp` (2,125 lines) - Main audio track management
+- **Core Audio**: `SimpleHaikuEngine.cpp` - BSoundPlayer-based real-time audio with proper file playback
+- **File Playback**: `ReadFileData()` - Actual audio file reading and mixing (Phase 5.3)
+- **Multi-Track Mixing**: Simultaneous playback of multiple audio files + test signals
+- **Buffer Management**: Dynamic stereo buffers with proper gain staging (0.3x for files)
+- **Playback Controls**: Play/Stop/Reset with automatic file position management
 
 ### DSP Components
 Located in root directory, implementing modular signal processing:
@@ -52,10 +74,11 @@ Located in root directory, implementing modular signal processing:
 
 ### GUI Architecture
 Multi-window system using Haiku Interface Kit:
-- **Main Window**: `wave_window.cpp` - Application entry point
-- **Sound Visualization**: `sound_view.cpp` (5,812 lines) - Core UI and waveform display
-- **Track View**: `track_view.cpp` (2,947 lines) - Multi-track interface
-- **Edit Window**: `edit_window.cpp` - Track editing functionality
+- **3D Mixer**: `Mixer3DWindow.cpp` - Revolutionary 3D audio visualization with OpenGL
+- **Spatial Audio**: `SpatialMixer3DWindow.cpp` - Professional spatial positioning controls  
+- **Camera Controls**: Full zoom (+/-), rotation (mouse), and reset (R) functionality
+- **Multi-Sphere Display**: Circular arrangement of audio tracks in 3D space
+- **Real-Time Visualization**: Live audio levels and spatial positioning feedback
 
 ## Critical Implementation Details
 
