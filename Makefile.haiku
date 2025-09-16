@@ -33,7 +33,7 @@ GUI_OBJECTS = $(GUI_SOURCES:.cpp=.o)
 TEST_OBJECTS = $(TEST_SOURCES:.cpp=.o)
 
 # Main targets
-.PHONY: all clean test-spatial test-hrtf test-audio test-3d help
+.PHONY: all clean test-spatial test-hrtf test-audio test-3d test-files help
 
 all: VeniceDAW
 
@@ -47,6 +47,7 @@ help:
 	@echo "  make -f Makefile.haiku test-hrtf    # Test HRTF Phase 4.2"
 	@echo "  make -f Makefile.haiku test-audio   # Test audio playback"
 	@echo "  make -f Makefile.haiku test-3d      # Test 3D mixer"
+	@echo "  make -f Makefile.haiku test-files   # Test file loading"
 	@echo "  make -f Makefile.haiku clean        # Clean build files"
 	@echo
 
@@ -76,6 +77,10 @@ test-3d: $(BUILD_DIR)/test_3d_mixer
 	@echo "👁️ Running 3D Mixer Tests..."
 	@$(BUILD_DIR)/test_3d_mixer
 
+test-files: $(BUILD_DIR)/test_file_loading
+	@echo "📁 Running File Loading Tests..."
+	@$(BUILD_DIR)/test_file_loading
+
 # Build test executables
 $(BUILD_DIR)/SpatialAudioTest: $(TEST_SRC)/SpatialAudioTest.cpp $(AUDIO_OBJECTS)
 	@mkdir -p $(BUILD_DIR)
@@ -96,6 +101,11 @@ $(BUILD_DIR)/test_3d_mixer: test_3d_mixer.cpp
 	@mkdir -p $(BUILD_DIR)  
 	@echo "🔧 Building 3D Mixer Test..."
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
+
+$(BUILD_DIR)/test_file_loading: test_file_loading.cpp $(AUDIO_OBJECTS)
+	@mkdir -p $(BUILD_DIR)
+	@echo "🔧 Building File Loading Test..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(AUDIO_OBJECTS) -o $@ $(LIBS)
 
 # Object file compilation
 %.o: %.cpp
