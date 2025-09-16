@@ -22,7 +22,8 @@ AUDIO_SOURCES = $(AUDIO_SRC)/SimpleHaikuEngine.cpp \
 # GUI sources  
 GUI_SOURCES = $(GUI_SRC)/Mixer3DWindow.cpp \
               $(GUI_SRC)/SpatialMixer3DWindow.cpp \
-              $(GUI_SRC)/SpatialControlPanels.cpp
+              $(GUI_SRC)/SpatialControlPanels.cpp \
+              $(GUI_SRC)/TransportWindow.cpp
 
 # Test sources
 TEST_SOURCES = $(TEST_SRC)/SpatialAudioTest.cpp
@@ -33,7 +34,7 @@ GUI_OBJECTS = $(GUI_SOURCES:.cpp=.o)
 TEST_OBJECTS = $(TEST_SOURCES:.cpp=.o)
 
 # Main targets
-.PHONY: all clean test-spatial test-hrtf test-audio test-3d test-files help
+.PHONY: all clean test-spatial test-hrtf test-audio test-3d test-files test-transport help
 
 all: VeniceDAW
 
@@ -48,6 +49,7 @@ help:
 	@echo "  make -f Makefile.haiku test-audio   # Test audio playback"
 	@echo "  make -f Makefile.haiku test-3d      # Test 3D mixer"
 	@echo "  make -f Makefile.haiku test-files   # Test file loading"
+	@echo "  make -f Makefile.haiku test-transport # Test transport GUI"
 	@echo "  make -f Makefile.haiku clean        # Clean build files"
 	@echo
 
@@ -81,6 +83,10 @@ test-files: $(BUILD_DIR)/test_file_loading
 	@echo "📁 Running File Loading Tests..."
 	@$(BUILD_DIR)/test_file_loading
 
+test-transport: $(BUILD_DIR)/test_transport_gui
+	@echo "🎛️ Running Transport GUI Test..."
+	@$(BUILD_DIR)/test_transport_gui
+
 # Build test executables
 $(BUILD_DIR)/SpatialAudioTest: $(TEST_SRC)/SpatialAudioTest.cpp $(AUDIO_OBJECTS)
 	@mkdir -p $(BUILD_DIR)
@@ -106,6 +112,11 @@ $(BUILD_DIR)/test_file_loading: test_file_loading.cpp $(AUDIO_OBJECTS)
 	@mkdir -p $(BUILD_DIR)
 	@echo "🔧 Building File Loading Test..."
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(AUDIO_OBJECTS) -o $@ $(LIBS)
+
+$(BUILD_DIR)/test_transport_gui: test_transport_gui.cpp $(AUDIO_OBJECTS) $(GUI_OBJECTS)
+	@mkdir -p $(BUILD_DIR)
+	@echo "🔧 Building Transport GUI Test..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(AUDIO_OBJECTS) $(GUI_OBJECTS) -o $@ $(LIBS)
 
 # Object file compilation
 %.o: %.cpp
