@@ -10,6 +10,11 @@
 #include <Entry.h>
 #include <iostream>
 #include <string>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace HaikuDAW;
 
@@ -89,7 +94,47 @@ private:
     void TestUserFiles() {
         std::cout << "\n📁 Testing with user files..." << std::endl;
         
-        // Check common user directories for test files
+        // Test with vocal samples directory
+        std::cout << "🎤 Testing vocal samples..." << std::endl;
+        const char* vocalSamples[] = {
+            "/boot/home/Desktop/3D Mixes/she-loves-it/she-loves-it-samples/vocal/ooh.wav",
+            "/boot/home/Desktop/3D Mixes/she-loves-it/she-loves-it-samples/vocal/ooh-ha-ha.wav",
+            "/boot/home/Desktop/3D Mixes/she-loves-it/she-loves-it-samples/vocal/ooh mid.wav",
+            "/boot/home/Desktop/3D Mixes/she-loves-it/she-loves-it-samples/vocal/wahauah.wav"
+        };
+        
+        for (const char* path : vocalSamples) {
+            BEntry entry(path);
+            entry_ref ref;
+            
+            if (entry.Exists() && entry.GetRef(&ref) == B_OK) {
+                std::cout << "Loading vocal sample: " << ref.name << std::endl;
+                status_t status = fEngine->LoadAudioFileAsTrack(ref);
+                
+                if (status == B_OK) {
+                    std::cout << "  ✅ Successfully loaded!" << std::endl;
+                    
+                    // Get track info
+                    SimpleTrack* track = fEngine->GetTrack(fEngine->GetTrackCount() - 1);
+                    if (track) {
+                        float duration = (float)track->GetFileDuration() / track->GetFileSampleRate();
+                        std::cout << "  Duration: " << duration << " seconds" << std::endl;
+                        std::cout << "  Sample Rate: " << track->GetFileSampleRate() << " Hz" << std::endl;
+                        
+                        // Position vocal samples in a nice circle
+                        float angle = (float)(fEngine->GetTrackCount() - 1) * 90.0f * M_PI / 180.0f;
+                        float radius = 3.0f;
+                        track->SetPosition(sinf(angle) * radius, cosf(angle) * radius, 0.0f);
+                    }
+                } else {
+                    std::cout << "  ❌ Failed to load: " << strerror(status) << std::endl;
+                }
+            } else {
+                std::cout << "  ⚠️  Vocal sample not found: " << path << std::endl;
+            }
+        }
+        
+        // Also check common user directories for test files
         const char* userPaths[] = {
             "/boot/home/Desktop/test.wav",
             "/boot/home/Desktop/test.mp3",
