@@ -128,9 +128,6 @@ public:
     status_t RemoveTrack(int index);  // Remove track at index
     int GetTrackCount() const { return fTracks.size(); }
     
-    void SetMasterVolume(float volume) { fMasterVolume = volume; }
-    float GetMasterVolume() const { return fMasterVolume; }
-    
     BString GetStatus() const;
     
     // Access tracks for level meter updates
