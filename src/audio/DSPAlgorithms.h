@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cmath>
+#include <algorithm>
 
 namespace VeniceDAW {
 namespace DSP {
