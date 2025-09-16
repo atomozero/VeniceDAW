@@ -235,10 +235,10 @@ private:
             auto& surroundProcessor = processor.GetSurroundProcessor();
             
             // Test spatial positioning backend without GUI
-            Vector3D testPosition(2.0f, 1.0f, -1.0f);
+            VeniceDAW::DSP::Vector3D testPosition(2.0f, 1.0f, -1.0f);
             surroundProcessor.SetSourcePosition(testPosition);
             
-            Vector3D retrievedPosition = surroundProcessor.GetSourcePosition();
+            VeniceDAW::DSP::Vector3D retrievedPosition = surroundProcessor.GetSourcePosition();
             if (retrievedPosition.x == 2.0f && retrievedPosition.y == 1.0f && retrievedPosition.z == -1.0f) {
                 Pass("Spatial position backend functionality");
             } else {

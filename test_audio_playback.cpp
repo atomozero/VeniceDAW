@@ -147,9 +147,12 @@ private:
             
             // Test solo functionality
             if (engine->GetTrackCount() > 0) {
-                engine->GetTrack(0)->SetSolo(true);
-                engine->UpdateSoloState();
-                Pass("Solo functionality");
+                engine->SetTrackSolo(0, true);
+                if (engine->GetSoloTrack() == 0) {
+                    Pass("Solo functionality");
+                } else {
+                    Fail("Solo functionality", "Solo track not set correctly");
+                }
             }
             
         } catch (...) {
