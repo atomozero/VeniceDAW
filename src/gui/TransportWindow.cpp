@@ -260,12 +260,14 @@ void TransportView::DrawPlayhead(BRect rect)
 void TransportView::SetEngine(HaikuDAW::SimpleHaikuEngine* engine)
 {
     fEngine = engine;
-    UpdateDisplay();
+    if (fTimeDisplay && fTrackInfo) {
+        UpdateDisplay();
+    }
 }
 
 void TransportView::UpdateDisplay()
 {
-    if (!fEngine) return;
+    if (!fEngine || !fTrackInfo) return;
     
     UpdateTimeDisplay();
     
@@ -297,6 +299,8 @@ void TransportView::UpdateDisplay()
 
 void TransportView::UpdateTimeDisplay()
 {
+    if (!fTimeDisplay) return;
+    
     // Simple time display - would need actual playback position from engine
     BString timeStr("00:00.0 / 00:00.0");
     fTimeDisplay->SetText(timeStr.String());
