@@ -918,8 +918,8 @@ void SurroundProcessor::SetHRTFDatabase(const float* leftHRTF, const float* righ
     size_t previousLatency = fLatencySamples;
     
     if (!fLeftHRTF) {
-        fLeftHRTF = std::make_unique<DSP::ConvolutionEngine>(impulseLength);
-        fRightHRTF = std::make_unique<DSP::ConvolutionEngine>(impulseLength);
+        fLeftHRTF.reset(new DSP::ConvolutionEngine(impulseLength));
+        fRightHRTF.reset(new DSP::ConvolutionEngine(impulseLength));
     }
     
     fLeftHRTF->SetImpulseResponse(leftHRTF, impulseLength);
@@ -1051,7 +1051,7 @@ void SurroundProcessor::InitializeSpatialProcessing() {
     
     fSpatialDelays.clear();
     for (size_t i = 0; i < channelCount; ++i) {
-        fSpatialDelays.push_back(std::make_unique<DSP::DelayLine>(maxDelaySamples));
+        fSpatialDelays.push_back(std::unique_ptr<DSP::DelayLine>(new DSP::DelayLine(maxDelaySamples)));
     }
 }
 
