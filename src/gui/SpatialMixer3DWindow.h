@@ -10,14 +10,14 @@
 
 #include "Mixer3DWindow.h"
 #include "../audio/AdvancedAudioProcessor.h"
-#include <TabView.h>
-#include <CheckBox.h>
-#include <Slider.h>
-#include <MenuField.h>
-#include <PopUpMenu.h>
-#include <TextControl.h>
-#include <FilePanel.h>
-#include <Alert.h>
+#include <interface/TabView.h>
+#include <interface/CheckBox.h>
+#include <interface/Slider.h>
+#include <interface/MenuField.h>
+#include <interface/PopUpMenu.h>
+#include <interface/TextControl.h>
+#include <storage/FilePanel.h>
+#include <interface/Alert.h>
 #include <atomic>
 #include <mutex>
 #include <queue>

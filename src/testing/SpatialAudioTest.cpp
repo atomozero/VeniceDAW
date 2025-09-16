@@ -12,11 +12,10 @@
 #include <vector>
 #include <chrono>
 
-#ifdef __HAIKU__
-    #include <MediaKit.h>
-#else
-    #include "HaikuMockHeaders.h"
-#endif
+// VeniceDAW - Haiku OS Native Headers Only
+#include <media/SoundPlayer.h>
+#include <kernel/OS.h>
+#include <support/SupportDefs.h>
 
 #include "../audio/AdvancedAudioProcessor.h"
 

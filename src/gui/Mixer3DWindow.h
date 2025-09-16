@@ -6,14 +6,14 @@
 #ifndef MIXER_3D_WINDOW_H
 #define MIXER_3D_WINDOW_H
 
-#include <Window.h>
-#include <GLView.h>
-#include <GroupLayout.h>
-#include <MenuBar.h>
-#include <MenuItem.h>
-#include <Button.h>
-#include <StringView.h>
-#include <MessageRunner.h>
+#include <interface/Window.h>
+#include <opengl/GLView.h>
+#include <interface/GroupLayout.h>
+#include <interface/MenuBar.h>
+#include <interface/MenuItem.h>
+#include <interface/Button.h>
+#include <interface/StringView.h>
+#include <app/MessageRunner.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <vector>

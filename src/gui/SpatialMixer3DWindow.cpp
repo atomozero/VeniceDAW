@@ -8,10 +8,10 @@
 #include "SpatialMixer3DWindow.h"
 #include "../audio/SimpleHaikuEngine.h"
 #include "../benchmark/PerformanceStation.h"
-#include <Application.h>
-#include <Alert.h>
-#include <LayoutBuilder.h>
-#include <GroupLayoutBuilder.h>
+#include <app/Application.h>
+#include <interface/Alert.h>
+#include <interface/LayoutBuilder.h>
+#include <interface/GroupLayoutBuilder.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <chrono>

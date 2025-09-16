@@ -8,13 +8,12 @@
 #ifndef ADVANCED_AUDIO_PROCESSOR_H
 #define ADVANCED_AUDIO_PROCESSOR_H
 
-#ifdef __HAIKU__
-    #include <MediaKit.h>
-    #include <SoundPlayer.h>
-    #include <OS.h>
-#else
-    #include "../testing/HaikuMockHeaders.h"
-#endif
+// VeniceDAW - Haiku OS Native Headers Only
+#include <media/SoundPlayer.h>
+#include <media/MediaFile.h>
+#include <media/MediaTrack.h>
+#include <kernel/OS.h>
+#include <support/SupportDefs.h>
 
 #include <vector>
 #include <memory>

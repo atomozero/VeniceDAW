@@ -1,0 +1,114 @@
+# Makefile.haiku - Native Haiku OS compilation only
+# VeniceDAW Professional Spatial Audio Workstation
+
+CXX = g++
+CXXFLAGS = -std=c++11 -Wall -O2 -DHAIKU_NATIVE
+INCLUDES = -I. -Isrc -I/boot/system/develop/headers -I/boot/system/develop/headers/os
+LIBS = -lbe -lmedia -ltracker -lroot -lGL -lGLU
+
+# Source directories
+AUDIO_SRC = src/audio
+GUI_SRC = src/gui
+TEST_SRC = src/testing
+
+# Output directory
+BUILD_DIR = build
+
+# Core audio sources
+AUDIO_SOURCES = $(AUDIO_SRC)/SimpleHaikuEngine.cpp \
+                $(AUDIO_SRC)/AdvancedAudioProcessor.cpp \
+                $(AUDIO_SRC)/DSPAlgorithms.cpp
+
+# GUI sources  
+GUI_SOURCES = $(GUI_SRC)/Mixer3DWindow.cpp \
+              $(GUI_SRC)/SpatialMixer3DWindow.cpp \
+              $(GUI_SRC)/SpatialControlPanels.cpp
+
+# Test sources
+TEST_SOURCES = $(TEST_SRC)/SpatialAudioTest.cpp
+
+# Object files
+AUDIO_OBJECTS = $(AUDIO_SOURCES:.cpp=.o)
+GUI_OBJECTS = $(GUI_SOURCES:.cpp=.o)
+TEST_OBJECTS = $(TEST_SOURCES:.cpp=.o)
+
+# Main targets
+.PHONY: all clean test-spatial test-hrtf test-audio test-3d help
+
+all: VeniceDAW
+
+help:
+	@echo "VeniceDAW Native Haiku Build System"
+	@echo "=================================="
+	@echo "Usage:"
+	@echo "  make -f Makefile.haiku          # Build main application"
+	@echo "  make -f Makefile.haiku test-all # Run all tests"
+	@echo "  make -f Makefile.haiku test-spatial # Test spatial audio"
+	@echo "  make -f Makefile.haiku test-hrtf    # Test HRTF Phase 4.2"
+	@echo "  make -f Makefile.haiku test-audio   # Test audio playback"
+	@echo "  make -f Makefile.haiku test-3d      # Test 3D mixer"
+	@echo "  make -f Makefile.haiku clean        # Clean build files"
+	@echo
+
+# Main application (not yet implemented - focus on tests first)
+VeniceDAW: $(AUDIO_OBJECTS) $(GUI_OBJECTS)
+	@echo "🚀 Building VeniceDAW for Haiku OS..."
+	@echo "⚠️  Main application build not yet implemented"
+	@echo "   Use test targets to validate components"
+
+# Test targets
+test-all: test-spatial test-hrtf test-audio test-3d
+	@echo "🎉 All VeniceDAW tests completed!"
+
+test-spatial: $(BUILD_DIR)/SpatialAudioTest
+	@echo "🎯 Running Spatial Audio Tests (Phase 3.4 + 4.2)..."
+	@$(BUILD_DIR)/SpatialAudioTest
+
+test-hrtf: $(BUILD_DIR)/test_phase4_2_hrtf  
+	@echo "🎧 Running HRTF & Binaural Tests (Phase 4.2)..."
+	@$(BUILD_DIR)/test_phase4_2_hrtf
+
+test-audio: $(BUILD_DIR)/test_audio_playback
+	@echo "🎵 Running Audio Playback Tests (Phase 5.3/5.4)..."
+	@$(BUILD_DIR)/test_audio_playback
+
+test-3d: $(BUILD_DIR)/test_3d_mixer
+	@echo "👁️ Running 3D Mixer Tests..."
+	@$(BUILD_DIR)/test_3d_mixer
+
+# Build test executables
+$(BUILD_DIR)/SpatialAudioTest: $(TEST_SRC)/SpatialAudioTest.cpp $(AUDIO_OBJECTS)
+	@mkdir -p $(BUILD_DIR)
+	@echo "🔧 Building Spatial Audio Test..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(AUDIO_OBJECTS) -o $@ $(LIBS)
+
+$(BUILD_DIR)/test_phase4_2_hrtf: test_phase4_2_hrtf.cpp $(AUDIO_OBJECTS)
+	@mkdir -p $(BUILD_DIR)
+	@echo "🔧 Building Phase 4.2 HRTF Test..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(AUDIO_OBJECTS) -o $@ $(LIBS)
+
+$(BUILD_DIR)/test_audio_playback: test_audio_playback.cpp $(AUDIO_OBJECTS)
+	@mkdir -p $(BUILD_DIR)
+	@echo "🔧 Building Audio Playback Test..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(AUDIO_OBJECTS) -o $@ $(LIBS)
+
+$(BUILD_DIR)/test_3d_mixer: test_3d_mixer.cpp
+	@mkdir -p $(BUILD_DIR)  
+	@echo "🔧 Building 3D Mixer Test..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LIBS)
+
+# Object file compilation
+%.o: %.cpp
+	@echo "📦 Compiling $<..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Clean
+clean:
+	@echo "🧹 Cleaning build files..."
+	rm -rf $(BUILD_DIR)
+	rm -f $(AUDIO_OBJECTS) $(GUI_OBJECTS) $(TEST_OBJECTS)
+	@echo "✅ Clean complete"
+
+# Create build directory
+$(BUILD_DIR):
+	@mkdir -p $(BUILD_DIR)
