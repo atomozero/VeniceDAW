@@ -947,6 +947,45 @@ void SurroundProcessor::EnableCrossfeed(bool enabled, float amount) {
     }
 }
 
+void SurroundProcessor::EnableHRTF(bool enabled) {
+    if (enabled && !fHRTFEnabled) {
+        // Enable HRTF - load default if no database loaded
+        if (!fLeftHRTF || !fRightHRTF) {
+            LoadDefaultHRTF();
+        }
+        fHRTFEnabled = true;
+        printf("SurroundProcessor: HRTF binaural processing enabled\n");
+    } else if (!enabled && fHRTFEnabled) {
+        fHRTFEnabled = false;
+        printf("SurroundProcessor: HRTF binaural processing disabled\n");
+    }
+    
+    // Update spatial mode to BINAURAL_HRTF if enabling
+    if (enabled) {
+        SetSpatialMode(SpatialMode::BINAURAL_HRTF);
+    }
+}
+
+void SurroundProcessor::LoadDefaultHRTF() {
+    // Create simple generic HRTF for demonstration
+    // In a real implementation, this would load from embedded HRTF database
+    const size_t hrtfLength = 128;
+    std::vector<float> leftHRTF(hrtfLength, 0.0f);
+    std::vector<float> rightHRTF(hrtfLength, 0.0f);
+    
+    // Simple impulse response with slight delay difference
+    leftHRTF[0] = 0.8f;    // Direct response
+    leftHRTF[10] = 0.2f;   // Early reflection
+    
+    rightHRTF[0] = 0.7f;   // Direct response (slightly attenuated)
+    rightHRTF[15] = 0.3f;  // Early reflection (different timing)
+    
+    // Load the generic HRTF at 0° azimuth, 0° elevation
+    SetHRTFDatabase(leftHRTF.data(), rightHRTF.data(), hrtfLength, 0.0f, 0.0f);
+    
+    printf("SurroundProcessor: Loaded built-in generic HRTF (length=%zu)\n", hrtfLength);
+}
+
 // Spatial parameter getters
 DSP::SphericalCoordinate SurroundProcessor::GetRelativePosition() const {
     return DSP::SpatialAudioMath::CalculateRelativePosition(

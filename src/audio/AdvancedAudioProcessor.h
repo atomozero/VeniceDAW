@@ -301,6 +301,9 @@ public:
     void SetHRTFDatabase(const float* leftHRTF, const float* rightHRTF, size_t impulseLength, 
                         float azimuth, float elevation);
     void EnableCrossfeed(bool enabled, float amount = 0.3f);
+    void EnableHRTF(bool enabled);
+    bool IsHRTFEnabled() const { return fHRTFEnabled; }
+    void LoadDefaultHRTF();  // Load built-in generic HRTF
     
     // Spatial parameters getters
     DSP::Vector3D GetSourcePosition() const { return fSourcePosition; }

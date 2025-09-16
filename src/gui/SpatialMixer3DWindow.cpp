@@ -156,6 +156,11 @@ void SpatialMixer3DView::RenderSpatialScene()
     if (fShowSpatialIndicators) {
         DrawSpatialIndicators();
     }
+    
+    // Draw HRTF processing indicator if enabled
+    if (fAudioProcessor && fAudioProcessor->GetSurroundProcessor().IsHRTFEnabled()) {
+        DrawHRTFVisualization();
+    }
 }
 
 void SpatialMixer3DView::DrawSpatialTrack(const SpatialTrack3D& track)
@@ -379,6 +384,88 @@ void SpatialMixer3DView::DrawSurroundSpeakerLayout()
         glEnd();
         glPopMatrix();
     }
+}
+
+void SpatialMixer3DView::DrawHRTFVisualization()
+{
+    // Draw HRTF processing indicator - head representation at listener position
+    glPushMatrix();
+    glTranslatef(fListenerPosition.x, fListenerPosition.y, fListenerPosition.z);
+    
+    // Draw head as slightly flattened sphere with HRTF active indication
+    glColor4f(0.2f, 0.8f, 1.0f, 0.7f);  // Cyan color for HRTF active
+    GLUquadric* headQuadric = gluNewQuadric();
+    gluQuadricDrawStyle(headQuadric, GLU_FILL);
+    
+    // Head sphere (slightly flattened)
+    glPushMatrix();
+    glScalef(0.4f, 0.3f, 0.4f);
+    gluSphere(headQuadric, 1.0, 16, 12);
+    glPopMatrix();
+    
+    // Draw ears as small spheres to indicate HRTF processing points
+    glColor4f(1.0f, 0.8f, 0.2f, 0.8f);  // Golden color for ears
+    
+    // Left ear
+    glPushMatrix();
+    glTranslatef(-0.45f, 0.0f, 0.0f);
+    glScalef(0.1f, 0.1f, 0.1f);
+    gluSphere(headQuadric, 1.0, 8, 6);
+    glPopMatrix();
+    
+    // Right ear
+    glPushMatrix();
+    glTranslatef(0.45f, 0.0f, 0.0f);
+    glScalef(0.1f, 0.1f, 0.1f);
+    gluSphere(headQuadric, 1.0, 8, 6);
+    glPopMatrix();
+    
+    gluDeleteQuadric(headQuadric);
+    
+    // Draw HRTF effect visualization - sound waves from sources
+    glLineWidth(1.0f);
+    glColor4f(0.2f, 1.0f, 0.8f, 0.3f);  // Translucent cyan
+    
+    // Draw lines from each track to each ear showing HRTF processing
+    for (const auto& track : fSpatialTracks) {
+        if (track.spatialEnabled) {
+            glBegin(GL_LINES);
+            
+            // Line to left ear (with slight curve effect)
+            glVertex3f(track.x, track.y, track.z);
+            glVertex3f(fListenerPosition.x - 0.45f, fListenerPosition.y, fListenerPosition.z);
+            
+            // Line to right ear  
+            glVertex3f(track.x, track.y, track.z);
+            glVertex3f(fListenerPosition.x + 0.45f, fListenerPosition.y, fListenerPosition.z);
+            
+            glEnd();
+        }
+    }
+    
+    glPopMatrix();
+    
+    // Draw HRTF status text overlay (top-right corner)
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0, Bounds().Width(), 0, Bounds().Height(), -1, 1);
+    
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+    
+    glColor3f(0.2f, 1.0f, 0.8f);
+    glRasterPos2f(Bounds().Width() - 150, Bounds().Height() - 30);
+    
+    // Simple text rendering (placeholder - in real implementation would use proper text rendering)
+    // BString hrtfText = "HRTF ACTIVE";
+    // DrawGLText(hrtfText.String());  // Would need proper implementation
+    
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
 }
 
 void SpatialMixer3DView::DrawSpatialIndicators()

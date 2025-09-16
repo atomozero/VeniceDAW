@@ -144,6 +144,7 @@ protected:
     void DrawSpatialIndicators();
     void DrawRoomBoundaries();
     void DrawSurroundSpeakerLayout();
+    void DrawHRTFVisualization();
     
     // Spatial parameter calculations
     void UpdateTrackSpatialParameters(SpatialTrack3D& track);
