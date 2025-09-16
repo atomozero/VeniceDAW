@@ -7,6 +7,7 @@
 #include <LayoutBuilder.h>
 #include <GroupLayout.h>
 #include <StringFormat.h>
+#include <Screen.h>
 #include <stdio.h>
 #include <cmath>
 
@@ -33,7 +34,6 @@ void TransportView::AttachedToWindow()
     BView::AttachedToWindow();
     
     // Create transport controls
-    BRect bounds = Bounds();
     
     // Play button
     BRect playRect(10, 10, 60, 40);
