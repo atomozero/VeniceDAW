@@ -31,9 +31,20 @@ make test-weather      # Test syntax only
 
 ### Testing
 ```bash
-./run_cross_tests.sh    # Runs 8 comprehensive tests for cross-compilation
+# WSL/Linux (Syntax validation only - NO compilation)
+./validate_syntax.sh    # Complete syntax validation for all VeniceDAW components
+
+# Haiku OS Native (Real compilation and execution)
 ./run_tests.sh          # Complete automated test suite for audio and 3D systems
-./test_phase4_2_hrtf    # Phase 4.2 HRTF & Binaural Interface validation (8 tests)
+make test-spatial        # Spatial audio processing tests
+make test-eq            # Professional EQ tests
+make test-dynamics      # Dynamics processing tests
+make test-binaural      # HRTF binaural processing tests
+
+# Individual Test Files (Haiku OS only)
+./test_phase4_2_hrtf    # Phase 4.2 HRTF & Binaural Interface (8 tests)
+./test_audio_playback   # Audio playback and file mixing tests  
+./test_3d_mixer         # 3D visualization and camera controls
 ```
 
 ### Phase 5.3/5.4 Completed Features
