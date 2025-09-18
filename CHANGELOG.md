@@ -1,5 +1,40 @@
 # VeniceDAW Changelog
 
+## Phase 6.2.0 - Professional Transport Controls (2025-09-18)
+
+### Major Features Added
+- **Professional Transport Window**: Native Haiku BWindow-based transport controls
+- **Audio File Playback**: Real BMediaFile integration with WAV, AIFF, MP3, OGG support
+- **Transport Functionality**: Play, Stop, Pause, Record button implementation
+- **File Loading Infrastructure**: Comprehensive vocal sample testing framework
+- **Enhanced GUI Integration**: Native Haiku look and feel throughout interface
+
+### Audio System Enhancements
+- **BMediaFile Integration**: Native MediaKit file reading and playback
+- **Multi-Format Support**: Professional audio format compatibility via BMediaTrack
+- **Transport State Management**: Professional play/stop/pause state handling
+- **File Loading Tests**: Vocal sample testing infrastructure for quality assurance
+
+### User Interface Improvements
+- **Transport Window**: Professional transport controls window
+- **Native Controls**: Standard Haiku BButton and BView implementation
+- **Responsive Design**: Proper window sizing and control layout
+- **Professional Appearance**: Industry-standard transport button layout
+
+### Technical Achievements
+- **Real File Playback**: Actual audio files playing instead of test signals
+- **MediaKit Mastery**: Full native Haiku audio file handling
+- **Professional Controls**: Industry-standard transport functionality
+- **Test Infrastructure**: Comprehensive file loading validation system
+
+### Bug Fixes
+- **Transport GUI Segfaults**: Resolved initialization issues in transport window
+- **File Loading Errors**: Improved error handling for unsupported formats
+- **State Management**: Fixed transport button state synchronization
+- **Memory Management**: Proper cleanup of BMediaFile resources
+
+---
+
 ## Phase 4.0.0 - Professional Spatial Audio Integration (2024-12-15)
 
 ### Major Features Added
