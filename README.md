@@ -149,7 +149,7 @@ VeniceDAW has completed Phase 6 with full audio file playback and professional t
 ## 🛠️ Building VeniceDAW
 
 ### **Requirements**
-- Haiku OS R1/Beta4 or later
+- Haiku OS R1/Beta4 or later (native system)
 - GCC 11+ with C++11 support
 - Standard Haiku development packages
 

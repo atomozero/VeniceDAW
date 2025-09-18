@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # quick_setup.sh - Setup rapido VeniceDAW Testing Framework
-# Per uso immediato su Haiku VM
+# Per uso immediato su Haiku
 
 echo "🚀 VeniceDAW Quick Setup for Phase 2 Testing"
 echo "============================================"
@@ -9,8 +9,7 @@ echo "============================================"
 # Verifica sistema
 if [ "$(uname)" != "Haiku" ]; then
     echo "❌ Questo script deve essere eseguito su Haiku nativo"
-    echo "   SSH alla VM: ssh -p 2222 user@localhost"
-    echo "   Password: sapone"
+    echo "   Esegui su sistema Haiku fisico o emulato"
     exit 1
 fi
 
@@ -67,6 +66,6 @@ echo "   make test-framework-full     - Test completo 8+ ore"
 echo "   make test-evaluate-phase2    - Valutazione finale Go/No-Go"
 echo ""
 echo "📚 Documentazione:"
-echo "   cat HAIKU_VM_TESTING.md     - Guida completa"
+echo "   README.md                   - Guida progetto"
 echo ""
 echo "💡 Per iniziare: ./quick_test.sh"

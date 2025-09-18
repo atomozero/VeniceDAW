@@ -192,7 +192,7 @@ make -f Makefile.cross syntax-check    # Syntax validation only
 ### Real Compilation (Haiku Only)
 All actual compilation MUST be done on native Haiku:
 ```bash
-# ON HAIKU VM/SYSTEM ONLY:
+# ON HAIKU SYSTEM ONLY:
 make                    # Release build
 make DEBUG=1           # Debug build
 make optimize-quick    # Audio optimization suite
