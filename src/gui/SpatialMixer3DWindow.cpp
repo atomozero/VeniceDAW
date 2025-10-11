@@ -9,9 +9,13 @@
 #include "../audio/SimpleHaikuEngine.h"
 #include "../benchmark/PerformanceStation.h"
 #include <app/Application.h>
+#include <app/MessageRunner.h>
 #include <interface/Alert.h>
 #include <interface/LayoutBuilder.h>
 #include <interface/GroupLayoutBuilder.h>
+#include <interface/MenuBar.h>
+#include <interface/Menu.h>
+#include <interface/MenuItem.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <chrono>
@@ -58,7 +62,7 @@ SpatialMixer3DView::SpatialMixer3DView(BRect frame, SimpleHaikuEngine* engine,
     , fAudioProcessor(processor)
     , fLastRenderTime(system_time())
 {
-    printf("SpatialMixer3DView: Initializing Phase 4 spatial audio integration\n");
+    // Initializing spatial audio integration
     
     // Set initial listener position at origin
     fListenerPosition = Vector3D(0.0f, 0.0f, 0.0f);
@@ -75,7 +79,7 @@ SpatialMixer3DView::SpatialMixer3DView(BRect frame, SimpleHaikuEngine* engine,
 
 SpatialMixer3DView::~SpatialMixer3DView()
 {
-    printf("SpatialMixer3DView: Cleaning up spatial audio integration\n");
+    // Cleaning up
     
     // Process any remaining parameter updates before destruction
     ProcessParameterUpdates();
@@ -504,13 +508,24 @@ void SpatialMixer3DView::UpdateSpatialTracks()
     
     // Resize spatial tracks vector if needed
     size_t trackCount = f3DTracks.size();  // From parent class
-    
+
     if (fSpatialTracks.size() != trackCount) {
         fSpatialTracks.clear();
         for (size_t i = 0; i < trackCount; i++) {
+            // Bounds check before accessing f3DTracks
+            if (i >= f3DTracks.size()) {
+                break;
+            }
+
             fSpatialTracks.emplace_back(f3DTracks[i].track);
+
+            // Bounds check before accessing newly created spatial track
+            if (i >= fSpatialTracks.size()) {
+                break;
+            }
+
             fSpatialTracks[i].Track3D::operator=(f3DTracks[i]);  // Copy base Track3D data
-            
+
             // IMPORTANT: Set spatialPosition to match the 3D coordinates
             fSpatialTracks[i].spatialPosition.x = f3DTracks[i].x;
             fSpatialTracks[i].spatialPosition.y = f3DTracks[i].z;  // OpenGL Y->Z mapping
@@ -742,15 +757,19 @@ SpatialTrack3D* SpatialMixer3DView::GetSpatialTrackAt(BPoint point)
 
 void SpatialMixer3DView::BeginTrackPositioning(SpatialTrack3D* track, BPoint startPoint)
 {
+    if (!track || fSpatialTracks.empty()) {
+        return;
+    }
+
     fDraggingTrack = track;
     fDragStartPoint = startPoint;
     fDragStartPosition = track->spatialPosition;
     track->selected = true;
     track->showParameters = true;
-    
-    printf("SpatialMixer3DView: Started positioning track at (%.2f, %.2f, %.2f)\n", 
+
+    // printf("SpatialMixer3DView: Started positioning track at (%.2f, %.2f, %.2f)\n",
            track->spatialPosition.x, track->spatialPosition.y, track->spatialPosition.z);
-           
+
     Invalidate();
 }
 
@@ -781,11 +800,20 @@ void SpatialMixer3DView::UpdateTrackPositioning(BPoint currentPoint)
     fDraggingTrack->x = newPosition.x;
     fDraggingTrack->y = newPosition.z;  // Swap Y/Z for OpenGL coordinates
     fDraggingTrack->z = newPosition.y;
-    
-    // Queue parameter update for audio thread
-    int trackIndex = fDraggingTrack - &fSpatialTracks[0];  // Get index
-    QueueParameterUpdate(SpatialParameterUpdate::Position(trackIndex, newPosition));
-    
+
+    // Queue parameter update for audio thread - find index safely
+    int trackIndex = -1;
+    for (size_t i = 0; i < fSpatialTracks.size(); i++) {
+        if (&fSpatialTracks[i] == fDraggingTrack) {
+            trackIndex = static_cast<int>(i);
+            break;
+        }
+    }
+
+    if (trackIndex >= 0) {
+        QueueParameterUpdate(SpatialParameterUpdate::Position(trackIndex, newPosition));
+    }
+
     Invalidate();
 }
 
@@ -796,7 +824,7 @@ void SpatialMixer3DView::EndTrackPositioning()
     fDraggingTrack->selected = false;
     fDraggingTrack->showParameters = false;
     
-    printf("SpatialMixer3DView: Finished positioning track at (%.2f, %.2f, %.2f)\n",
+    // printf("SpatialMixer3DView: Finished positioning track at (%.2f, %.2f, %.2f)\n",
            fDraggingTrack->spatialPosition.x, fDraggingTrack->spatialPosition.y, fDraggingTrack->spatialPosition.z);
     
     fDraggingTrack = nullptr;
@@ -846,6 +874,119 @@ Vector3D SpatialMixer3DView::GetTrackSpatialPosition(int trackIndex) const
         return fSpatialTracks[trackIndex].spatialPosition;
     }
     return Vector3D(0.0f, 0.0f, 0.0f);
+}
+
+// =====================================
+// SpatialMixer3DWindow Implementation
+// =====================================
+
+SpatialMixer3DWindow::SpatialMixer3DWindow(SimpleHaikuEngine* engine, AdvancedAudioProcessor* processor)
+    : BWindow(BRect(300, 100, 1000, 700), "VeniceDAW - 3D Spatial Mixer", B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS)
+    , fEngine(engine)
+    , fAudioProcessor(processor)
+    , fMenuBar(nullptr)
+    , fSpatialView(nullptr)
+    , fControlPanel(nullptr)
+    , fUpdateRunner(nullptr)
+{
+    // Creating 3D mixer window
+    CreateInterface();
+
+    // Start update timer for real-time visualization
+    BMessage updateMsg('updt');
+    fUpdateRunner = new BMessageRunner(BMessenger(this), &updateMsg, 50000); // 20 FPS
+}
+
+SpatialMixer3DWindow::~SpatialMixer3DWindow()
+{
+    // Destroying
+    delete fUpdateRunner;
+}
+
+bool SpatialMixer3DWindow::QuitRequested()
+{
+    // printf("SpatialMixer3DWindow: Quit requested - hiding window instead of closing app\n");
+
+    // Don't close the application, just hide this window
+    Hide();
+
+    // Send a message to the app to notify that the 3D window was closed
+    BMessage msg('3dcl');
+    be_app->PostMessage(&msg);
+
+    // Return false to prevent the window from actually closing
+    // The window will be hidden instead
+    return false;
+}
+
+void SpatialMixer3DWindow::MessageReceived(BMessage* message)
+{
+    switch (message->what) {
+        case 'updt':
+        {
+            // Update spatial visualization
+            UpdateSpatialVisualization();
+            break;
+        }
+
+        default:
+            BWindow::MessageReceived(message);
+            break;
+    }
+}
+
+void SpatialMixer3DWindow::CreateInterface()
+{
+    // Create menu bar
+    CreateMenuBar();
+
+    // Create main view - for now, just a placeholder
+    BView* mainView = new BView("main_view", B_WILL_DRAW);
+    mainView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+
+    // Create 3D spatial view (simplified)
+    BRect spatialRect(10, 10, 500, 400);
+    fSpatialView = new SpatialMixer3DView(spatialRect, fEngine, fAudioProcessor);
+    mainView->AddChild(fSpatialView);
+
+    // Create control panel (placeholder)
+    BRect controlRect(520, 10, 680, 400);
+    fControlPanel = new SpatialControlPanel(controlRect, fSpatialView, fAudioProcessor);
+    mainView->AddChild(fControlPanel);
+
+    // Set up window layout
+    BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+        .Add(fMenuBar)
+        .Add(mainView)
+    .End();
+}
+
+void SpatialMixer3DWindow::CreateMenuBar()
+{
+    fMenuBar = new BMenuBar("menu_bar");
+
+    // Window menu
+    BMenu* windowMenu = new BMenu("Window");
+    windowMenu->AddItem(new BMenuItem("Hide 3D Mixer", new BMessage(B_QUIT_REQUESTED), 'H'));
+    windowMenu->AddSeparatorItem();
+    windowMenu->AddItem(new BMenuItem("Show Track Mixer", new BMessage('shtm')));
+    windowMenu->AddItem(new BMenuItem("Show Super Master", new BMessage('shsm')));
+    fMenuBar->AddItem(windowMenu);
+
+    // View menu
+    BMenu* viewMenu = new BMenu("View");
+    viewMenu->AddItem(new BMenuItem("Reset Camera", new BMessage('rcam'), 'R'));
+    viewMenu->AddItem(new BMenuItem("Zoom In", new BMessage('zmin'), '+'));
+    viewMenu->AddItem(new BMenuItem("Zoom Out", new BMessage('zmot'), '-'));
+    fMenuBar->AddItem(viewMenu);
+}
+
+void SpatialMixer3DWindow::UpdateSpatialVisualization()
+{
+    if (fSpatialView) {
+        fSpatialView->UpdateSpatialTracks();
+        fSpatialView->Invalidate();
+    }
 }
 
 } // namespace HaikuDAW

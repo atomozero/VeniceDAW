@@ -322,24 +322,32 @@ public:
     virtual void MouseDown(BPoint where) override;
     virtual void MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage) override;
     virtual void FrameResized(float width, float height) override;
-    
+    virtual void MessageReceived(BMessage* message) override;
+
     // Organic control adaptation
     void AdaptToMode(InnovativeSpatialView::InterfaceMode mode);
     void MorphControlsFor(const std::string& context);
-    
+
     // Revolutionary control methods
     void SetOrganicParameter(const std::string& parameter, float value);
     float GetOrganicParameter(const std::string& parameter) const;
-    
+
+    // Color customization
+    void ShowColorSelectionMenu(BPoint where, const std::string& param_name);
+    void SetParameterColor(const std::string& param_name, rgb_color color);
+    rgb_color GetParameterColor(const std::string& param_name) const;
+
 private:
     void RenderFluidControls(BView* view);
     void UpdateControlFlow();
     void CreateMorphingControls();
-    
+
     InnovativeSpatialView* spatial_view;
     std::map<std::string, float> organic_parameters;
+    std::map<std::string, rgb_color> parameter_colors;  // Custom colors for each parameter
     float control_morph_progress;
     BBitmap* control_surface_buffer;
+    std::string selected_parameter_for_color;  // Currently selected parameter for color change
 };
 
 /*

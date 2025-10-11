@@ -12,6 +12,12 @@
 #include <storage/Path.h>
 #include <support/String.h>
 #include <vector>
+#include <atomic>
+
+// Forward declaration to avoid circular includes
+namespace VeniceDAW {
+    class RecordingSession;
+}
 
 namespace HaikuDAW {
 
@@ -22,6 +28,7 @@ public:
     
     int GetId() const { return fId; }
     const char* GetName() const { return fName.String(); }
+    void SetName(const char* name) { fName.SetTo(name); }
     
     void SetVolume(float volume) { fVolume = volume; }
     float GetVolume() const { return fVolume; }
@@ -31,21 +38,21 @@ public:
     
     void SetPosition(float x, float y, float z) { fX = x; fY = y; fZ = z; }
     void GetPosition(float& x, float& y, float& z) const { x = fX; y = fY; z = fZ; }
-    
+
     void SetMute(bool mute) { fMuted = mute; }
     bool IsMuted() const { return fMuted; }
-    
+
     void SetSolo(bool solo) { fSolo = solo; }
     bool IsSolo() const { return fSolo; }
-    
+
     // Audio levels (updated in real-time)
     float GetPeakLevel() const { return fPeakLevel; }
     float GetRMSLevel() const { return fRMSLevel; }
     void UpdateLevels(float peak, float rms) { fPeakLevel = peak; fRMSLevel = rms; }
-    
+
     // Phase access (for audio engine)
     float& GetPhase() { return fPhase; }
-    
+
     // Test signal type
     enum SignalType {
         SIGNAL_SINE,
@@ -54,21 +61,24 @@ public:
         SIGNAL_WHITE_NOISE,
         SIGNAL_PINK_NOISE
     };
-    
+
     void SetSignalType(SignalType type) { fSignalType = type; }
     SignalType GetSignalType() const { return fSignalType; }
-    
+
     void SetFrequency(float freq) { fFrequency = freq; }
     float GetFrequency() const { return fFrequency; }
-    
+
     // For pink noise generator
     float& GetPinkNoiseState(int index) { return fPinkNoiseState[index]; }
+    float GetPinkNoiseMax() { return fPinkNoiseMax; }
+    void SetPinkNoiseMax(float max) { fPinkNoiseMax = max; }
     
     // Audio file loading and playback
     status_t LoadAudioFile(const char* path);
     status_t LoadAudioFile(const entry_ref& ref);
     void UnloadFile();
     bool HasFile() const { return fFileLoaded; }
+    bool HasAudioFile() const { return fFileLoaded; }  // Alias for clarity
     const char* GetFilePath() const { return fFilePath.String(); }
     
     // Debug and fallback methods
@@ -96,6 +106,7 @@ private:
     SignalType fSignalType;  // Type of test signal
     float fFrequency;  // Frequency for test signal
     float fPinkNoiseState[7];  // State for pink noise generator
+    float fPinkNoiseMax;  // Maximum value for pink noise normalization
     
     // Audio file playback members
     BMediaFile* fMediaFile;
@@ -148,6 +159,15 @@ public:
     
     // Demo scene creation
     void CreateDemoScene();
+
+    // Empty track creation for manual loading
+    status_t CreateEmptyTrack(const char* name);
+
+    // Audio recording support
+    ::VeniceDAW::RecordingSession* GetRecordingSession() const { return fRecordingSession; }
+    status_t StartRecording(int32 trackIndex, const char* filename = nullptr);
+    status_t StopRecording(int32 trackIndex);
+    bool IsRecording(int32 trackIndex = -1) const;  // -1 checks if any track is recording
     
     // Audio file loading
     status_t LoadAudioFileAsTrack(const entry_ref& ref);
@@ -160,15 +180,18 @@ private:
     
     BSoundPlayer* fSoundPlayer;
     std::vector<SimpleTrack*> fTracks;
-    bool fRunning;
+    std::atomic<bool> fRunning;
     float fMasterVolume;
     int fSoloTrack;  // Index of solo track, -1 if none
     
     // Master level monitoring
     float fMasterPeakLeft;
-    float fMasterPeakRight; 
+    float fMasterPeakRight;
     float fMasterRMSLeft;
     float fMasterRMSRight;
+
+    // Recording support
+    ::VeniceDAW::RecordingSession* fRecordingSession;
 };
 
 } // namespace HaikuDAW

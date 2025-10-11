@@ -18,24 +18,98 @@
 #include <cstdint>
 #include <thread>
 #include <functional>
+#include <vector>
+#include <chrono>
+#include <unistd.h>
 
 // Mock BeAPI types - SOLO per compilazione sviluppo
 typedef int32_t thread_id;
 typedef int32_t status_t;
 typedef int32_t int32;
+typedef uint32_t uint32;
+typedef uint8_t uint8;
+typedef int64_t bigtime_t;
+typedef int32_t sem_id;
+typedef long off_t;
 
 #define B_OK 0
 #define B_ERROR -1
 #define B_REAL_TIME_PRIORITY 10
 #define B_NORMAL_PRIORITY 7
 #define B_LOW_PRIORITY 5
+#define B_READ_ONLY 1
+#define B_ENTRY_NOT_FOUND -2147459069
+#define B_IO_ERROR -2147459074
+#define B_GENERAL_ERROR_BASE -2147483648
+
+// Mock media types and constants
+#define B_MEDIA_RAW_AUDIO 0x1
+#define B_MEDIA_LITTLE_ENDIAN 1
+
+enum media_raw_audio_format {
+    B_AUDIO_UCHAR = 0x11,
+    B_AUDIO_SHORT = 0x2,
+    B_AUDIO_INT = 0x4,
+    B_AUDIO_FLOAT = 0x24
+};
+
+struct media_format {
+    uint32 type;
+    union {
+        struct {
+            uint32 format;
+            float frame_rate;
+            uint32 channel_count;
+            uint32 byte_order;
+            size_t buffer_size;
+        } raw_audio;
+    } u;
+
+    media_format() : type(B_MEDIA_RAW_AUDIO) {
+        u.raw_audio.format = B_AUDIO_SHORT;
+        u.raw_audio.frame_rate = 44100;
+        u.raw_audio.channel_count = 2;
+        u.raw_audio.byte_order = B_MEDIA_LITTLE_ENDIAN;
+        u.raw_audio.buffer_size = 4096;
+    }
+};
+
+// Mock system_time function
+inline bigtime_t system_time() {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 // Mock BeAPI classes - NON FUNZIONANTI
+class BDataIO {
+public:
+    virtual ~BDataIO() {}
+    virtual ssize_t Read(void* buffer, size_t size) = 0;
+    virtual ssize_t Write(const void* buffer, size_t size) = 0;
+};
+
+class BFile : public BDataIO {
+public:
+    BFile() : fInitStatus(B_ERROR) {}
+    BFile(const char* path, uint32_t openMode) : fInitStatus(B_OK) {}
+    virtual ~BFile() {}
+
+    status_t InitCheck() const { return fInitStatus; }
+    status_t GetSize(off_t* size) { *size = 1024; return B_OK; }
+
+    virtual ssize_t Read(void* buffer, size_t size) override { return size; }
+    virtual ssize_t Write(const void* buffer, size_t size) override { return size; }
+
+private:
+    status_t fInitStatus;
+};
+
 class BMessage {
 public:
     BMessage(uint32_t what) : fWhat(what) {}
     status_t AddInt32(const char* name, int32_t value) { return B_OK; }
     status_t AddInt64(const char* name, int64_t value) { return B_OK; }
+    status_t Unflatten(BDataIO* stream) { return B_OK; }
 private:
     uint32_t fWhat;
 };
@@ -47,6 +121,56 @@ public:
     float Width() const { return right - left; }
     float Height() const { return bottom - top; }
     float left, top, right, bottom;
+};
+
+class BString {
+public:
+    BString() {}
+    BString(const char* str) : fString(str ? str : "") {}
+    const char* String() const { return fString.c_str(); }
+    void SetTo(const char* str) { fString = str ? str : ""; }
+    int32 Length() const { return fString.length(); }
+    bool operator==(const char* str) const { return fString == str; }
+
+    int32 FindFirst(const char* str) const {
+        size_t pos = fString.find(str);
+        return pos == std::string::npos ? -1 : (int32)pos;
+    }
+
+    int32 FindLast(const char* str) const {
+        size_t pos = fString.rfind(str);
+        return pos == std::string::npos ? -1 : (int32)pos;
+    }
+
+    void CopyInto(BString& dest, int32 from, int32 length) const {
+        dest.fString = fString.substr(from, length);
+    }
+
+private:
+    std::string fString;
+};
+
+class BList {
+public:
+    BList() {}
+    ~BList() {}
+    bool AddItem(void* item) { fItems.push_back(item); return true; }
+    void* ItemAt(int32 index) const {
+        if (index >= 0 && index < (int32)fItems.size())
+            return fItems[index];
+        return nullptr;
+    }
+    bool RemoveItem(int32 index) {
+        if (index >= 0 && index < (int32)fItems.size()) {
+            fItems.erase(fItems.begin() + index);
+            return true;
+        }
+        return false;
+    }
+    int32 CountItems() const { return fItems.size(); }
+    void MakeEmpty() { fItems.clear(); }
+private:
+    std::vector<void*> fItems;
 };
 
 class BPoint {
@@ -117,7 +241,6 @@ inline thread_id spawn_thread(int32_t (*func)(void*), const char* name, int32_t 
 inline status_t resume_thread(thread_id thread) { return B_OK; }
 inline status_t wait_for_thread(thread_id thread, status_t* result) { return B_OK; }
 inline void snooze(uint64_t microseconds) { std::this_thread::sleep_for(std::chrono::microseconds(microseconds)); }
-inline int64_t system_time() { return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
 // Mock team/system info structs
 struct team_info {

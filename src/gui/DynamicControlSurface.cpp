@@ -19,6 +19,10 @@
 #include <interface/StringView.h>
 #include <interface/Region.h>
 #include <interface/Polygon.h>
+#include <interface/PopUpMenu.h>
+#include <interface/MenuItem.h>
+#include <interface/ColorControl.h>
+#include <interface/Window.h>
 #include <math.h>
 #include <algorithm>
 #include <map>
@@ -27,6 +31,21 @@ using namespace VeniceDAW;
 using namespace VeniceDAW::DSP;
 
 namespace HaikuDAW {
+
+// Message codes for color selection
+enum {
+    MSG_SELECT_NODE_COLOR = 'snco',
+    MSG_COLOR_SELECTED = 'clsl',
+    MSG_PRESET_COLOR_RED = 'pcrd',
+    MSG_PRESET_COLOR_GREEN = 'pcrg',
+    MSG_PRESET_COLOR_BLUE = 'pcrb',
+    MSG_PRESET_COLOR_YELLOW = 'pcry',
+    MSG_PRESET_COLOR_MAGENTA = 'pcrm',
+    MSG_PRESET_COLOR_CYAN = 'pcrc',
+    MSG_PRESET_COLOR_ORANGE = 'pcro',
+    MSG_PRESET_COLOR_PURPLE = 'pcrp',
+    MSG_CUSTOM_COLOR_PICKER = 'ccpk'
+};
 
 /*
  * Fluid Control Node - A single control that can morph its shape and behavior
@@ -67,7 +86,7 @@ struct FluidControlNode {
     float audio_sensitivity;   // How much audio affects appearance
     float frequency_band;      // Which frequency band influences this control
     
-    FluidControlNode(const std::string& name) 
+    FluidControlNode(const std::string& name)
         : parameter_name(name)
         , current_value(0.0f)
         , target_value(0.0f)
@@ -86,9 +105,18 @@ struct FluidControlNode {
         , elasticity(0.8f)
         , audio_sensitivity(0.3f)
         , frequency_band(0.0f) {
-        
+
         base_color = make_color(100, 150, 255);
         current_color = base_color;
+    }
+
+    void SetBaseColor(rgb_color color) {
+        base_color = color;
+        current_color = color;
+    }
+
+    rgb_color GetBaseColor() const {
+        return base_color;
     }
     
     void UpdatePhysics(float deltaTime) {
@@ -319,12 +347,13 @@ OrganicControlSurface::OrganicControlSurface(BRect frame, InnovativeSpatialView*
     , spatial_view(spatial_view)
     , control_morph_progress(0.0f)
     , control_surface_buffer(nullptr)
+    , selected_parameter_for_color("")
 {
     SetViewColor(B_TRANSPARENT_COLOR);
-    
+
     // Create the revolutionary control surface buffer
     control_surface_buffer = new BBitmap(Bounds(), B_RGB32, true);
-    
+
     // Initialize organic parameters
     organic_parameters["particle_density"] = 1.0f;
     organic_parameters["magnetic_strength"] = 0.5f;
@@ -334,7 +363,17 @@ OrganicControlSurface::OrganicControlSurface(BRect frame, InnovativeSpatialView*
     organic_parameters["synaptic_threshold"] = 0.4f;
     organic_parameters["environmental_flow"] = 0.2f;
     organic_parameters["quantum_coherence"] = 0.8f; // Revolutionary parameter
-    
+
+    // Initialize default colors for each parameter
+    parameter_colors["particle_density"] = make_color(100, 150, 255);
+    parameter_colors["magnetic_strength"] = make_color(255, 100, 150);
+    parameter_colors["neural_sensitivity"] = make_color(100, 255, 150);
+    parameter_colors["ecosystem_viscosity"] = make_color(150, 100, 255);
+    parameter_colors["spatial_resonance"] = make_color(255, 150, 100);
+    parameter_colors["synaptic_threshold"] = make_color(150, 255, 100);
+    parameter_colors["environmental_flow"] = make_color(100, 255, 255);
+    parameter_colors["quantum_coherence"] = make_color(255, 100, 255);
+
     printf("OrganicControlSurface: Revolutionary control surface initialized\n");
 }
 
@@ -496,15 +535,25 @@ void OrganicControlSurface::RenderFluidControls(BView* view) {
         
         BPoint control_center(x, y);
         float control_radius = 15 + value * 10;
-        
+
+        // Get custom color if set, otherwise use default organic appearance
+        rgb_color control_color;
+        auto color_it = parameter_colors.find(param.first);
+        if (color_it != parameter_colors.end()) {
+            control_color = color_it->second;
+            control_color.alpha = 200;
+        } else {
+            control_color = make_color(
+                (uint8)(100 + value * 155),
+                (uint8)(150 + sin(value * 3.14f) * 105),
+                (uint8)(255 - value * 100),
+                200
+            );
+        }
+
         // Draw parameter control with organic appearance
-        view->SetHighColor(make_color(
-            (uint8)(100 + value * 155),
-            (uint8)(150 + sin(value * 3.14f) * 105),
-            (uint8)(255 - value * 100),
-            200
-        ));
-        
+        view->SetHighColor(control_color);
+
         view->FillEllipse(control_center, control_radius, control_radius);
         
         // Draw parameter name
@@ -524,38 +573,70 @@ void OrganicControlSurface::RenderFluidControls(BView* view) {
 }
 
 void OrganicControlSurface::MouseDown(BPoint where) {
-    // Find which fluid control was clicked
-    // For now, implement basic parameter adjustment
-    
+    // Check for right-click to show color selection menu
+    uint32 buttons = 0;
+    BMessage* currentMessage = Window()->CurrentMessage();
+    if (currentMessage) {
+        currentMessage->FindInt32("buttons", (int32*)&buttons);
+    }
+
+    // Check if clicking on a control node
+    std::string clicked_param_name = "";
+    for (const auto& param : organic_parameters) {
+        // Calculate position based on parameter name hash (same as rendering)
+        int name_hash = 0;
+        for (char c : param.first) name_hash += c;
+
+        float x = (name_hash % 300) + 50;
+        float y = Bounds().Height() * 0.5f + sin(param.second * 6.28f) * 100;
+
+        BPoint control_center(x, y);
+        float control_radius = 15 + param.second * 10;
+
+        // Check if click is within this control
+        BPoint offset = where - control_center;
+        if ((offset.x * offset.x + offset.y * offset.y) <= (control_radius * control_radius)) {
+            clicked_param_name = param.first;
+            break;
+        }
+    }
+
+    if (buttons & B_SECONDARY_MOUSE_BUTTON && !clicked_param_name.empty()) {
+        // Right-click on control node - show color menu
+        ShowColorSelectionMenu(where, clicked_param_name);
+        return;
+    }
+
+    // Original behavior for left-click
     BRect bounds = Bounds();
-    
+
     // Simple parameter control based on mouse position
     float x_ratio = where.x / bounds.Width();
     float y_ratio = where.y / bounds.Height();
-    
+
     // Adjust parameters based on mouse position and current mode
     switch (spatial_view->GetInterfaceMode()) {
         case InnovativeSpatialView::MODE_PARTICLE_SCULPTOR:
             SetOrganicParameter("particle_density", x_ratio);
             SetOrganicParameter("magnetic_strength", y_ratio);
             break;
-            
+
         case InnovativeSpatialView::MODE_NEURAL_CONNECTOR:
             SetOrganicParameter("neural_sensitivity", x_ratio);
             SetOrganicParameter("synaptic_threshold", y_ratio);
             break;
-            
+
         case InnovativeSpatialView::MODE_ECOSYSTEM_DESIGNER:
             SetOrganicParameter("ecosystem_viscosity", x_ratio);
             SetOrganicParameter("environmental_flow", y_ratio);
             break;
-            
+
         case InnovativeSpatialView::MODE_SYNAPTIC_ANALYZER:
             SetOrganicParameter("spatial_resonance", x_ratio);
             SetOrganicParameter("quantum_coherence", y_ratio);
             break;
     }
-    
+
     Invalidate();
 }
 
@@ -658,14 +739,169 @@ float OrganicControlSurface::GetOrganicParameter(const std::string& parameter) c
     return 0.0f;
 }
 
+void OrganicControlSurface::SetParameterColor(const std::string& param_name, rgb_color color) {
+    parameter_colors[param_name] = color;
+    Invalidate();
+}
+
+rgb_color OrganicControlSurface::GetParameterColor(const std::string& param_name) const {
+    auto it = parameter_colors.find(param_name);
+    if (it != parameter_colors.end()) {
+        return it->second;
+    }
+    // Return default color if not found
+    return make_color(100, 150, 255);
+}
+
 void OrganicControlSurface::UpdateControlFlow() {
     // Update the flowing animation of controls
     control_morph_progress += 0.02f;
     if (control_morph_progress > 1.0f) {
         control_morph_progress = 0.0f;
     }
-    
+
     Invalidate();
+}
+
+void OrganicControlSurface::ShowColorSelectionMenu(BPoint where, const std::string& param_name) {
+    // Store selected parameter for color change
+    selected_parameter_for_color = param_name;
+
+    // Create popup menu with color presets
+    BPopUpMenu* colorMenu = new BPopUpMenu("Color Selection");
+
+    // Add preset color options
+    BMessage* redMsg = new BMessage(MSG_PRESET_COLOR_RED);
+    redMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🔴 Red", redMsg));
+
+    BMessage* greenMsg = new BMessage(MSG_PRESET_COLOR_GREEN);
+    greenMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🟢 Green", greenMsg));
+
+    BMessage* blueMsg = new BMessage(MSG_PRESET_COLOR_BLUE);
+    blueMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🔵 Blue", blueMsg));
+
+    BMessage* yellowMsg = new BMessage(MSG_PRESET_COLOR_YELLOW);
+    yellowMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🟡 Yellow", yellowMsg));
+
+    BMessage* magentaMsg = new BMessage(MSG_PRESET_COLOR_MAGENTA);
+    magentaMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🟣 Magenta", magentaMsg));
+
+    BMessage* cyanMsg = new BMessage(MSG_PRESET_COLOR_CYAN);
+    cyanMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🔵 Cyan", cyanMsg));
+
+    BMessage* orangeMsg = new BMessage(MSG_PRESET_COLOR_ORANGE);
+    orangeMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🟠 Orange", orangeMsg));
+
+    BMessage* purpleMsg = new BMessage(MSG_PRESET_COLOR_PURPLE);
+    purpleMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🟣 Purple", purpleMsg));
+
+    colorMenu->AddSeparatorItem();
+
+    BMessage* customMsg = new BMessage(MSG_CUSTOM_COLOR_PICKER);
+    customMsg->AddString("param", param_name.c_str());
+    colorMenu->AddItem(new BMenuItem("🎨 Custom Color...", customMsg));
+
+    // Set target for all menu items
+    colorMenu->SetTargetForItems(this);
+
+    // Show menu at mouse position
+    BPoint screenWhere = ConvertToScreen(where);
+    colorMenu->Go(screenWhere, true, true, true);
+}
+
+void OrganicControlSurface::MessageReceived(BMessage* message) {
+    switch (message->what) {
+        case MSG_PRESET_COLOR_RED:
+        case MSG_PRESET_COLOR_GREEN:
+        case MSG_PRESET_COLOR_BLUE:
+        case MSG_PRESET_COLOR_YELLOW:
+        case MSG_PRESET_COLOR_MAGENTA:
+        case MSG_PRESET_COLOR_CYAN:
+        case MSG_PRESET_COLOR_ORANGE:
+        case MSG_PRESET_COLOR_PURPLE:
+        {
+            const char* param_name;
+            if (message->FindString("param", &param_name) == B_OK) {
+                rgb_color new_color;
+
+                switch (message->what) {
+                    case MSG_PRESET_COLOR_RED:
+                        new_color = make_color(255, 50, 50);
+                        break;
+                    case MSG_PRESET_COLOR_GREEN:
+                        new_color = make_color(50, 255, 50);
+                        break;
+                    case MSG_PRESET_COLOR_BLUE:
+                        new_color = make_color(50, 50, 255);
+                        break;
+                    case MSG_PRESET_COLOR_YELLOW:
+                        new_color = make_color(255, 255, 50);
+                        break;
+                    case MSG_PRESET_COLOR_MAGENTA:
+                        new_color = make_color(255, 50, 255);
+                        break;
+                    case MSG_PRESET_COLOR_CYAN:
+                        new_color = make_color(50, 255, 255);
+                        break;
+                    case MSG_PRESET_COLOR_ORANGE:
+                        new_color = make_color(255, 165, 50);
+                        break;
+                    case MSG_PRESET_COLOR_PURPLE:
+                        new_color = make_color(150, 50, 255);
+                        break;
+                    default:
+                        new_color = make_color(255, 255, 255);
+                        break;
+                }
+
+                parameter_colors[param_name] = new_color;
+                printf("OrganicControlSurface: Set color for '%s' to RGB(%d, %d, %d)\n",
+                       param_name, new_color.red, new_color.green, new_color.blue);
+
+                Invalidate();
+            }
+            break;
+        }
+
+        case MSG_CUSTOM_COLOR_PICKER:
+        {
+            const char* param_name;
+            if (message->FindString("param", &param_name) == B_OK) {
+                // For now, just cycle through some interesting colors
+                // A full color picker would require a custom dialog window
+                static int color_cycle = 0;
+                rgb_color colors[] = {
+                    make_color(255, 100, 150),
+                    make_color(100, 255, 200),
+                    make_color(200, 100, 255),
+                    make_color(255, 200, 100),
+                    make_color(100, 200, 255),
+                    make_color(200, 255, 100)
+                };
+
+                parameter_colors[param_name] = colors[color_cycle % 6];
+                color_cycle++;
+
+                printf("OrganicControlSurface: Custom color %d set for '%s'\n",
+                       color_cycle - 1, param_name);
+
+                Invalidate();
+            }
+            break;
+        }
+
+        default:
+            BView::MessageReceived(message);
+            break;
+    }
 }
 
 // =====================================

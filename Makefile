@@ -13,8 +13,8 @@ CFLAGS = -Wall
 # Optimized build with debug symbols
 CXXFLAGS += -g -O2 -march=native -ffast-math -fPIC
 
-# Haiku libraries (with OpenGL for 3D mixer)
-LIBS = -lbe -lmedia -lroot -ltracker -lGL -lGLU
+# Haiku libraries (with OpenGL for 3D mixer and translation for 3dmix import)
+LIBS = -lbe -lmedia -lroot -ltracker -lGL -lGLU -ltranslation
 
 # Benchmark-specific flags
 BENCHMARK_CXXFLAGS = $(CXXFLAGS) -DBENCHMARK_MODE
@@ -25,6 +25,14 @@ TEST_LIBS = $(LIBS)
 
 # Include paths
 INCLUDES = -I. -Isrc
+# Add Haiku headers only when on Haiku system
+ifeq ($(shell uname), Haiku)
+    INCLUDES += -I/boot/system/develop/headers -I/boot/system/develop/headers/cpp
+else
+    # Use mock headers for cross-platform development
+    INCLUDES += -Isrc/testing
+    CXXFLAGS += -DMOCK_BEAPI
+endif
 
 # Source files (start minimal, add incrementally)
 AUDIO_SRCS = \
@@ -46,7 +54,11 @@ TESTING_FRAMEWORK_OBJS = $(TESTING_FRAMEWORK_SRCS:.cpp=.o)
 AUDIO_HAIKU_SRCS = \
 	src/audio/SimpleHaikuEngine.cpp \
 	src/audio/HaikuAudioEngine.cpp \
-	src/audio/HaikuAudioTrack.cpp
+	src/audio/HaikuAudioTrack.cpp \
+	src/audio/AudioBufferPool.cpp \
+	src/audio/AudioLogging.cpp \
+	src/audio/AudioLevelCalculator.cpp \
+	src/audio/AsyncAudioWriter.cpp
 
 NATIVE_TEST_SRCS = \
 	src/main_simple_native.cpp
@@ -55,12 +67,22 @@ GUI_SRCS = \
 	src/gui/MixerWindow.cpp \
 	src/gui/Mixer3DWindow.cpp \
 	src/gui/SuperMasterWindow.cpp \
-	src/gui/BenchmarkWindow.cpp
+	src/gui/BenchmarkWindow.cpp \
+	src/gui/AudioPreviewPanel.cpp
 
 # Phase 4 Spatial Audio GUI Components
 SPATIAL_GUI_SRCS = \
 	src/gui/SpatialMixer3DWindow.cpp \
 	src/gui/SpatialControlPanels.cpp
+
+# BeOS 3dmix Import System (Phase 6.3)
+3DMIX_SRCS = \
+	src/audio/3dmix/3DMixFormat.cpp \
+	src/audio/3dmix/3DMixParser.cpp \
+	src/audio/3dmix/CoordinateSystemMapper.cpp \
+	src/audio/3dmix/AudioPathResolver.cpp \
+	src/audio/3dmix/3DMixProjectImporter.cpp \
+	src/gui/3DMixImportDialog.cpp
 
 # Advanced Audio Processing (Phase 3 Engine)
 ADVANCED_AUDIO_SRCS = \
@@ -68,8 +90,9 @@ ADVANCED_AUDIO_SRCS = \
 	src/audio/DSPAlgorithms.cpp \
 	src/audio/FastMath.cpp
 
+# Main application with complete interface (spatial 3D GUI)
 APP_SRCS = \
-	src/main_gui.cpp
+	src/main_spatial_gui.cpp
 
 # Phase 4 Spatial Audio Application
 SPATIAL_APP_SRCS = \
@@ -86,11 +109,11 @@ DEMO_ALL_SRCS = $(DEMO_SRCS) $(AUDIO_SRCS)
 # Native Haiku build (100% BMediaKit)
 NATIVE_ALL_SRCS = $(NATIVE_TEST_SRCS) $(AUDIO_HAIKU_SRCS)
 
-# Full build (Haiku native with GUI)
-FULL_SRCS = $(APP_SRCS) $(AUDIO_HAIKU_SRCS) $(GUI_SRCS)
+# Full build (Haiku native with GUI) - NOW INCLUDES EVERYTHING!
+FULL_SRCS = $(APP_SRCS) $(AUDIO_HAIKU_SRCS) $(GUI_SRCS) $(SPATIAL_GUI_SRCS) $(ADVANCED_AUDIO_SRCS) $(3DMIX_SRCS) src/benchmark/PerformanceStation.cpp
 
 # Phase 4 Spatial Audio build (complete spatial audio integration)
-SPATIAL_FULL_SRCS = $(SPATIAL_APP_SRCS) $(AUDIO_HAIKU_SRCS) $(GUI_SRCS) $(SPATIAL_GUI_SRCS) $(ADVANCED_AUDIO_SRCS) src/benchmark/PerformanceStation.cpp
+SPATIAL_FULL_SRCS = $(SPATIAL_APP_SRCS) $(AUDIO_HAIKU_SRCS) $(GUI_SRCS) $(SPATIAL_GUI_SRCS) $(ADVANCED_AUDIO_SRCS) $(3DMIX_SRCS) src/benchmark/PerformanceStation.cpp
 
 # Benchmark build (unified performance testing)
 BENCHMARK_ALL_SRCS = $(BENCHMARK_SRCS) $(AUDIO_HAIKU_SRCS) $(GUI_SRCS)
@@ -124,8 +147,8 @@ BENCHMARK_OBJS = $(BENCHMARK_ALL_SRCS:.cpp=.o)
 TEST_OBJS = $(TEST_SRCS:.cpp=.o)
 TESTING_FRAMEWORK_OBJS = $(TESTING_FRAMEWORK_SRCS:.cpp=.o)
 
-# Default target - cross-platform demo
-all: demo
+# Default target - Complete VeniceDAW with ALL features (3D spatial audio, 3dmix import, Performance Station)
+all: haiku-full
 
 # Cross-platform demo (works on any system)
 demo: VeniceDAWDemo
@@ -230,6 +253,7 @@ clean:
 	rm -f src/main_performance_station.o src/gui/PerformanceStationWindow.o
 	rm -f src/benchmark/PerformanceStation.o src/main_benchmark.o
 	rm -f src/phase3_foundation_test.o src/testing/AdvancedAudioProcessorTest.o src/audio/AdvancedAudioProcessor.o src/audio/DSPAlgorithms.o src/testing/ProfessionalEQTest.o
+	rm -f src/audio/3dmix/*.o src/gui/3DMixImportDialog.o
 	rm -f Phase3FoundationTest
 	rm -rf reports/
 	@echo "🧹 Cleaned build files and test reports"
@@ -574,6 +598,12 @@ help:
 	@echo "==============================================="
 	@echo "Available targets:"
 	@echo ""
+	@echo "🎵 COMPLETE VENICEDAW (DEFAULT - INCLUDES EVERYTHING!):"
+	@echo "  make              - 🚀 Complete VeniceDAW with ALL features (default)"
+	@echo "  make haiku-full   - 🚀 Same as above (explicit target)"
+	@echo "  make run-haiku    - Run complete VeniceDAW (Haiku only)"
+	@echo "    Features: 3D Spatial Audio + BeOS 3dmix Import + Performance Station + All GUI"
+	@echo ""
 	@echo "Cross-platform (for testing logic):"
 	@echo "  make demo         - Build cross-platform demo"
 	@echo "  make run          - Run cross-platform demo"
@@ -582,9 +612,8 @@ help:
 	@echo "  make native       - Build native Haiku engine"
 	@echo "  make run-native   - Run native engine (Haiku only)"
 	@echo ""
-	@echo "Full Application:"
-	@echo "  make haiku-full   - Build full Haiku app with GUI"
-	@echo "  make run-haiku    - Run full app (Haiku only)"
+	@echo "Legacy Targets:"
+	@echo "  make spatial      - Phase 4 Spatial Audio version"
 	@echo ""
 	@echo "Development:"
 	@echo "  make clean        - Remove all build files"
@@ -622,10 +651,11 @@ help:
 	@echo "  make benchmark-unified  - Complete suite"
 	@echo "  make benchmark-gui      - Traditional GUI"
 	@echo ""
-	@echo "🎯 FOR HAIKU COMMUNITY DEMO:"
+	@echo "🎯 FOR HAIKU COMMUNITY DEMO (COMPLETE VENICEDAW):"
 	@echo "  1. Copy project to Haiku system"
-	@echo "  2. Run: make native"
-	@echo "  3. Run: ./VeniceDAWNative"
+	@echo "  2. Run: make (builds complete VeniceDAW with ALL features!)"
+	@echo "  3. Run: ./VeniceDAW"
+	@echo "  Features: 3D Spatial Audio + BeOS 3dmix Import + Performance Station"
 	@echo ""
 	@echo "🧪 FOR PHASE 2 VALIDATION (REQUIRES HAIKU OS):"
 	@echo "  1. Copy project to native Haiku system"
@@ -750,6 +780,23 @@ src/testing/SpatialAudioTest.o: src/testing/SpatialAudioTest.cpp
 	@echo "🎯 Compiling Spatial Audio test suite..."
 	@if [ "$(shell uname)" = "Haiku" ]; then \
 		$(CXX) $(TEST_CXXFLAGS) $(INCLUDES) -fPIC -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+# BeOS 3dmix Import System compilation rules
+src/audio/3dmix/%.o: src/audio/3dmix/%.cpp
+	@echo "🎵 Compiling 3dmix module: $<"
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@; \
+	else \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
+	fi
+
+src/gui/3DMixImportDialog.o: src/gui/3DMixImportDialog.cpp
+	@echo "🎛️ Compiling 3dmix import dialog..."
+	@if [ "$(shell uname)" = "Haiku" ]; then \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@; \
 	else \
 		$(CXX) $(CXXFLAGS) $(INCLUDES) -DMOCK_BEAPI -c $< -o $@; \
 	fi

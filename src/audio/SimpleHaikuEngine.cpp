@@ -3,6 +3,7 @@
  */
 
 #include "SimpleHaikuEngine.h"
+// #include "AudioRecorder.h"  // Temporarily disabled
 #include "AudioConfig.h"
 #include <stdio.h>
 #include <math.h>
@@ -19,9 +20,9 @@ SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
       fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(SIGNAL_SINE), fFrequency(440.0f),
       fMediaFile(nullptr), fMediaTrack(nullptr), fFileBuffer(nullptr), fFileBufferSize(0),
-      fPlaybackFrame(0), fFileDuration(0), fFileSampleRate(44100.0f), fFileLoaded(false)
+      fPlaybackFrame(0), fFileDuration(0), fFileSampleRate(44100.0f), fFileLoaded(false), fPinkNoiseMax(1.0f)
 {
-    printf("SimpleTrack: Created '%s'\n", name);
+    // Track created
     // Initialize pink noise state
     for (int i = 0; i < 7; i++) {
         fPinkNoiseState[i] = 0.0f;
@@ -280,21 +281,32 @@ status_t SimpleTrack::ReadFileData(float* buffer, int32 frameCount, float sample
 
 SimpleHaikuEngine::SimpleHaikuEngine()
     : fSoundPlayer(nullptr), fRunning(false), fMasterVolume(1.0f), fSoloTrack(-1),
-      fMasterPeakLeft(0.0f), fMasterPeakRight(0.0f), fMasterRMSLeft(0.0f), fMasterRMSRight(0.0f)
+      fMasterPeakLeft(0.0f), fMasterPeakRight(0.0f), fMasterRMSLeft(0.0f), fMasterRMSRight(0.0f),
+      fRecordingSession(nullptr)
 {
-    printf("SimpleHaikuEngine: Created\n");
+    // Engine created
+
+    // Initialize recording session (temporarily disabled for compilation)
+    // fRecordingSession = new VeniceDAW::RecordingSession(this);
+    fRecordingSession = nullptr;
+    // Recording disabled
 }
 
 SimpleHaikuEngine::~SimpleHaikuEngine()
 {
     Stop();
+
+    // Clean up recording session
+    // delete fRecordingSession;  // Temporarily disabled
+    fRecordingSession = nullptr;
+
     delete fSoundPlayer;
     
     // Cleanup tracks
     for (auto track : fTracks) {
         delete track;
     }
-    printf("SimpleHaikuEngine: Destroyed\n");
+    // Engine destroyed
 }
 
 status_t SimpleHaikuEngine::Start()
@@ -303,10 +315,10 @@ status_t SimpleHaikuEngine::Start()
         return B_OK;
     }
     
-    printf("SimpleHaikuEngine: Starting...\n");
+    // Starting engine
     
     // Check media_server status first
-    printf("SimpleHaikuEngine: Checking media system...\n");
+    // Checking media
     
     // Use completely default format - let BSoundPlayer negotiate everything
     media_raw_audio_format format = media_raw_audio_format::wildcard;
@@ -314,7 +326,7 @@ status_t SimpleHaikuEngine::Start()
     // Don't force any parameters - let the system decide
     // BSoundPlayer will negotiate the best format automatically
     
-    printf("SimpleHaikuEngine: Using system default audio format (auto-negotiated)\n");
+    // Using default format
     
     // Create BSoundPlayer with minimal parameters - let it negotiate everything
     fSoundPlayer = new BSoundPlayer(&format, "VeniceDAW", AudioCallback, nullptr, this);
@@ -357,7 +369,7 @@ status_t SimpleHaikuEngine::Start()
     // Reset all file tracks to beginning when starting playback
     ResetAllTracks();
     
-    printf("SimpleHaikuEngine: Started successfully!\n");
+    // Engine started
     return B_OK;
 }
 
@@ -367,20 +379,20 @@ status_t SimpleHaikuEngine::Stop()
         return B_OK;
     }
     
-    printf("SimpleHaikuEngine: Stopping...\n");
+    // Stopping
     
     if (fSoundPlayer) {
         fSoundPlayer->Stop();
     }
     
     fRunning = false;
-    printf("SimpleHaikuEngine: Stopped\n");
+    // Stopped
     return B_OK;
 }
 
 void SimpleHaikuEngine::ResetAllTracks()
 {
-    printf("SimpleHaikuEngine: Resetting all track positions to beginning\n");
+    // Resetting tracks
     
     for (SimpleTrack* track : fTracks) {
         if (track && track->HasFile()) {
@@ -395,7 +407,7 @@ status_t SimpleHaikuEngine::AddTrack(SimpleTrack* track)
     if (!track) return B_BAD_VALUE;
     
     fTracks.push_back(track);
-    printf("SimpleHaikuEngine: Added track '%s'\n", track->GetName());
+    // Track added
     return B_OK;
 }
 
@@ -406,7 +418,7 @@ status_t SimpleHaikuEngine::RemoveTrack(int index)
     }
     
     SimpleTrack* track = fTracks[index];
-    printf("SimpleHaikuEngine: Removing track '%s'\n", track->GetName());
+    // Removing track
     
     // Remove from vector
     fTracks.erase(fTracks.begin() + index);
@@ -422,7 +434,7 @@ status_t SimpleHaikuEngine::RemoveTrack(int index)
     // Clean up the track
     delete track;
     
-    printf("SimpleHaikuEngine: Track removed (total: %d)\n", (int)fTracks.size());
+    // Track removed
     return B_OK;
 }
 
@@ -516,20 +528,25 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
         if (track->HasFile()) {
             // FILE PLAYBACK: Read actual audio data from loaded file
             float* trackBuffer = new float[frameCount * 2]; // Stereo buffer
+            if (!trackBuffer) {
+                // Memory allocation failed - skip this track
+                continue;
+            }
+
             memset(trackBuffer, 0, frameCount * 2 * sizeof(float));
-            
+
             // Read audio data from file
             status_t status = track->ReadFileData(trackBuffer, frameCount, sampleRate);
-            
+
             if (status == B_OK) {
                 // Mix file audio into main buffer
                 for (size_t i = 0; i < frameCount; i++) {
                     float leftSample = trackBuffer[i * 2];
                     float rightSample = trackBuffer[i * 2 + 1];
-                    
+
                     buffer[i * 2] += leftSample * leftGain;      // Left
                     buffer[i * 2 + 1] += rightSample * rightGain; // Right
-                    
+
                     // Calculate levels for VU meter using mixed samples
                     float mixedSample = (leftSample + rightSample) * 0.5f;
                     float displayLevel = fabsf(mixedSample) * track->GetVolume();
@@ -537,8 +554,10 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
                     rmsSum += displayLevel * displayLevel;
                 }
             }
-            
+
+            // Always delete buffer, even if ReadFileData failed
             delete[] trackBuffer;
+            trackBuffer = nullptr;
         } else {
             // TEST SIGNAL GENERATION: For tracks without files
             for (size_t i = 0; i < frameCount; i++) {
@@ -700,30 +719,30 @@ float SimpleHaikuEngine::GenerateTestSignal(SimpleTrack* track, float sampleRate
         {
             // Pink noise generator (1/f spectrum)
             // Using the Voss-McCartney algorithm
-            static float pink_max = 1.0f;
             float white = ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f);
-            
+
             track->GetPinkNoiseState(0) = 0.99886f * track->GetPinkNoiseState(0) + white * 0.0555179f;
             track->GetPinkNoiseState(1) = 0.99332f * track->GetPinkNoiseState(1) + white * 0.0750759f;
             track->GetPinkNoiseState(2) = 0.96900f * track->GetPinkNoiseState(2) + white * 0.1538520f;
             track->GetPinkNoiseState(3) = 0.86650f * track->GetPinkNoiseState(3) + white * 0.3104856f;
             track->GetPinkNoiseState(4) = 0.55000f * track->GetPinkNoiseState(4) + white * 0.5329522f;
             track->GetPinkNoiseState(5) = -0.7616f * track->GetPinkNoiseState(5) - white * 0.0168980f;
-            
-            float pink = track->GetPinkNoiseState(0) + track->GetPinkNoiseState(1) + 
-                        track->GetPinkNoiseState(2) + track->GetPinkNoiseState(3) + 
-                        track->GetPinkNoiseState(4) + track->GetPinkNoiseState(5) + 
+
+            float pink = track->GetPinkNoiseState(0) + track->GetPinkNoiseState(1) +
+                        track->GetPinkNoiseState(2) + track->GetPinkNoiseState(3) +
+                        track->GetPinkNoiseState(4) + track->GetPinkNoiseState(5) +
                         track->GetPinkNoiseState(6) + white * 0.5362f;
-            
+
             track->GetPinkNoiseState(6) = white * 0.115926f;
-            
-            // Normalize
+
+            // Normalize using per-track maximum (thread-safe)
+            float pink_max = track->GetPinkNoiseMax();
             sample = (pink / pink_max) * 0.3f;
-            
+
             // Track maximum for normalization
             float absval = fabsf(pink);
             if (absval > pink_max) {
-                pink_max = absval;
+                track->SetPinkNoiseMax(absval);
             }
             break;
         }
@@ -780,6 +799,37 @@ void SimpleHaikuEngine::CreateDemoScene()
     printf("  -> Square wave shows harmonic richness\n");
     printf("  -> White/Pink noise for testing spatial separation\n");
     printf("  -> All tracks positioned in 3D space for spatial demo\n");
+}
+
+status_t SimpleHaikuEngine::CreateEmptyTrack(const char* name)
+{
+    if (!name || strlen(name) == 0) {
+        printf("SimpleHaikuEngine: Cannot create track with empty name\n");
+        return B_BAD_VALUE;
+    }
+
+    // Create new empty track
+    int trackId = fTracks.size() + 1;
+    SimpleTrack* newTrack = new SimpleTrack(trackId, name);
+
+    // Set default position in 3D space (arranged in a circle)
+    float angle = (float)fTracks.size() * (2.0f * M_PI / 8.0f);  // Arrange 8 tracks in circle
+    float radius = 3.0f;
+    float x = radius * cos(angle);
+    float y = radius * sin(angle);
+    float z = 0.0f;
+
+    newTrack->SetPosition(x, y, z);
+    newTrack->SetVolume(0.8f);  // Default volume
+    newTrack->SetPan(0.0f);     // Center pan
+
+    // Add to engine
+    AddTrack(newTrack);
+
+    // printf("SimpleHaikuEngine: Created empty track '%s' (ID %d) at position (%.1f, %.1f, %.1f)\n",
+    //        name, trackId, x, y, z);
+
+    return B_OK;
 }
 
 status_t SimpleHaikuEngine::LoadAudioFileAsTrack(const char* path)
@@ -923,6 +973,78 @@ status_t SimpleTrack::LoadAudioFileAlternative(const entry_ref& ref)
     printf("  Duration: %ld frames\n", (long)fFileDuration);
     
     return B_OK;
+}
+
+// =====================================
+// Recording Methods
+// =====================================
+
+status_t SimpleHaikuEngine::StartRecording(int32 trackIndex, const char* filename)
+{
+    if (!fRecordingSession) {
+        printf("SimpleHaikuEngine: No recording session available\n");
+        return B_ERROR;
+    }
+
+    printf("SimpleHaikuEngine: Starting recording on track %d\n", (int)trackIndex);
+
+    // Start the recording session if not active (temporarily disabled)
+    if (!fRecordingSession) return B_ERROR;
+    status_t status = B_OK; // fRecordingSession->StartSession();
+    if (status != B_OK) {
+        printf("SimpleHaikuEngine: Failed to start recording session: %s\n", strerror(status));
+        return status;
+    }
+
+    // Start recording on specific track (temporarily disabled)
+    status = B_OK; // fRecordingSession->StartTrackRecording(trackIndex, filename);
+    if (status != B_OK) {
+        printf("SimpleHaikuEngine: Failed to start track recording: %s\n", strerror(status));
+        return status;
+    }
+
+    printf("SimpleHaikuEngine: Recording started on track %d\n", (int)trackIndex);
+    return B_OK;
+}
+
+status_t SimpleHaikuEngine::StopRecording(int32 trackIndex)
+{
+    if (!fRecordingSession) {
+        printf("SimpleHaikuEngine: No recording session available\n");
+        return B_ERROR;
+    }
+
+    printf("SimpleHaikuEngine: Stopping recording on track %d\n", (int)trackIndex);
+
+    if (!fRecordingSession) return B_ERROR;
+    status_t status = B_OK; // fRecordingSession->StopTrackRecording(trackIndex);
+    if (status != B_OK) {
+        printf("SimpleHaikuEngine: Failed to stop track recording: %s\n", strerror(status));
+        return status;
+    }
+
+    printf("SimpleHaikuEngine: Recording stopped on track %d\n", (int)trackIndex);
+    return B_OK;
+}
+
+bool SimpleHaikuEngine::IsRecording(int32 trackIndex) const
+{
+    if (!fRecordingSession) {
+        return false;
+    }
+
+    if (trackIndex == -1) {
+        // Check if any track is recording
+        for (int i = 0; i < GetTrackCount(); i++) {
+            if (false) { // fRecordingSession->IsTrackRecording(i)) {
+                return true;
+            }
+        }
+        return false;
+    } else {
+        // Check specific track
+        return false; // fRecordingSession->IsTrackRecording(trackIndex);
+    }
 }
 
 } // namespace HaikuDAW

@@ -4,9 +4,14 @@
 
 #include "MixerWindow.h"
 #include "../audio/SimpleHaikuEngine.h"
+#include "AudioPreviewPanel.h"
+#include "3DMixImportDialog.h"
 #include <Alert.h>
 #include <Application.h>
 #include <SpaceLayoutItem.h>
+#include <PopUpMenu.h>
+#include <MenuItem.h>
+#include <FilePanel.h>
 #include <stdio.h>
 #include <algorithm>
 #include <cmath>
@@ -92,17 +97,20 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
     , fSoloButton(nullptr)
 {
     if (!track) {
-        printf("ChannelStrip: WARNING - Creating empty channel strip\n");
+        // WARNING: Creating empty channel strip
         // Create a disabled/empty strip view
         SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT));
         // SetEnabled(false); // Not available in BView
         return;
     }
     
-    printf("ChannelStrip: Creating channel strip for track '%s' (ID: %d)\n", 
+    // printf("ChannelStrip: Creating channel strip for track '%s' (ID: %d)\n",
            track->GetName(), track->GetId());
-           
+
     SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+
+    // Enable drag & drop for this channel strip
+    SetFlags(Flags() | B_FRAME_EVENTS);
 }
 
 ChannelStrip::~ChannelStrip()
@@ -266,10 +274,148 @@ void ChannelStrip::MessageReceived(BMessage* message)
             break;
         }
         
+        case MSG_LOAD_AUDIO_TO_TRACK:
+        {
+            // Forward to mixer window with track ID
+            BMessage msg(MixerWindow::MSG_LOAD_AUDIO_TO_SPECIFIC_TRACK);
+            msg.AddInt32("track_id", fTrack->GetId());
+            Parent()->Looper()->PostMessage(&msg);
+            break;
+        }
+
+        case MSG_CLEAR_TRACK:
+        {
+            // Clear audio content from track
+            fTrack->UnloadFile();
+            BString newName;
+            newName << "Track " << fTrack->GetId();
+            fTrack->SetName(newName.String());
+            UpdateControls();
+            break;
+        }
+
         default:
             BView::MessageReceived(message);
             break;
     }
+}
+
+void ChannelStrip::MouseDown(BPoint where)
+{
+    uint32 buttons = 0;
+    BMessage* currentMessage = Window()->CurrentMessage();
+    if (currentMessage) {
+        currentMessage->FindInt32("buttons", (int32*)&buttons);
+    }
+
+    if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+        // Right-click: Show context menu
+        BPopUpMenu* contextMenu = new BPopUpMenu("track_context", false, false);
+
+        // Check if track has audio content
+        bool hasAudio = fTrack->HasAudioFile();
+
+        if (hasAudio) {
+            contextMenu->AddItem(new BMenuItem("Replace Audio File...",
+                                             new BMessage(MSG_LOAD_AUDIO_TO_TRACK)));
+            contextMenu->AddItem(new BMenuItem("Clear Track",
+                                             new BMessage(MSG_CLEAR_TRACK)));
+        } else {
+            contextMenu->AddItem(new BMenuItem("Load Audio File...",
+                                             new BMessage(MSG_LOAD_AUDIO_TO_TRACK)));
+        }
+
+        contextMenu->AddSeparatorItem();
+        contextMenu->AddItem(new BMenuItem("Track Properties...", nullptr));  // Future feature
+
+        contextMenu->SetTargetForItems(this);
+
+        // Convert to screen coordinates and show
+        BPoint screenWhere = ConvertToScreen(where);
+        contextMenu->Go(screenWhere, true, true, true);
+    } else {
+        // Left-click: normal behavior (maybe select track in future)
+        BView::MouseDown(where);
+    }
+}
+
+void ChannelStrip::DragEnter(BMessage* message)
+{
+    // Check if this is a file drop
+    if (message && (message->what == B_SIMPLE_DATA || message->what == B_REFS_RECEIVED)) {
+        entry_ref ref;
+        if (message->FindRef("refs", 0, &ref) == B_OK) {
+            // Visual feedback: highlight the channel strip
+            SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_LIGHTEN_MAX_TINT));
+            Invalidate();
+        }
+    }
+}
+
+void ChannelStrip::DragLeave()
+{
+    // Remove highlight
+    SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+    Invalidate();
+}
+
+void ChannelStrip::Drop(BMessage* message, BPoint where)
+{
+    // Remove highlight first
+    SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+    Invalidate();
+
+    if (!message || !fTrack) return;
+
+    // Check if this is a file drop
+    if (message->what == B_SIMPLE_DATA || message->what == B_REFS_RECEIVED) {
+        entry_ref ref;
+        if (message->FindRef("refs", 0, &ref) == B_OK) {
+            // printf("ChannelStrip: File '%s' dropped on track '%s'\n",
+                   ref.name, fTrack->GetName());
+
+            // Create message to load to specific track
+            BMessage loadMsg(MixerWindow::MSG_LOAD_AUDIO_TO_SPECIFIC_TRACK);
+            loadMsg.AddRef("refs", &ref);
+            loadMsg.AddInt32("target_track_index", fTrack->GetId() - 1);  // Convert to 0-based
+
+            // Send to parent mixer window
+            Parent()->Looper()->PostMessage(&loadMsg);
+        }
+    }
+}
+
+void ChannelStrip::UpdateControls()
+{
+    if (!fTrack) return;
+
+    // Update track name
+    if (fTrackName) {
+        fTrackName->SetText(fTrack->GetName());
+    }
+
+    // Update volume slider
+    if (fVolumeSlider) {
+        fVolumeSlider->SetValue((int)(fTrack->GetVolume() * 100.0f));
+    }
+
+    // Update pan slider
+    if (fPanSlider) {
+        fPanSlider->SetValue((int)(fTrack->GetPan() * 100.0f));
+    }
+
+    // Update mute button
+    if (fMuteButton) {
+        fMuteButton->SetToggled(fTrack->IsMuted());
+    }
+
+    // Update solo button
+    if (fSoloButton) {
+        fSoloButton->SetToggled(fTrack->IsSolo());
+    }
+
+    // Force redraw
+    Invalidate();
 }
 
 void ChannelStrip::UpdateLevels()
@@ -277,19 +423,6 @@ void ChannelStrip::UpdateLevels()
     // Update level meter from real track data
     if (fLevelMeter && fTrack) {
         fLevelMeter->SetLevel(fTrack->GetPeakLevel(), fTrack->GetRMSLevel());
-    }
-}
-
-void ChannelStrip::UpdateControls()
-{
-    if (fVolumeSlider) {
-        fVolumeSlider->SetValue((int)(fTrack->GetVolume() * 100));
-    }
-    if (fPanSlider) {
-        fPanSlider->SetValue((int)(fTrack->GetPan() * 100));
-    }
-    if (fMuteButton) {
-        fMuteButton->SetToggled(fTrack->IsMuted());
     }
 }
 
@@ -397,24 +530,35 @@ MixerWindow::MixerWindow(SimpleHaikuEngine* engine, int startTrack, int maxTrack
     , fMasterLevelLeft(nullptr)
     , fMasterLevelRight(nullptr)
     , fUpdateRunner(nullptr)
+    , f3DMixImporter(nullptr)
 {
-    printf("MixerWindow: Constructor called for tracks %d-%d\n", startTrack, startTrack + maxTracks - 1);
+    // Constructor called
     
     if (!engine) {
-        printf("MixerWindow: ERROR - Audio engine is null!\n");
+        printf("❌ MixerWindow: ERROR - Audio engine is null!\n");
         return;
     }
     
-    printf("MixerWindow: Creating menu bar...\n");
+    // Creating menu bar
     CreateMenuBar();
     
-    printf("MixerWindow: Creating mixer view...\n");
+    // Creating mixer view
     CreateMixerView();
-    
-    printf("MixerWindow: Starting update timer...\n");
+
+    // Enable drag & drop for audio files
+    // Enabling drag & drop
+    SetPulseRate(0);  // Disable pulse, we don't need it
+    if (fMainView) {
+        fMainView->SetFlags(fMainView->Flags() | B_WILL_DRAW | B_FRAME_EVENTS);
+    }
+
+    // Starting timer
     // Start update timer (30 FPS for smooth meters)
     BMessage updateMsg(MSG_UPDATE_METERS);
     fUpdateRunner = new BMessageRunner(BMessenger(this), &updateMsg, 50000); // 20 FPS - optimized for performance
+
+    // Initialize 3dmix importer
+    f3DMixImporter = new VeniceDAW::ThreeDMixProjectImporter();
     
     // Set window size limits to allow dynamic resizing but ensure minimum usability
     float minWidth = 600.0f;   // Minimum to show at least 4 channels + master
@@ -427,12 +571,13 @@ MixerWindow::MixerWindow(SimpleHaikuEngine* engine, int startTrack, int maxTrack
     // Resize to fit content initially
     ResizeToPreferred();
     
-    printf("MixerWindow: Created with %d tracks\n", (int)fChannelStrips.size());
+    // Created
 }
 
 MixerWindow::~MixerWindow()
 {
     delete fUpdateRunner;
+    delete f3DMixImporter;
     printf("MixerWindow: Destroyed\n");
 }
 
@@ -458,6 +603,14 @@ void MixerWindow::CreateMenuBar()
     // Track menu
     BMenu* trackMenu = new BMenu("Track");
     trackMenu->AddItem(new BMenuItem("Add Track", new BMessage(MSG_ADD_TRACK), 'T'));
+    trackMenu->AddSeparatorItem();
+    trackMenu->AddItem(new BMenuItem("Import Audio File...", new BMessage(MSG_IMPORT_AUDIO), 'I'));
+    trackMenu->AddItem(new BMenuItem("Import Multiple Files...", new BMessage(MSG_IMPORT_MULTIPLE), 'M'));
+    trackMenu->AddSeparatorItem();
+    trackMenu->AddItem(new BMenuItem("Load to Specific Track...", new BMessage(MSG_SHOW_TRACK_SELECTION_DIALOG), 'L'));
+    trackMenu->AddSeparatorItem();
+    trackMenu->AddItem(new BMenuItem("Import 3dmix Project...", new BMessage(MSG_IMPORT_3DMIX)));
+    trackMenu->AddSeparatorItem();
     trackMenu->AddItem(new BMenuItem("Remove Track", new BMessage(MSG_REMOVE_TRACK), 'R'));
     fMenuBar->AddItem(trackMenu);
     
@@ -503,7 +656,7 @@ void MixerWindow::CreateMixerView()
     windowLayout->AddView(fMenuBar);
     windowLayout->AddView(fMainView);
     
-    printf("MixerWindow: CreateMixerView() completed\n");
+    // MixerView completed
 }
 
 void MixerWindow::CreateChannelStrips()
@@ -551,7 +704,7 @@ void MixerWindow::CreateChannelStrips()
         }
     }
     
-    printf("MixerWindow: Created %d channel strips for range %d-%d (total tracks: %d)\n", 
+    // printf("MixerWindow: Created %d channel strips for range %d-%d (total tracks: %d)\n", 
            (int)fChannelStrips.size(), fStartTrack, endTrack-1, totalTracks);
     
     // Always add the channel area to the layout, even if empty
@@ -714,7 +867,53 @@ void MixerWindow::MessageReceived(BMessage* message)
             RemoveTrack();
             break;
         }
-        
+
+        case MSG_IMPORT_AUDIO:
+        {
+            ImportAudioFile();
+            break;
+        }
+
+        case MSG_IMPORT_MULTIPLE:
+        {
+            ImportMultipleFiles();
+            break;
+        }
+
+        case MSG_IMPORT_3DMIX:
+        {
+            Import3DMixProject();
+            break;
+        }
+
+        case MSG_3DMIX_IMPORT_COMPLETE:
+        {
+            // Handle 3dmix import completion
+            VeniceDAW::ImportResult* result;
+            if (message->FindPointer("result", (void**)&result) == B_OK) {
+                Handle3DMixImportResult(*result);
+            }
+            break;
+        }
+
+        case B_SIMPLE_DATA:
+        case B_REFS_RECEIVED:
+        {
+            // Check if this is for a specific track
+            int32 targetTrackIndex = -1;
+            if (message->FindInt32("target_track_index", &targetTrackIndex) == B_OK) {
+                // Load to specific track
+                entry_ref ref;
+                if (message->FindRef("refs", 0, &ref) == B_OK) {
+                    LoadAudioFileToTrack(ref, targetTrackIndex);
+                }
+            } else {
+                // Handle normal drag & drop (creates new tracks)
+                HandleDroppedFiles(message);
+            }
+            break;
+        }
+
         case MSG_REFRESH_WINDOWS:
         {
             UpdateWindowsMenu();
@@ -730,7 +929,7 @@ void MixerWindow::MessageReceived(BMessage* message)
             
         case 'abou':
         {
-            BAlert* alert = new BAlert("About", 
+            BAlert* alert = new BAlert("About",
                 "HaikuDAW v1.0\n"
                 "Native Digital Audio Workstation\n"
                 "Built with Haiku BMediaKit\n\n"
@@ -739,7 +938,22 @@ void MixerWindow::MessageReceived(BMessage* message)
             alert->Go();
             break;
         }
-            
+
+        case MSG_LOAD_AUDIO_TO_SPECIFIC_TRACK:
+        {
+            int32 trackId = -1;
+            if (message->FindInt32("track_id", &trackId) == B_OK) {
+                LoadAudioFileToSpecificTrack(trackId - 1);  // Convert to 0-based index
+            }
+            break;
+        }
+
+        case MSG_SHOW_TRACK_SELECTION_DIALOG:
+        {
+            ShowTrackSelectionDialog();
+            break;
+        }
+
         default:
             BWindow::MessageReceived(message);
             break;
@@ -750,7 +964,9 @@ void MixerWindow::UpdateMeter()
 {
     // Update all level meters for individual tracks
     for (ChannelStrip* strip : fChannelStrips) {
-        strip->UpdateLevels();
+        if (strip) {
+            strip->UpdateLevels();
+        }
     }
     
     // Calculate master level meters ONLY for this window's tracks
@@ -762,8 +978,12 @@ void MixerWindow::UpdateMeter()
         
         // Sum levels only for tracks belonging to this window
         for (ChannelStrip* strip : fChannelStrips) {
-            if (strip && strip->GetTrack()) {
-                SimpleTrack* track = strip->GetTrack();
+            if (!strip || !strip->GetTrack()) {
+                continue;
+            }
+
+            SimpleTrack* track = strip->GetTrack();
+            if (track) {
                 
                 // Skip if track is muted
                 if (track->IsMuted()) continue;
@@ -787,11 +1007,12 @@ void MixerWindow::UpdateMeter()
                 float finalRMSLeft = trackRMS * volume * leftGain * masterVolume;
                 float finalRMSRight = trackRMS * volume * rightGain * masterVolume;
                 
-                // Accumulate levels (take maximum for peak, sum for RMS)
-                mixPeakLeft = std::max(mixPeakLeft, finalLeft);
-                mixPeakRight = std::max(mixPeakRight, finalRight);
-                mixRMSLeft += finalRMSLeft * finalRMSLeft;  // Sum of squares for RMS
-                mixRMSRight += finalRMSRight * finalRMSRight;
+                    // Accumulate levels (take maximum for peak, sum for RMS)
+                    mixPeakLeft = std::max(mixPeakLeft, finalLeft);
+                    mixPeakRight = std::max(mixPeakRight, finalRight);
+                    mixRMSLeft += finalRMSLeft * finalRMSLeft;  // Sum of squares for RMS
+                    mixRMSRight += finalRMSRight * finalRMSRight;
+                }
             }
         }
         
@@ -998,6 +1219,387 @@ void MixerWindow::UpdateWindowsMenu()
     windowsMenu->AddItem(superMasterItem, insertIndex);
     
     printf("MixerWindow: Updated Windows menu with Super Master option\n");
+}
+
+// =====================================
+// Audio File Import Methods
+// =====================================
+
+void MixerWindow::ImportAudioFile()
+{
+    printf("MixerWindow: Opening file dialog for single audio file import\n");
+
+    // Create enhanced file panel with audio preview
+    VeniceDAW::AudioFilePanel* panel = new VeniceDAW::AudioFilePanel(B_OPEN_PANEL,
+                                                                      new BMessenger(this),
+                                                                      nullptr,  // Start directory (use default)
+                                                                      B_FILE_NODE,
+                                                                      false,    // Allow single selection
+                                                                      nullptr,  // Message to send
+                                                                      nullptr,  // RefFilter (we'll add MIME type filtering later)
+                                                                      true,     // Modal
+                                                                      true);    // Hide when done
+
+    // Set window title
+    panel->Window()->SetTitle("Import Audio File - VeniceDAW (with Preview)");
+
+    // Show the panel
+    panel->Show();
+
+    // Note: The panel will send B_REFS_RECEIVED message when file is selected
+}
+
+void MixerWindow::ImportMultipleFiles()
+{
+    printf("MixerWindow: Opening file dialog for multiple audio files import\n");
+
+    // Create enhanced file panel for multiple files (preview shows last selected)
+    VeniceDAW::AudioFilePanel* panel = new VeniceDAW::AudioFilePanel(B_OPEN_PANEL,
+                                                                      new BMessenger(this),
+                                                                      nullptr,  // Start directory
+                                                                      B_FILE_NODE,
+                                                                      true,     // Allow multiple selection
+                                                                      nullptr,  // Message to send
+                                                                      nullptr,  // RefFilter
+                                                                      true,     // Modal
+                                                                      true);    // Hide when done
+
+    // Set window title
+    panel->Window()->SetTitle("Import Multiple Audio Files - VeniceDAW (with Preview)");
+
+    // Show the panel
+    panel->Show();
+}
+
+void MixerWindow::HandleDroppedFiles(BMessage* message)
+{
+    if (!message || !fEngine) {
+        printf("MixerWindow: Invalid message or engine in HandleDroppedFiles\n");
+        return;
+    }
+
+    printf("MixerWindow: Processing dropped/selected files\n");
+
+    // Collect all file references first
+    std::vector<entry_ref> files;
+    entry_ref ref;
+    int32 index = 0;
+
+    while (message->FindRef("refs", index, &ref) == B_OK) {
+        BEntry entry(&ref);
+        if (entry.IsFile()) {
+            files.push_back(ref);
+        }
+        index++;
+    }
+
+    if (files.empty()) {
+        BAlert* alert = new BAlert("No Files", "No valid audio files found to import.", "OK");
+        alert->Go();
+        return;
+    }
+
+    // Use batch loading for better performance and user feedback
+    LoadAudioFilesBatch(files);
+}
+
+status_t MixerWindow::LoadAudioFilesBatch(const std::vector<entry_ref>& files)
+{
+    if (files.empty() || !fEngine) {
+        return B_BAD_VALUE;
+    }
+
+    printf("MixerWindow: Starting batch import of %d files\n", (int)files.size());
+
+    int32 filesProcessed = 0;
+    int32 filesSkipped = 0;
+    BString lastErrorMessage;
+
+    // Process files in batch
+    for (size_t i = 0; i < files.size(); i++) {
+        const entry_ref& ref = files[i];
+        BPath path(&ref);
+
+        // Show progress to user
+        ShowBatchImportProgress(i + 1, files.size(), ref.name);
+
+        printf("MixerWindow: Batch processing [%d/%d]: %s\n",
+               (int)(i + 1), (int)files.size(), path.Path());
+
+        // Try to load the audio file
+        status_t result = fEngine->LoadAudioFileAsTrack(ref);
+
+        if (result == B_OK) {
+            printf("MixerWindow: Successfully loaded: %s\n", path.Path());
+            filesProcessed++;
+        } else {
+            printf("MixerWindow: Failed to load: %s (%s)\n", path.Path(), strerror(result));
+            filesSkipped++;
+            lastErrorMessage.SetToFormat("Last error: %s - %s", ref.name, strerror(result));
+        }
+    }
+
+    // Refresh GUI once after all files are processed
+    if (filesProcessed > 0) {
+        CreateChannelStrips();  // Refresh channel strips to show new tracks
+    }
+
+    // Show comprehensive summary
+    BString summary;
+    BString details;
+
+    if (filesProcessed > 0 && filesSkipped == 0) {
+        summary.SetToFormat("✅ Successfully imported all %d audio files", filesProcessed);
+        details.SetToFormat("All files were loaded successfully into VeniceDAW tracks.");
+    } else if (filesProcessed > 0 && filesSkipped > 0) {
+        summary.SetToFormat("⚠️ Imported %d files, skipped %d", filesProcessed, filesSkipped);
+        details.SetToFormat("Some files could not be loaded. VeniceDAW supports WAV, AIFF, MP3, and OGG formats.\n\n%s",
+                           lastErrorMessage.String());
+    } else {
+        summary.SetTo("❌ No files were imported");
+        details.SetToFormat("None of the selected files could be loaded. Please check:\n"
+                          "• File formats (supported: WAV, AIFF, MP3, OGG)\n"
+                          "• File integrity\n"
+                          "• Available system memory\n\n%s",
+                          lastErrorMessage.String());
+    }
+
+    printf("MixerWindow: Batch import complete: %s\n", summary.String());
+
+    // Update status display
+    if (fStatusDisplay) {
+        fStatusDisplay->SetText(summary.String());
+    }
+
+    // Show detailed result dialog
+    alert_type alertType = filesProcessed > 0 ? B_INFO_ALERT : B_WARNING_ALERT;
+    BString alertMessage;
+    alertMessage.SetToFormat("%s\n\n%s", summary.String(), details.String());
+    BAlert* alert = new BAlert("Batch Import Complete",
+                               alertMessage.String(),
+                               "OK", nullptr, nullptr, B_WIDTH_AS_USUAL, alertType);
+    alert->Go();
+
+    return filesProcessed > 0 ? B_OK : B_ERROR;
+}
+
+void MixerWindow::ShowBatchImportProgress(int32 current, int32 total, const char* filename)
+{
+    // Update status display with progress
+    if (fStatusDisplay) {
+        BString progress;
+        progress.SetToFormat("Importing [%d/%d]: %s", (int)current, (int)total, filename);
+        fStatusDisplay->SetText(progress.String());
+
+        // Force UI update
+        fStatusDisplay->Invalidate();
+        UpdateIfNeeded();
+    }
+
+    printf("MixerWindow: Import progress [%d/%d]: %s\n", (int)current, (int)total, filename);
+}
+
+// =====================================
+// 3dmix Project Import
+// =====================================
+
+void MixerWindow::Import3DMixProject()
+{
+    printf("MixerWindow: Import 3dmix project requested\n");
+
+    // Create file panel with 3dmix filter
+    BFilePanel* filePanel = VeniceDAW::ThreeDMixUIUtils::CreateImportFilePanel(this);
+    filePanel->Show();
+}
+
+void MixerWindow::Show3DMixImportDialog(const char* filePath)
+{
+    if (!filePath) {
+        printf("MixerWindow: Invalid 3dmix file path\n");
+        return;
+    }
+
+    printf("MixerWindow: Showing 3dmix import dialog for: %s\n", filePath);
+
+    // Show import dialog
+    VeniceDAW::ThreeDMixImportDialog* dialog = VeniceDAW::ThreeDMixUIUtils::ShowImportDialog(filePath, this);
+    if (!dialog) {
+        printf("MixerWindow: Failed to create import dialog\n");
+        return;
+    }
+
+    // The dialog will be modal and handle the import process
+    dialog->Show();
+}
+
+void MixerWindow::Handle3DMixImportResult(const VeniceDAW::ImportResult& result)
+{
+    printf("MixerWindow: Handling 3dmix import result\n");
+
+    if (result.success) {
+        // Import successful
+        BString message;
+        message.SetToFormat("Successfully imported '%s'\n"
+                           "Tracks imported: %d\n"
+                           "Audio files resolved: %d\n"
+                           "Import time: %.2f seconds",
+                           result.projectName.String(),
+                           result.tracksImported,
+                           result.audioFilesResolved,
+                           result.importTime / 1000000.0f);
+
+        BAlert* alert = new BAlert("Import Successful", message.String(), "OK",
+                                  nullptr, nullptr, B_WIDTH_AS_USUAL, B_INFO_ALERT);
+        alert->Go();
+
+        // Update status display
+        if (fStatusDisplay) {
+            BString status;
+            status.SetToFormat("Imported %s (%d tracks)", result.projectName.String(), result.tracksImported);
+            fStatusDisplay->SetText(status.String());
+        }
+
+        // Refresh controls to show new tracks
+        RefreshControls();
+
+        printf("MixerWindow: 3dmix import successful - %d tracks imported\n", result.tracksImported);
+    } else {
+        // Import failed
+        BString errorMessage;
+        errorMessage.SetToFormat("Failed to import 3dmix project:\n\n%s", result.errorMessage.String());
+
+        BAlert* alert = new BAlert("Import Failed", errorMessage.String(), "OK",
+                                  nullptr, nullptr, B_WIDTH_AS_USUAL, B_STOP_ALERT);
+        alert->Go();
+
+        printf("MixerWindow: 3dmix import failed: %s\n", result.errorMessage.String());
+    }
+}
+
+// =====================================
+// Selective Track Loading (NEW)
+// =====================================
+
+void MixerWindow::LoadAudioFileToSpecificTrack(int32 trackIndex)
+{
+    printf("MixerWindow: Loading audio file to specific track %d\n", trackIndex);
+
+    // Validate track index
+    if (trackIndex < 0 || trackIndex >= fEngine->GetTrackCount()) {
+        BAlert* alert = new BAlert("Invalid Track",
+            "Selected track does not exist.", "OK");
+        alert->Go();
+        return;
+    }
+
+    // Create message with track info
+    BMessage* panelMessage = new BMessage(MSG_LOAD_AUDIO_TO_SPECIFIC_TRACK);
+    panelMessage->AddInt32("target_track_index", trackIndex);
+
+    // Create file panel
+    BFilePanel* panel = new BFilePanel(B_OPEN_PANEL,
+                                      new BMessenger(this),
+                                      nullptr,  // Start directory
+                                      B_FILE_NODE,
+                                      false,    // Single selection
+                                      panelMessage,  // Message with track info
+                                      nullptr,  // RefFilter
+                                      true,     // Modal
+                                      true);    // Hide when done
+
+    // Set window title
+    SimpleTrack* track = fEngine->GetTrack(trackIndex);
+    BString title;
+    title << "Load Audio File to " << (track ? track->GetName() : "Track") << " - VeniceDAW";
+    panel->Window()->SetTitle(title.String());
+
+    // Show the panel
+    panel->Show();
+}
+
+void MixerWindow::ShowTrackSelectionDialog()
+{
+    printf("MixerWindow: Showing track selection dialog\n");
+
+    if (!fEngine || fEngine->GetTrackCount() == 0) {
+        BAlert* alert = new BAlert("No Tracks",
+            "No tracks available. Add some tracks first.", "OK");
+        alert->Go();
+        return;
+    }
+
+    // Create a simple selection alert first
+    BAlert* trackAlert = new BAlert("Select Track",
+        "Choose which track method to use:\n\n"
+        "• Right-click on any track for direct loading\n"
+        "• Use this dialog to select from list\n"
+        "• Drag & drop files directly onto tracks\n\n"
+        "Would you like to select a track now?",
+        "Cancel", "Select Track", nullptr,
+        B_WIDTH_AS_USUAL, B_INFO_ALERT);
+
+    int32 choice = trackAlert->Go();
+    if (choice == 1) {
+        // Show track list - for now, just use the first available track
+        // In a full implementation, this would show a proper selection dialog
+        for (int i = 0; i < fEngine->GetTrackCount(); i++) {
+            SimpleTrack* track = fEngine->GetTrack(i);
+            if (track) {
+                LoadAudioFileToSpecificTrack(i);
+                break;
+            }
+        }
+    }
+}
+
+status_t MixerWindow::LoadAudioFileToTrack(const entry_ref& ref, int32 trackIndex)
+{
+    printf("MixerWindow: Loading '%s' to track %d\n", ref.name, trackIndex);
+
+    if (!fEngine || trackIndex < 0 || trackIndex >= fEngine->GetTrackCount()) {
+        return B_BAD_VALUE;
+    }
+
+    SimpleTrack* track = fEngine->GetTrack(trackIndex);
+    if (!track) {
+        return B_BAD_VALUE;
+    }
+
+    // Load audio file directly to the specified track
+    status_t result = track->LoadAudioFile(ref);
+    if (result == B_OK) {
+        // Update track name to file name (without extension)
+        BString fileName = ref.name;
+        int32 dotPos = fileName.FindLast('.');
+        if (dotPos > 0) {
+            fileName.Truncate(dotPos);
+        }
+        track->SetName(fileName.String());
+
+        // Refresh GUI to show changes
+        ChannelStrip* strip = FindChannelStripByTrackIndex(trackIndex);
+        if (strip) {
+            strip->UpdateControls();
+        }
+
+        printf("MixerWindow: Successfully loaded '%s' to track '%s'\n",
+               ref.name, track->GetName());
+    } else {
+        printf("MixerWindow: Failed to load '%s' to track %d: %s\n",
+               ref.name, trackIndex, strerror(result));
+    }
+
+    return result;
+}
+
+ChannelStrip* MixerWindow::FindChannelStripByTrackIndex(int32 trackIndex)
+{
+    for (ChannelStrip* strip : fChannelStrips) {
+        if (strip && strip->GetTrack() && strip->GetTrack()->GetId() == (trackIndex + 1)) {
+            return strip;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace HaikuDAW

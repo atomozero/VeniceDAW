@@ -27,28 +27,28 @@ SuperMasterWindow::SuperMasterWindow(SimpleHaikuEngine* engine)
     , fGlobalLevelRight(nullptr)
     , fUpdateRunner(nullptr)
 {
-    printf("SuperMasterWindow: Constructor started\n");
+    // Constructor started
     
     if (!engine) {
-        printf("SuperMasterWindow: ERROR - Audio engine is null!\n");
+        printf("❌ SuperMasterWindow: ERROR - Audio engine is null!\n");
         return;
     }
     
-    printf("SuperMasterWindow: Creating controls...\n");
+    // Creating controls
     CreateControls();
     
     // We'll start the update timer later to avoid initialization issues
     fUpdateRunner = nullptr;
     
-    printf("SuperMasterWindow: Setting size limits...\n");
+    // Setting limits
     // Set compact size limits like other master sections
     SetSizeLimits(220.0f, 300.0f, 180.0f, 220.0f);
     
-    printf("SuperMasterWindow: Resizing to compact size...\n");
+    // Resizing
     // Compact size like the master sections
     ResizeTo(240, 200);
     
-    printf("SuperMasterWindow: Created global master control successfully\n");
+    // Master control ready
 }
 
 SuperMasterWindow::~SuperMasterWindow()
@@ -56,12 +56,12 @@ SuperMasterWindow::~SuperMasterWindow()
     if (fUpdateRunner) {
         delete fUpdateRunner;
     }
-    printf("SuperMasterWindow: Destroyed\n");
+    // Destroyed
 }
 
 void SuperMasterWindow::CreateControls()
 {
-    printf("SuperMasterWindow: CreateControls() started\n");
+    // Creating controls
     
     // Create main view with proper background color
     fMainView = new BView("super_main_view", B_WILL_DRAW);
@@ -218,9 +218,11 @@ void SuperMasterWindow::UpdateMeter()
     if (!LockLooper()) {
         return;
     }
-    
-    // Update global level meters (same as master levels)
-    if (fEngine && fGlobalLevelLeft && fGlobalLevelRight) {
+
+    // Use try-catch to ensure unlock happens even if exception occurs
+    try {
+        // Update global level meters (same as master levels)
+        if (fEngine && fGlobalLevelLeft && fGlobalLevelRight) {
         float peakLeft = fEngine->GetMasterPeakLeft();
         float peakRight = fEngine->GetMasterPeakRight();
         float rmsLeft = fEngine->GetMasterRMSLeft();
@@ -233,26 +235,31 @@ void SuperMasterWindow::UpdateMeter()
         rmsLeft *= masterVolume;
         rmsRight *= masterVolume;
         
-        // Check that level meters are valid before updating
-        if (fGlobalLevelLeft->Window() && fGlobalLevelRight->Window()) {
-            fGlobalLevelLeft->SetLevel(peakLeft, rmsLeft);
-            fGlobalLevelRight->SetLevel(peakRight, rmsRight);
+            // Check that level meters are valid before updating
+            if (fGlobalLevelLeft->Window() && fGlobalLevelRight->Window()) {
+                fGlobalLevelLeft->SetLevel(peakLeft, rmsLeft);
+                fGlobalLevelRight->SetLevel(peakRight, rmsRight);
+            }
         }
-    }
-    
-    // Update status display
-    if (fEngine && fStatusDisplay && fStatusDisplay->Window()) {
-        BString status;
-        if (fEngine->IsRunning()) {
-            status << "🎵 Playing";
-        } else {
-            status << "⏹ Stopped";
+
+        // Update status display
+        if (fEngine && fStatusDisplay && fStatusDisplay->Window()) {
+            BString status;
+            if (fEngine->IsRunning()) {
+                status << "🎵 Playing";
+            } else {
+                status << "⏹ Stopped";
+            }
+            status << " | " << fEngine->GetTrackCount() << " tracks"
+                   << " | Vol: " << (int)(fEngine->GetMasterVolume() * 100) << "%";
+            fStatusDisplay->SetText(status.String());
         }
-        status << " | " << fEngine->GetTrackCount() << " tracks"
-               << " | Vol: " << (int)(fEngine->GetMasterVolume() * 100) << "%";
-        fStatusDisplay->SetText(status.String());
+    } catch (...) {
+        // Ensure we always unlock, even on exception
+        UnlockLooper();
+        throw;  // Re-throw exception after unlocking
     }
-    
+
     UnlockLooper();
 }
 

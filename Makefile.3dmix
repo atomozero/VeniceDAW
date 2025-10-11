@@ -1,0 +1,211 @@
+# Makefile.3dmix - Build system for VeniceDAW 3dmix import support
+# Builds and tests the complete 3dmix integration system
+
+# Compiler and flags
+CXX = g++
+CXXFLAGS = -std=c++11 -Wall -Wextra -O2
+INCLUDES = -I. -I/boot/system/headers -I/boot/system/headers/cpp
+LIBS = -lbe -lmedia -ltracker -lroot -ltranslation
+
+# Source directories
+3DMIX_DIR = src/audio/3dmix
+GUI_DIR = src/gui
+AUDIO_DIR = src/audio
+
+# 3dmix core source files
+3DMIX_SOURCES = \
+	$(3DMIX_DIR)/3DMixFormat.cpp \
+	$(3DMIX_DIR)/3DMixParser.cpp \
+	$(3DMIX_DIR)/CoordinateSystemMapper.cpp \
+	$(3DMIX_DIR)/AudioPathResolver.cpp \
+	$(3DMIX_DIR)/3DMixProjectImporter.cpp \
+	$(3DMIX_DIR)/3DMixTestSuite.cpp
+
+# GUI integration source files
+GUI_SOURCES = \
+	$(GUI_DIR)/3DMixImportDialog.cpp
+
+# Audio support source files
+AUDIO_SOURCES = \
+	$(AUDIO_DIR)/AudioLogging.cpp \
+	$(AUDIO_DIR)/AudioBufferPool.cpp
+
+# Object files
+3DMIX_OBJECTS = $(3DMIX_SOURCES:.cpp=.o)
+GUI_OBJECTS = $(GUI_SOURCES:.cpp=.o)
+AUDIO_OBJECTS = $(AUDIO_SOURCES:.cpp=.o)
+ALL_OBJECTS = $(3DMIX_OBJECTS) $(GUI_OBJECTS) $(AUDIO_OBJECTS)
+
+# Test executables
+TEST_COMPLETE = test_3dmix_complete
+TEST_PARSER = test_3dmix_parser
+TEST_COORDINATES = test_3dmix_coordinates
+TEST_PATHS = test_3dmix_paths
+
+# Default target
+all: info $(TEST_COMPLETE)
+
+# Information banner
+info:
+	@echo "╔══════════════════════════════════════════════════════════════════════════════╗"
+	@echo "║                  🎵 VeniceDAW 3dmix Build System 🎵                          ║"
+	@echo "║                                                                              ║"
+	@echo "║  Building complete BeOS 3dmix import support for VeniceDAW                  ║"
+	@echo "║  Components: Parser, Coordinates, Paths, Integration, UI                    ║"
+	@echo "╚══════════════════════════════════════════════════════════════════════════════╝"
+
+# Main test executable
+$(TEST_COMPLETE): $(ALL_OBJECTS) test_3dmix_complete.o
+	@echo "🔗 Linking complete 3dmix test suite..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
+	@echo "✅ Built: $@"
+
+# Individual component tests
+$(TEST_PARSER): $(3DMIX_OBJECTS) test_parser_only.o
+	@echo "🔗 Linking parser test..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
+
+$(TEST_COORDINATES): $(3DMIX_OBJECTS) test_coordinates_only.o
+	@echo "🔗 Linking coordinate test..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
+
+$(TEST_PATHS): $(3DMIX_OBJECTS) test_paths_only.o
+	@echo "🔗 Linking path resolution test..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
+
+# Object file compilation
+%.o: %.cpp
+	@echo "🔨 Compiling: $<"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Test targets
+test: $(TEST_COMPLETE)
+	@echo ""
+	@echo "🧪 Running complete 3dmix test suite..."
+	@echo "================================================"
+	./$(TEST_COMPLETE)
+
+test-parser: $(TEST_PARSER)
+	@echo "🧪 Running parser tests..."
+	./$(TEST_PARSER)
+
+test-coordinates: $(TEST_COORDINATES)
+	@echo "🧪 Running coordinate conversion tests..."
+	./$(TEST_COORDINATES)
+
+test-paths: $(TEST_PATHS)
+	@echo "🧪 Running path resolution tests..."
+	./$(TEST_PATHS)
+
+# Performance benchmarks
+benchmark: $(TEST_COMPLETE)
+	@echo "⚡ Running performance benchmarks..."
+	./$(TEST_COMPLETE) --benchmark
+
+# Install 3dmix support into VeniceDAW
+install: all
+	@echo "📦 Installing 3dmix support into VeniceDAW..."
+	@if [ -d "/boot/home/VeniceDAW" ]; then \
+		cp $(TEST_COMPLETE) /boot/home/VeniceDAW/bin/; \
+		echo "✅ Installed to /boot/home/VeniceDAW/bin/"; \
+	else \
+		echo "❌ VeniceDAW directory not found"; \
+	fi
+
+# Clean build artifacts
+clean:
+	@echo "🧹 Cleaning build artifacts..."
+	rm -f $(ALL_OBJECTS) test_*.o $(TEST_COMPLETE) $(TEST_PARSER) $(TEST_COORDINATES) $(TEST_PATHS)
+	@echo "✅ Clean complete"
+
+# Syntax validation (for cross-platform development)
+syntax-check:
+	@echo "📋 Checking 3dmix code syntax..."
+	@for file in $(3DMIX_SOURCES) $(GUI_SOURCES); do \
+		echo "   Checking: $$file"; \
+		$(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only $$file; \
+	done
+	@echo "✅ Syntax check complete"
+
+# Code analysis
+analyze:
+	@echo "🔍 Running static code analysis..."
+	cppcheck --enable=all --std=c++11 $(3DMIX_DIR)/ $(GUI_DIR)/
+	@echo "✅ Analysis complete"
+
+# Documentation generation
+docs:
+	@echo "📚 Generating 3dmix documentation..."
+	@if command -v doxygen >/dev/null 2>&1; then \
+		doxygen Doxyfile.3dmix; \
+		echo "✅ Documentation generated in docs/3dmix/"; \
+	else \
+		echo "❌ Doxygen not found - skipping documentation"; \
+	fi
+
+# Development helpers
+dev: syntax-check test
+	@echo "🛠️  Development build complete"
+
+# Integration test with mock VeniceDAW
+integration-test: $(TEST_COMPLETE)
+	@echo "🔗 Running integration tests..."
+	@echo "   Testing menu integration..."
+	@echo "   Testing dialog integration..."
+	@echo "   Testing audio engine integration..."
+	./$(TEST_COMPLETE) --integration
+	@echo "✅ Integration tests complete"
+
+# Memory leak detection (if valgrind available)
+memcheck: $(TEST_COMPLETE)
+	@echo "🔍 Running memory leak detection..."
+	@if command -v valgrind >/dev/null 2>&1; then \
+		valgrind --leak-check=full --show-leak-kinds=all ./$(TEST_COMPLETE); \
+	else \
+		echo "❌ Valgrind not available - skipping memory check"; \
+	fi
+
+# Package for distribution
+package: all docs
+	@echo "📦 Creating 3dmix support package..."
+	mkdir -p dist/3dmix-support
+	cp $(TEST_COMPLETE) dist/3dmix-support/
+	cp -r $(3DMIX_DIR)/*.h dist/3dmix-support/headers/
+	cp README.3dmix dist/3dmix-support/
+	tar -czf VeniceDAW-3dmix-support.tar.gz -C dist 3dmix-support
+	@echo "✅ Package created: VeniceDAW-3dmix-support.tar.gz"
+
+# Help target
+help:
+	@echo "🎯 Available targets:"
+	@echo "   all              - Build complete 3dmix support (default)"
+	@echo "   test             - Run comprehensive test suite"
+	@echo "   test-parser      - Test BMessage parsing only"
+	@echo "   test-coordinates - Test coordinate conversion only"
+	@echo "   test-paths       - Test path resolution only"
+	@echo "   benchmark        - Run performance benchmarks"
+	@echo "   install          - Install into VeniceDAW"
+	@echo "   clean            - Remove build artifacts"
+	@echo "   syntax-check     - Validate code syntax"
+	@echo "   analyze          - Run static code analysis"
+	@echo "   docs             - Generate documentation"
+	@echo "   dev              - Development build (syntax + test)"
+	@echo "   integration-test - Test VeniceDAW integration"
+	@echo "   memcheck         - Memory leak detection"
+	@echo "   package          - Create distribution package"
+	@echo "   help             - Show this help"
+
+# Phony targets
+.PHONY: all info test test-parser test-coordinates test-paths benchmark install clean syntax-check analyze docs dev integration-test memcheck package help
+
+# Header dependencies
+$(3DMIX_OBJECTS): $(3DMIX_DIR)/3DMixFormat.h $(3DMIX_DIR)/3DMixParser.h $(3DMIX_DIR)/CoordinateSystemMapper.h $(3DMIX_DIR)/AudioPathResolver.h $(3DMIX_DIR)/3DMixProjectImporter.h
+$(GUI_OBJECTS): $(GUI_DIR)/3DMixImportDialog.h $(3DMIX_DIR)/3DMixProjectImporter.h
+$(AUDIO_OBJECTS): $(AUDIO_DIR)/AudioLogging.h $(AUDIO_DIR)/AudioBufferPool.h
+
+# Special targets for automated testing
+ci-test: syntax-check test
+	@echo "✅ CI tests passed"
+
+release: clean all test package
+	@echo "🚀 Release build complete"
