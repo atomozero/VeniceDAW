@@ -722,16 +722,69 @@ BString ThreeDMixUIUtils::FormatCoordinate(const Coordinate3D& coord)
 // Missing virtual method implementations
 // =====================================
 
-void CoordinatePreviewView::MouseDown(BPoint /* where */)
+void CoordinatePreviewView::MouseDown(BPoint where)
 {
-	// Handle mouse clicks in coordinate preview
-	// TODO: Implement track selection and interaction
+	// Handle mouse clicks in coordinate preview for track selection
+	if (!fShowPreview || fTrackPositions.empty()) {
+		return;
+	}
+
+	BRect bounds = Bounds().InsetByCopy(10, 10);
+	BPoint center(bounds.left + bounds.Width() / 2, bounds.top + bounds.Height() / 2);
+
+	// Find closest track to click position
+	int32 closestTrack = -1;
+	float closestDistance = 999999.0f;
+	const float maxClickDistance = 15.0f;  // Maximum click distance in pixels
+
+	for (size_t i = 0; i < fTrackPositions.size(); i++) {
+		const AudioSphericalCoordinate& coord = fTrackPositions[i];
+
+		// Convert spherical to 2D display coordinates (same as DrawTrackPositions)
+		float azimuthRad = coord.azimuth * M_PI / 180.0f;
+		float elevationRad = coord.elevation * M_PI / 180.0f;
+		float horizontalRadius = coord.radius * cos(elevationRad);
+
+		float displayX = bounds.left + bounds.Width() / 2 +
+		                 (horizontalRadius * sin(azimuthRad) * bounds.Width() / 3);
+		float displayY = bounds.top + bounds.Height() / 2 -
+		                 (horizontalRadius * cos(azimuthRad) * bounds.Height() / 3);
+
+		// Clamp to bounds
+		displayX = fmaxf(bounds.left + 5, fminf(bounds.right - 5, displayX));
+		displayY = fmaxf(bounds.top + 5, fminf(bounds.bottom - 5, displayY));
+
+		// Calculate distance from click
+		float dx = where.x - displayX;
+		float dy = where.y - displayY;
+		float distance = sqrt(dx * dx + dy * dy);
+
+		if (distance < closestDistance && distance < maxClickDistance) {
+			closestDistance = distance;
+			closestTrack = i;
+		}
+	}
+
+	// Update selection if track was clicked
+	if (closestTrack >= 0) {
+		SetSelectedTrack(closestTrack);
+		AUDIO_LOG_DEBUG("3DMixImportDialog", "Track %d selected via mouse click", closestTrack);
+	}
 }
 
-void ThreeDMixImportDialog::WindowActivated(bool /* active */)
+void ThreeDMixImportDialog::WindowActivated(bool active)
 {
-	// Handle window activation
-	// TODO: Implement focus management if needed
+	// Handle window activation for proper focus management
+	BWindow::WindowActivated(active);
+
+	if (active) {
+		// When window is activated, set focus to track list for keyboard navigation
+		if (fTrackList && !fTrackList->IsFocus()) {
+			fTrackList->MakeFocus(true);
+		}
+
+		AUDIO_LOG_DEBUG("3DMixImportDialog", "Import dialog activated - focus set to track list");
+	}
 }
 
 void ImportConfigPanel::MessageReceived(BMessage* message)
@@ -761,7 +814,33 @@ void ImportConfigPanel::AttachedToWindow()
 void ImportConfigPanel::UpdatePreview()
 {
 	// Update the preview when configuration changes
-	// TODO: Implement preview updates for coordinate conversion, etc.
+	if (!fPreviewView) {
+		return;
+	}
+
+	// Get current configuration
+	ImportConfiguration config = GetConfiguration();
+
+	// Update preview view with new coordinate conversion mode
+	fPreviewView->SetConversionMode(config.coordinateConversion);
+	fPreviewView->SetSpatialization(config.spatializationStandard);
+
+	// Update preview status text
+	if (fPreviewStatus) {
+		BString statusText;
+		statusText.SetToFormat("Mode: %s | Standard: %s",
+			config.coordinateConversion == COORD_CONVERSION_NONE ? "Direct" :
+			config.coordinateConversion == COORD_CONVERSION_NORMALIZED ? "Normalized" :
+			config.coordinateConversion == COORD_CONVERSION_SPHERICAL ? "Spherical" : "Haiku Mixer",
+			config.spatializationStandard == SPATIALIZATION_STEREO ? "Stereo" :
+			config.spatializationStandard == SPATIALIZATION_5_1 ? "5.1 Surround" :
+			config.spatializationStandard == SPATIALIZATION_7_1 ? "7.1 Surround" :
+			config.spatializationStandard == SPATIALIZATION_AMBISONIC ? "Ambisonic" : "Binaural");
+
+		fPreviewStatus->SetText(statusText.String());
+	}
+
+	AUDIO_LOG_DEBUG("3DMixImportDialog", "Preview updated with new configuration");
 }
 
 // =====================================
