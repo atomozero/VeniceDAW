@@ -21,6 +21,21 @@ namespace VeniceDAW {
 
 namespace HaikuDAW {
 
+// Audio processing constants
+namespace AudioConstants {
+    // Volume scaling factors
+    constexpr float FILE_PLAYBACK_GAIN = 0.3f;   // Gain reduction for file playback
+    constexpr float TEST_SIGNAL_GAIN = 0.5f;     // Gain for sine/square/saw signals
+    constexpr float NOISE_SIGNAL_GAIN = 0.3f;    // Gain for white/pink noise
+
+    // Level meter smoothing
+    constexpr float PEAK_DECAY_FACTOR = 0.95f;   // Peak level decay per frame
+    constexpr float RMS_SMOOTH_FACTOR = 0.9f;    // RMS smoothing coefficient
+
+    // Display gain compensation
+    constexpr float DISPLAY_GAIN_COMPENSATION = 3.33f;  // Compensate for 0.3x gain reduction
+}
+
 class SimpleTrack {
 public:
     SimpleTrack(int id, const char* name);

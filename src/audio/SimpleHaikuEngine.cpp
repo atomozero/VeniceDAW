@@ -526,7 +526,7 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
         
         if (!shouldPlay) continue;
         
-        float volume = track->GetVolume() * fMasterVolume * 0.3f; // Increased from 0.1f for audible files
+        float volume = track->GetVolume() * fMasterVolume * AudioConstants::FILE_PLAYBACK_GAIN;
         
         // Use track pan setting (-1 = left, 0 = center, +1 = right)
         float pan = track->GetPan();
@@ -589,16 +589,16 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
         // Update track levels (smooth decay)
         float newPeak = peakLevel;
         float newRMS = sqrtf(rmsSum / frameCount);
-        
-        float smoothPeak = fmaxf(newPeak, track->GetPeakLevel() * 0.95f);  // Decay
-        float smoothRMS = track->GetRMSLevel() * 0.9f + newRMS * 0.1f;    // Smooth
+
+        float smoothPeak = fmaxf(newPeak, track->GetPeakLevel() * AudioConstants::PEAK_DECAY_FACTOR);
+        float smoothRMS = track->GetRMSLevel() * AudioConstants::RMS_SMOOTH_FACTOR + newRMS * (1.0f - AudioConstants::RMS_SMOOTH_FACTOR);
         
         track->UpdateLevels(smoothPeak, smoothRMS);
     }
     
-    // Calculate master levels from final buffer  
-    // Normalize by the 0.3 factor used in audio processing to get visual levels
-    const float displayGain = 3.33f;  // Compensate for the 0.3 factor in volume calculation
+    // Calculate master levels from final buffer
+    // Normalize by the gain factor used in audio processing to get visual levels
+    const float displayGain = AudioConstants::DISPLAY_GAIN_COMPENSATION;
     
     for (size_t i = 0; i < frameCount; i++) {
         float leftSample = fabsf(buffer[i * 2]) * displayGain;     // Left channel
@@ -618,11 +618,11 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
     // Update master levels with smoothing
     masterRMSLeft = sqrtf(masterRMSLeft / frameCount);
     masterRMSRight = sqrtf(masterRMSRight / frameCount);
-    
-    fMasterPeakLeft = fmaxf(masterPeakLeft, fMasterPeakLeft * 0.95f);  // Decay
-    fMasterPeakRight = fmaxf(masterPeakRight, fMasterPeakRight * 0.95f);
-    fMasterRMSLeft = fMasterRMSLeft * 0.9f + masterRMSLeft * 0.1f;     // Smooth
-    fMasterRMSRight = fMasterRMSRight * 0.9f + masterRMSRight * 0.1f;
+
+    fMasterPeakLeft = fmaxf(masterPeakLeft, fMasterPeakLeft * AudioConstants::PEAK_DECAY_FACTOR);
+    fMasterPeakRight = fmaxf(masterPeakRight, fMasterPeakRight * AudioConstants::PEAK_DECAY_FACTOR);
+    fMasterRMSLeft = fMasterRMSLeft * AudioConstants::RMS_SMOOTH_FACTOR + masterRMSLeft * (1.0f - AudioConstants::RMS_SMOOTH_FACTOR);
+    fMasterRMSRight = fMasterRMSRight * AudioConstants::RMS_SMOOTH_FACTOR + masterRMSRight * (1.0f - AudioConstants::RMS_SMOOTH_FACTOR);
 }
 
 void SimpleHaikuEngine::SetTrackSolo(int trackIndex, bool solo)
@@ -674,7 +674,7 @@ float SimpleHaikuEngine::_GenerateTestSignal(SimpleTrack* track, float sampleRat
         // Generate a distinctive tone for file-loaded tracks (higher frequency)
         float frequency = 1000.0f;  // 1kHz to distinguish from test signals
         float phaseIncrement = (2.0f * M_PI * frequency) / sampleRate;
-        float sample = sinf(track->GetPhase()) * 0.3f;  // Lower volume
+        float sample = sinf(track->GetPhase()) * AudioConstants::NOISE_SIGNAL_GAIN;
         track->GetPhase() += phaseIncrement;
         if (track->GetPhase() > 2.0f * M_PI) {
             track->GetPhase() -= 2.0f * M_PI;
@@ -691,7 +691,7 @@ float SimpleHaikuEngine::_GenerateTestSignal(SimpleTrack* track, float sampleRat
         {
             // Sine wave generator
             float phaseIncrement = (2.0f * M_PI * frequency) / sampleRate;
-            sample = sinf(track->GetPhase()) * 0.5f;
+            sample = sinf(track->GetPhase()) * AudioConstants::TEST_SIGNAL_GAIN;
             track->GetPhase() += phaseIncrement;
             if (track->GetPhase() > 2.0f * M_PI) {
                 track->GetPhase() -= 2.0f * M_PI;
@@ -703,7 +703,7 @@ float SimpleHaikuEngine::_GenerateTestSignal(SimpleTrack* track, float sampleRat
         {
             // Square wave generator
             float phaseIncrement = (2.0f * M_PI * frequency) / sampleRate;
-            sample = (sinf(track->GetPhase()) > 0.0f) ? 0.5f : -0.5f;
+            sample = (sinf(track->GetPhase()) > 0.0f) ? AudioConstants::TEST_SIGNAL_GAIN : -AudioConstants::TEST_SIGNAL_GAIN;
             track->GetPhase() += phaseIncrement;
             if (track->GetPhase() > 2.0f * M_PI) {
                 track->GetPhase() -= 2.0f * M_PI;
@@ -719,14 +719,14 @@ float SimpleHaikuEngine::_GenerateTestSignal(SimpleTrack* track, float sampleRat
             if (track->GetPhase() > 1.0f) {
                 track->GetPhase() -= 1.0f;
             }
-            sample = (track->GetPhase() * 2.0f - 1.0f) * 0.5f;
+            sample = (track->GetPhase() * 2.0f - 1.0f) * AudioConstants::TEST_SIGNAL_GAIN;
             break;
         }
         
         case SimpleTrack::kSignalWhiteNoise:
         {
             // White noise generator
-            sample = ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f) * 0.3f;
+            sample = ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f) * AudioConstants::NOISE_SIGNAL_GAIN;
             break;
         }
         
@@ -752,7 +752,7 @@ float SimpleHaikuEngine::_GenerateTestSignal(SimpleTrack* track, float sampleRat
 
             // Normalize using per-track maximum (thread-safe)
             float pink_max = track->GetPinkNoiseMax();
-            sample = (pink / pink_max) * 0.3f;
+            sample = (pink / pink_max) * AudioConstants::NOISE_SIGNAL_GAIN;
 
             // Track maximum for normalization
             float absval = fabsf(pink);
