@@ -109,10 +109,17 @@ private:
     // Thread safety (private)
     BLocker fGLLocker;
 
+    // Camera calculation cache (performance optimization)
+    bool fCameraDirty;
+    float fCachedCameraX;
+    float fCachedCameraY;
+    float fCachedCameraZ;
+
     // Private OpenGL helpers
     void DrawGrid();
     void DrawAxisLabels();
     Track3D* GetTrackAt(BPoint point);
+    void UpdateCameraCache();
 };
 
 /*

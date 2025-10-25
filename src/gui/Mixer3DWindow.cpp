@@ -27,6 +27,7 @@ Mixer3DView::Mixer3DView(BRect frame, SimpleHaikuEngine* engine)
     , fSelectedTrack(-1)
     , fAnimationTime(0.0f)
     , fGLLocker("3D Mixer GL Lock")
+    , fCameraDirty(true)  // Initial cache computation needed
 {
     fCameraTarget[0] = 0.0f;
     fCameraTarget[1] = 0.0f;
@@ -197,25 +198,28 @@ void Mixer3DView::RenderScene()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
-    
-    // Set up camera
+
+    // Update camera cache if needed (avoids expensive trig calculations every frame)
+    if (fCameraDirty) {
+        UpdateCameraCache();
+    }
+
+    // Set up camera using cached values
     gluLookAt(
-        fCameraTarget[0] + fCameraDistance * cos(fCameraAngleY * M_PI/180) * cos(fCameraAngleX * M_PI/180),
-        fCameraTarget[1] + fCameraDistance * sin(fCameraAngleX * M_PI/180),
-        fCameraTarget[2] + fCameraDistance * sin(fCameraAngleY * M_PI/180) * cos(fCameraAngleX * M_PI/180),
+        fCachedCameraX, fCachedCameraY, fCachedCameraZ,
         fCameraTarget[0], fCameraTarget[1], fCameraTarget[2],
         0.0f, 1.0f, 0.0f
     );
-    
+
     // Draw grid
     DrawGrid();
-    
+
     // Animate and draw tracks
     AnimateScene();
     for (const Track3D& track : f3DTracks) {
         DrawTrack3D(track);
     }
-    
+
     fAnimationTime += 0.02f;  // Animation speed
 }
 
@@ -384,16 +388,18 @@ void Mixer3DView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMess
         // Camera rotation
         float deltaX = where.x - fLastMousePos.x;
         float deltaY = where.y - fLastMousePos.y;
-        
+
         fCameraAngleY += deltaX * 0.5f;
         fCameraAngleX -= deltaY * 0.5f;
-        
+
         // Clamp X angle
         if (fCameraAngleX > 89.0f) fCameraAngleX = 89.0f;
         if (fCameraAngleX < -89.0f) fCameraAngleX = -89.0f;
-        
+
+        fCameraDirty = true;  // Invalidate cache
+
         fLastMousePos = where;
-        
+
         // Trigger redraw
         if (Window() && Window()->LockLooper()) {
             Invalidate();
@@ -406,7 +412,8 @@ void Mixer3DView::SetCameraAngle(float angleX, float angleY)
 {
     fCameraAngleX = angleX;
     fCameraAngleY = angleY;
-    
+    fCameraDirty = true;  // Invalidate cache
+
     if (Window() && Window()->LockLooper()) {
         Invalidate();
         Window()->UnlockLooper();
@@ -416,16 +423,18 @@ void Mixer3DView::SetCameraAngle(float angleX, float angleY)
 void Mixer3DView::ZoomCamera(float zoom)
 {
     fCameraDistance += zoom;
-    
+
     // Limit zoom range
     if (fCameraDistance < 2.0f) fCameraDistance = 2.0f;
     if (fCameraDistance > 50.0f) fCameraDistance = 50.0f;
-    
+
+    fCameraDirty = true;  // Invalidate cache
+
     if (Window() && Window()->LockLooper()) {
         Invalidate();
         Window()->UnlockLooper();
     }
-    
+
     printf("Mixer3DView: Camera distance: %.1f\n", fCameraDistance);
 }
 
@@ -434,12 +443,14 @@ void Mixer3DView::ResetCamera()
     fCameraAngleX = 30.0f;
     fCameraAngleY = 45.0f;
     fCameraDistance = 20.0f;  // Increased from 10.0f to see all spheres
-    
+
+    fCameraDirty = true;  // Invalidate cache
+
     if (Window() && Window()->LockLooper()) {
         Invalidate();
         Window()->UnlockLooper();
     }
-    
+
     printf("Mixer3DView: Camera reset to distance %.1f\n", fCameraDistance);
 }
 
@@ -758,6 +769,25 @@ void Mixer3DView::ProjectPoint(float x, float y, float z, BPoint& screen)
         screen.x = Bounds().Width() / 2.0f + x * 50.0f;
         screen.y = Bounds().Height() / 2.0f - y * 50.0f;
     }
+}
+
+void Mixer3DView::UpdateCameraCache()
+{
+    // Pre-compute expensive trigonometric calculations for camera position
+    // This optimization reduces CPU usage when camera is static
+    float angleXRad = fCameraAngleX * M_PI / 180.0f;
+    float angleYRad = fCameraAngleY * M_PI / 180.0f;
+
+    float cosX = cos(angleXRad);
+    float sinX = sin(angleXRad);
+    float cosY = cos(angleYRad);
+    float sinY = sin(angleYRad);
+
+    fCachedCameraX = fCameraTarget[0] + fCameraDistance * cosY * cosX;
+    fCachedCameraY = fCameraTarget[1] + fCameraDistance * sinX;
+    fCachedCameraZ = fCameraTarget[2] + fCameraDistance * sinY * cosX;
+
+    fCameraDirty = false;  // Mark cache as valid
 }
 
 } // namespace HaikuDAW
