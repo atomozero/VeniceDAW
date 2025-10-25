@@ -182,9 +182,13 @@ private:
     static void _AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format);
     void _ProcessAudio(float* buffer, size_t frameCount);
     float _GenerateTestSignal(SimpleTrack* track, float sampleRate);
+    void _SyncAudioTracks();  // Sync UI track list to RT-safe audio track list
     
     BSoundPlayer* fSoundPlayer;
-    std::vector<SimpleTrack*> fTracks;
+    std::vector<SimpleTrack*> fTracks;  // UI thread track list (for modifications)
+    std::atomic<std::vector<SimpleTrack*>*> fAudioTracks;  // RT thread track list (atomic pointer swap)
+    std::vector<SimpleTrack*> fTrackBuffer1;  // Double-buffer for lock-free updates
+    std::vector<SimpleTrack*> fTrackBuffer2;
     std::atomic<bool> fRunning;
     float fMasterVolume;
     std::atomic<int> fSoloTrack;  // Index of solo track, -1 if none (atomic for thread safety)

@@ -280,14 +280,19 @@ status_t SimpleTrack::ReadFileData(float* buffer, int32 frameCount, float sample
 // === SimpleHaikuEngine ===
 
 SimpleHaikuEngine::SimpleHaikuEngine()
-    : fSoundPlayer(nullptr), fRunning(false), fMasterVolume(1.0f), fSoloTrack(-1),
+    : fSoundPlayer(nullptr), fAudioTracks(&fTrackBuffer1), fRunning(false),
+      fMasterVolume(1.0f), fSoloTrack(-1),
       fMasterPeakLeft(0.0f), fMasterPeakRight(0.0f), fMasterRMSLeft(0.0f), fMasterRMSRight(0.0f),
       fRecordingSession(nullptr), fMonitoringTrackIndex(-1)
 {
     // Pre-allocate RT-safe buffer pool to avoid allocations in audio callback
     fMixBuffer.resize(MAX_BUFFER_FRAMES * 2, 0.0f);  // Stereo buffer
-    printf("SimpleHaikuEngine: Pre-allocated mix buffer: %zu frames (%zu bytes)\n",
-           MAX_BUFFER_FRAMES, fMixBuffer.size() * sizeof(float));
+
+    // Initialize double-buffered track lists for lock-free audio thread access
+    fTrackBuffer1.reserve(32);  // Pre-allocate for 32 tracks
+    fTrackBuffer2.reserve(32);
+
+    printf("SimpleHaikuEngine: Initialized with lock-free track management\n");
 
     // Initialize recording session (temporarily disabled for compilation)
     // fRecordingSession = new VeniceDAW::RecordingSession(this);
@@ -407,8 +412,9 @@ void SimpleHaikuEngine::ResetAllTracks()
 status_t SimpleHaikuEngine::AddTrack(SimpleTrack* track)
 {
     if (!track) return B_BAD_VALUE;
-    
+
     fTracks.push_back(track);
+    _SyncAudioTracks();  // Update audio thread's lock-free view
     // Track added
     return B_OK;
 }
@@ -418,13 +424,13 @@ status_t SimpleHaikuEngine::RemoveTrack(int index)
     if (index < 0 || (size_t)index >= fTracks.size()) {
         return B_BAD_INDEX;
     }
-    
+
     SimpleTrack* track = fTracks[index];
     // Removing track
-    
+
     // Remove from vector
     fTracks.erase(fTracks.begin() + index);
-    
+
     // Reset solo if this was the solo track
     if (fSoloTrack == index) {
         fSoloTrack = -1;
@@ -432,10 +438,12 @@ status_t SimpleHaikuEngine::RemoveTrack(int index)
         // Adjust solo track index if it comes after the removed track
         fSoloTrack--;
     }
-    
+
+    _SyncAudioTracks();  // Update audio thread's lock-free view
+
     // Clean up the track
     delete track;
-    
+
     // Track removed
     return B_OK;
 }
@@ -490,17 +498,20 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
     float masterPeakRight = 0.0f;
     float masterRMSLeft = 0.0f;
     float masterRMSRight = 0.0f;
-    
+
     // Get sample rate from BSoundPlayer format
     float sampleRate = 44100.0f;  // Default, will be updated if possible
     if (fSoundPlayer) {
         media_raw_audio_format format = fSoundPlayer->Format();
         sampleRate = format.frame_rate;
     }
-    
+
+    // Use atomic track list for lock-free access (RT-safe)
+    std::vector<SimpleTrack*>* audioTracks = fAudioTracks.load();
+
     // Process audio for each track
-    for (size_t trackIndex = 0; trackIndex < fTracks.size(); trackIndex++) {
-        SimpleTrack* track = fTracks[trackIndex];
+    for (size_t trackIndex = 0; trackIndex < audioTracks->size(); trackIndex++) {
+        SimpleTrack* track = (*audioTracks)[trackIndex];
         
         // Solo logic: if any track is solo, only play solo tracks (unless muted)
         // If no solo, play all non-muted tracks
@@ -647,9 +658,11 @@ void SimpleHaikuEngine::SetTrackSolo(int trackIndex, bool solo)
             }
         }
         
-        printf("SimpleHaikuEngine: Track %d ('%s') solo OFF. Current solo: %d\n", 
+        printf("SimpleHaikuEngine: Track %d ('%s') solo OFF. Current solo: %d\n",
                trackIndex, targetTrack->GetName(), fSoloTrack);
     }
+
+    _SyncAudioTracks();  // Update audio thread's lock-free view
 }
 
 float SimpleHaikuEngine::_GenerateTestSignal(SimpleTrack* track, float sampleRate)
@@ -1127,6 +1140,25 @@ status_t SimpleHaikuEngine::FeedMonitoringAudio(const void* data, size_t size,
     // For now, we just update the levels for visual feedback
 
     return B_OK;
+}
+
+void SimpleHaikuEngine::_SyncAudioTracks()
+{
+    // Lock-free track list synchronization using double-buffering
+    // UI thread calls this after modifying fTracks
+    // Audio thread reads from fAudioTracks atomically
+
+    // Determine which buffer is currently NOT being used by audio thread
+    std::vector<SimpleTrack*>* currentBuffer = fAudioTracks.load();
+    std::vector<SimpleTrack*>* nextBuffer = (currentBuffer == &fTrackBuffer1)
+        ? &fTrackBuffer2 : &fTrackBuffer1;
+
+    // Copy UI tracks to next buffer (happens on UI thread, safe)
+    *nextBuffer = fTracks;
+
+    // Atomically swap to make new buffer visible to audio thread
+    // This is the ONLY point where audio thread sees the change
+    fAudioTracks.store(nextBuffer);
 }
 
 } // namespace HaikuDAW
