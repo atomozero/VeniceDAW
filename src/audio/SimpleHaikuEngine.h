@@ -187,7 +187,7 @@ private:
     std::vector<SimpleTrack*> fTracks;
     std::atomic<bool> fRunning;
     float fMasterVolume;
-    int fSoloTrack;  // Index of solo track, -1 if none
+    std::atomic<int> fSoloTrack;  // Index of solo track, -1 if none (atomic for thread safety)
     
     // Master level monitoring
     float fMasterPeakLeft;
@@ -201,6 +201,10 @@ private:
     // Live monitoring support
     int32 fMonitoringTrackIndex;  // Index of monitoring track, -1 if none
     std::vector<float> fMonitoringBuffer;  // Temporary buffer for incoming audio
+
+    // RT-safe buffer pool (pre-allocated to avoid allocations in audio callback)
+    static constexpr size_t MAX_BUFFER_FRAMES = 4096;
+    std::vector<float> fMixBuffer;  // Pre-allocated mix buffer for audio processing
 };
 
 } // namespace HaikuDAW

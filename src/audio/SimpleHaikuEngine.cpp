@@ -284,12 +284,14 @@ SimpleHaikuEngine::SimpleHaikuEngine()
       fMasterPeakLeft(0.0f), fMasterPeakRight(0.0f), fMasterRMSLeft(0.0f), fMasterRMSRight(0.0f),
       fRecordingSession(nullptr), fMonitoringTrackIndex(-1)
 {
-    // Engine created
+    // Pre-allocate RT-safe buffer pool to avoid allocations in audio callback
+    fMixBuffer.resize(MAX_BUFFER_FRAMES * 2, 0.0f);  // Stereo buffer
+    printf("SimpleHaikuEngine: Pre-allocated mix buffer: %zu frames (%zu bytes)\n",
+           MAX_BUFFER_FRAMES, fMixBuffer.size() * sizeof(float));
 
     // Initialize recording session (temporarily disabled for compilation)
     // fRecordingSession = new VeniceDAW::RecordingSession(this);
     fRecordingSession = nullptr;
-    // Recording disabled
 }
 
 SimpleHaikuEngine::~SimpleHaikuEngine()
@@ -527,22 +529,25 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
         
         if (track->HasFile()) {
             // FILE PLAYBACK: Read actual audio data from loaded file
-            float* trackBuffer = new float[frameCount * 2]; // Stereo buffer
-            if (!trackBuffer) {
-                // Memory allocation failed - skip this track
+            // Use pre-allocated RT-safe buffer (no dynamic allocation!)
+            size_t requiredSize = frameCount * 2;
+            if (requiredSize > fMixBuffer.size()) {
+                // Buffer too small - skip this track to avoid allocation
+                // This should never happen with MAX_BUFFER_FRAMES = 4096
                 continue;
             }
 
-            memset(trackBuffer, 0, frameCount * 2 * sizeof(float));
+            // Clear buffer using memset (faster than std::fill)
+            memset(fMixBuffer.data(), 0, requiredSize * sizeof(float));
 
-            // Read audio data from file
-            status_t status = track->ReadFileData(trackBuffer, frameCount, sampleRate);
+            // Read audio data from file into pre-allocated buffer
+            status_t status = track->ReadFileData(fMixBuffer.data(), frameCount, sampleRate);
 
             if (status == B_OK) {
                 // Mix file audio into main buffer
                 for (size_t i = 0; i < frameCount; i++) {
-                    float leftSample = trackBuffer[i * 2];
-                    float rightSample = trackBuffer[i * 2 + 1];
+                    float leftSample = fMixBuffer[i * 2];
+                    float rightSample = fMixBuffer[i * 2 + 1];
 
                     buffer[i * 2] += leftSample * leftGain;      // Left
                     buffer[i * 2 + 1] += rightSample * rightGain; // Right
@@ -554,10 +559,7 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
                     rmsSum += displayLevel * displayLevel;
                 }
             }
-
-            // Always delete buffer, even if ReadFileData failed
-            delete[] trackBuffer;
-            trackBuffer = nullptr;
+            // No delete needed - using pre-allocated buffer!
         } else {
             // TEST SIGNAL GENERATION: For tracks without files
             for (size_t i = 0; i < frameCount; i++) {
