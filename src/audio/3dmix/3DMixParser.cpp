@@ -720,58 +720,328 @@ bool Format3DMixUtils::IsBeOSPath(const BString& path)
 }
 
 // =====================================
-// Stub implementations for missing methods
+// ProjectValidator Implementation
 // =====================================
 
-std::vector<ValidationResult> ProjectValidator::ValidateProject(const Project3DMix& /* project */)
+std::vector<ValidationResult> ProjectValidator::ValidateProject(const Project3DMix& project)
 {
-	// TODO: Implement project validation
-	return std::vector<ValidationResult>();
+	std::vector<ValidationResult> results;
+
+	// Validate project name
+	if (project.ProjectName().Length() == 0) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Project has no name", "Project metadata"));
+	}
+
+	// Validate track count
+	int32 trackCount = project.CountTracks();
+	if (trackCount == 0) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Project contains no tracks", "Project structure"));
+	} else if (trackCount > 64) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Project has unusually high track count (>64)", "Project structure"));
+	}
+
+	// Validate master volume
+	float masterVolume = project.MasterVolume();
+	if (masterVolume < 0.0f || masterVolume > 2.0f) {
+		results.push_back(ValidationResult(VALIDATION_ERROR,
+			"Master volume out of valid range (0.0-2.0)", "Project audio"));
+	}
+
+	// Validate sample rate
+	int32 sampleRate = project.ProjectSampleRate();
+	if (sampleRate != 44100 && sampleRate != 48000 && sampleRate != 96000) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Unusual project sample rate (expected 44100, 48000, or 96000)", "Project audio"));
+	}
+
+	// Validate listener position
+	const Coordinate3D& listenerPos = project.ListenerPosition();
+	if (!IsCoordinateInRange(listenerPos)) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Listener position outside typical range", "3D scene"));
+	}
+
+	// Validate each track
+	for (int32 i = 0; i < trackCount; i++) {
+		Track3DMix* track = project.TrackAt(i);
+		if (track) {
+			std::vector<ValidationResult> trackResults = ValidateTrack(*track, i);
+			results.insert(results.end(), trackResults.begin(), trackResults.end());
+		}
+	}
+
+	return results;
 }
 
-void BMessageParser::HandleVolumeField(const uint8* /* data */, Track3DMix* /* track */)
+// =====================================
+// Field Handler Implementations
+// Note: These handlers are currently unused as BMessage::Unflatten() handles
+// all parsing automatically. They are kept for potential future low-level parsing needs.
+// =====================================
+
+void BMessageParser::HandleVolumeField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement volume field parsing
+	if (!data || !track) return;
+	float volume = ExtractFloat(data);
+	track->SetVolume(volume);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed volume field: %.3f", volume);
 }
 
-void BMessageParser::HandleBalanceField(const uint8* /* data */, Track3DMix* /* track */)
+void BMessageParser::HandleBalanceField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement balance field parsing
+	if (!data || !track) return;
+	float balance = ExtractFloat(data);
+	track->SetBalance(balance);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed balance field: %.3f", balance);
 }
 
-void BMessageParser::HandleEnabledField(const uint8* /* data */, Track3DMix* /* track */)
+void BMessageParser::HandleEnabledField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement enabled field parsing
+	if (!data || !track) return;
+	bool enabled = ExtractBool(data);
+	track->SetEnabled(enabled);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed enabled field: %s", enabled ? "true" : "false");
 }
 
-void BMessageParser::HandlePositionXField(const uint8* /* data */, Track3DMix* /* track */)
+void BMessageParser::HandlePositionXField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement position X field parsing
+	if (!data || !track) return;
+	float x = ExtractFloat(data);
+	Coordinate3D pos = track->Position();
+	pos.x = x;
+	track->SetPosition(pos);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed position X field: %.2f", x);
 }
 
-void BMessageParser::HandlePositionYField(const uint8* /* data */, Track3DMix* /* track */)
+void BMessageParser::HandlePositionYField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement position Y field parsing
+	if (!data || !track) return;
+	float y = ExtractFloat(data);
+	Coordinate3D pos = track->Position();
+	pos.y = y;
+	track->SetPosition(pos);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed position Y field: %.2f", y);
 }
 
-void BMessageParser::HandlePositionZField(const uint8* /* data */, Track3DMix* /* track */)
+void BMessageParser::HandlePositionZField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement position Z field parsing
+	if (!data || !track) return;
+	float z = ExtractFloat(data);
+	Coordinate3D pos = track->Position();
+	pos.z = z;
+	track->SetPosition(pos);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed position Z field: %.2f", z);
 }
 
-void BMessageParser::HandleLoopStartField(const uint8* /* data */, Track3DMix* /* track */)
+void BMessageParser::HandleLoopStartField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement loop start field parsing
+	if (!data || !track) return;
+	int32 loopStart = ExtractInt32(data);
+	track->SetLoopStart(loopStart);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed loop start field: %d", loopStart);
 }
 
-void BMessageParser::HandleLoopEndField(const uint8* /* data */, Track3DMix* /* track */)
+void BMessageParser::HandleLoopEndField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement loop end field parsing
+	if (!data || !track) return;
+	int32 loopEnd = ExtractInt32(data);
+	track->SetLoopEnd(loopEnd);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed loop end field: %d", loopEnd);
 }
 
-void BMessageParser::HandleSampleRateField(const uint8* /* data */, Track3DMix* /* track */)
+void BMessageParser::HandleSampleRateField(const uint8* data, Track3DMix* track)
 {
-	// TODO: Implement sample rate field parsing
+	if (!data || !track) return;
+	int32 sampleRate = ExtractInt32(data);
+	AudioFormat3DMix format = track->GetAudioFormat();
+	format.sampleRate = sampleRate;
+	track->SetAudioFormat(format);
+	AUDIO_LOG_DEBUG("3DMixParser", "Parsed sample rate field: %d", sampleRate);
+}
+
+// Helper method implementations for field handlers
+float BMessageParser::ExtractFloat(const uint8* data, bool littleEndian)
+{
+	if (!data) return 0.0f;
+
+	if (littleEndian) {
+		// Little-endian byte order (Intel/x86)
+		uint32 raw = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
+		return *reinterpret_cast<float*>(&raw);
+	} else {
+		// Big-endian byte order (PowerPC/BeOS original)
+		uint32 raw = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+		return *reinterpret_cast<float*>(&raw);
+	}
+}
+
+int32 BMessageParser::ExtractInt32(const uint8* data, bool littleEndian)
+{
+	if (!data) return 0;
+
+	if (littleEndian) {
+		return data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
+	} else {
+		return (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+	}
+}
+
+bool BMessageParser::ExtractBool(const uint8* data)
+{
+	if (!data) return false;
+	return data[0] != 0;
+}
+
+// =====================================
+// ProjectValidator Static Methods
+// =====================================
+
+std::vector<ValidationResult> ProjectValidator::ValidateTrack(const Track3DMix& track, int32 trackIndex)
+{
+	std::vector<ValidationResult> results;
+	char context[256];
+	snprintf(context, sizeof(context), "Track %d", trackIndex);
+
+	// Validate audio path
+	ValidateTrackAudio(track, trackIndex, results);
+
+	// Validate 3D position
+	ValidateTrackPosition(track, trackIndex, results);
+
+	// Validate timing parameters
+	ValidateTrackTiming(track, trackIndex, results);
+
+	return results;
+}
+
+bool ProjectValidator::IsCoordinateInRange(const Coordinate3D& coord)
+{
+	return coord.x >= Format3DMix::kMinCoordinate && coord.x <= Format3DMix::kMaxCoordinate &&
+	       coord.y >= Format3DMix::kMinCoordinate && coord.y <= Format3DMix::kMaxCoordinate &&
+	       coord.z >= Format3DMix::kMinCoordinate && coord.z <= Format3DMix::kMaxCoordinate;
+}
+
+bool ProjectValidator::IsPathValid(const BString& path)
+{
+	if (path.Length() == 0) return false;
+
+	// Check for invalid characters
+	if (path.FindFirst('\0') >= 0) return false;
+
+	// Check path length (typical max path on BeOS/Haiku is 1024)
+	if (path.Length() > 1024) return false;
+
+	return true;
+}
+
+bool ProjectValidator::IsAudioFormatSupported(const AudioFormat3DMix& format)
+{
+	// Validate sample rate
+	if (format.sampleRate != 44100 && format.sampleRate != 48000 &&
+	    format.sampleRate != 88200 && format.sampleRate != 96000) {
+		return false;
+	}
+
+	// Validate bit depth
+	if (format.bitDepth != 8 && format.bitDepth != 16 &&
+	    format.bitDepth != 24 && format.bitDepth != 32) {
+		return false;
+	}
+
+	// Validate channel count
+	if (format.channels < 1 || format.channels > 8) {
+		return false;
+	}
+
+	return true;
+}
+
+void ProjectValidator::ValidateTrackAudio(const Track3DMix& track, int32 trackIndex,
+                                           std::vector<ValidationResult>& results)
+{
+	char context[256];
+	snprintf(context, sizeof(context), "Track %d audio", trackIndex);
+
+	// Validate audio file path
+	if (track.AudioFilePath().Length() == 0) {
+		results.push_back(ValidationResult(VALIDATION_ERROR,
+			"Track has no audio file path", context));
+	} else if (!IsPathValid(track.AudioFilePath())) {
+		results.push_back(ValidationResult(VALIDATION_ERROR,
+			"Track has invalid audio file path", context));
+	}
+
+	// Validate audio format
+	const AudioFormat3DMix& format = track.GetAudioFormat();
+	if (!IsAudioFormatSupported(format)) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Track has unsupported or unusual audio format", context));
+	}
+
+	// Validate volume
+	if (track.Volume() < 0.0f || track.Volume() > 2.0f) {
+		results.push_back(ValidationResult(VALIDATION_ERROR,
+			"Track volume out of valid range (0.0-2.0)", context));
+	}
+
+	// Validate balance
+	if (track.Balance() < -1.0f || track.Balance() > 1.0f) {
+		results.push_back(ValidationResult(VALIDATION_ERROR,
+			"Track balance out of valid range (-1.0 to 1.0)", context));
+	}
+}
+
+void ProjectValidator::ValidateTrackPosition(const Track3DMix& track, int32 trackIndex,
+                                               std::vector<ValidationResult>& results)
+{
+	char context[256];
+	snprintf(context, sizeof(context), "Track %d position", trackIndex);
+
+	const Coordinate3D& pos = track.Position();
+	if (!IsCoordinateInRange(pos)) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Track position outside valid BeOS range (-12.0 to 12.0)", context));
+	}
+
+	// Warn if position is at origin (might be uninitialized)
+	if (pos.x == 0.0f && pos.y == 0.0f && pos.z == 0.0f) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Track positioned at origin (might be default/unset)", context));
+	}
+}
+
+void ProjectValidator::ValidateTrackTiming(const Track3DMix& track, int32 trackIndex,
+                                             std::vector<ValidationResult>& results)
+{
+	char context[256];
+	snprintf(context, sizeof(context), "Track %d timing", trackIndex);
+
+	// Validate loop points if looping is enabled
+	if (track.IsLoopEnabled()) {
+		if (track.LoopStart() < 0) {
+			results.push_back(ValidationResult(VALIDATION_ERROR,
+				"Loop start position is negative", context));
+		}
+
+		if (track.LoopEnd() <= track.LoopStart()) {
+			results.push_back(ValidationResult(VALIDATION_ERROR,
+				"Loop end must be after loop start", context));
+		}
+	}
+
+	// Validate start/end positions
+	if (track.StartPosition() < 0) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Track start position is negative", context));
+	}
+
+	if (track.EndPosition() > 0 && track.EndPosition() <= track.StartPosition()) {
+		results.push_back(ValidationResult(VALIDATION_WARNING,
+			"Track end position should be after start position", context));
+	}
 }
 
 } // namespace VeniceDAW
