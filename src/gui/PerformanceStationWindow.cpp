@@ -1799,7 +1799,20 @@ void ResultsDetailView::HandleKeyboardShortcut(uint32 key, uint32 modifiers) {
             if (modifiers & B_COMMAND_KEY) {
                 // Ctrl+C: Copy summary to clipboard
                 std::string summary = GenerateTextSummary();
-                // TODO: Copy to clipboard (requires clipboard API)
+
+                // Copy to system clipboard using Haiku clipboard API
+                if (be_clipboard->Lock()) {
+                    be_clipboard->Clear();
+                    BMessage* clip = be_clipboard->Data();
+                    if (clip) {
+                        clip->AddData("text/plain", B_MIME_TYPE,
+                                     summary.c_str(), summary.length());
+                        be_clipboard->Commit();
+                        printf("PerformanceStation: Summary copied to clipboard (%zu bytes)\n",
+                               summary.length());
+                    }
+                    be_clipboard->Unlock();
+                }
             }
             break;
             
@@ -1919,7 +1932,13 @@ void ResultsDetailView::HideTooltip() {
 
 void ResultsDetailView::ExportDetailedReport(const std::string& format) {
     if (fResults.empty()) {
-        // TODO: Show alert - no data to export
+        // Show alert - no data to export
+        BAlert* alert = new BAlert("No Data",
+            "No performance data available to export.\n\n"
+            "Please run some performance tests first.",
+            "OK", nullptr, nullptr,
+            B_WIDTH_AS_USUAL, B_INFO_ALERT);
+        alert->Go();
         return;
     }
     
@@ -1938,8 +1957,17 @@ void ResultsDetailView::ExportDetailedReport(const std::string& format) {
         filename += ".csv";
         GenerateCSVReport(filename);
     }
-    
-    // TODO: Show success notification
+
+    // Show success notification
+    BString message;
+    message.SetToFormat("Performance report exported successfully:\n%s", filename.c_str());
+
+    BAlert* alert = new BAlert("Export Success",
+        message.String(),
+        "OK", nullptr, nullptr,
+        B_WIDTH_AS_USUAL, B_INFO_ALERT);
+    alert->Go();
+
     AnnounceStatusChange("Report exported successfully");
 }
 
@@ -2083,7 +2111,43 @@ std::string ResultsDetailView::GenerateTextSummary() {
 
 void ResultsDetailView::SavePerformanceProfile(const std::string& name) {
     fSavedProfiles[name] = fResults;
-    // TODO: Persist to file
+
+    // Persist to file in user settings directory
+    BPath settingsPath;
+    if (find_directory(B_USER_SETTINGS_DIRECTORY, &settingsPath) == B_OK) {
+        settingsPath.Append("VeniceDAW");
+        BDirectory settingsDir(settingsPath.Path());
+
+        // Create directory if it doesn't exist
+        if (settingsDir.InitCheck() != B_OK) {
+            create_directory(settingsPath.Path(), 0755);
+        }
+
+        // Save profile to file
+        BString profileFile = BString(name.c_str()) + ".profile";
+        settingsPath.Append(profileFile.String());
+
+        BFile file(settingsPath.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+        if (file.InitCheck() == B_OK) {
+            // Write profile data as BMessage for structured storage
+            BMessage profileMsg('PROF');
+            profileMsg.AddString("name", name.c_str());
+            profileMsg.AddInt32("result_count", fResults.size());
+
+            for (size_t i = 0; i < fResults.size(); i++) {
+                BMessage resultMsg;
+                resultMsg.AddString("name", fResults[i].name.c_str());
+                resultMsg.AddFloat("score", fResults[i].score);
+                resultMsg.AddString("category", fResults[i].category.c_str());
+                resultMsg.AddString("bottleneck", fResults[i].bottleneck.c_str());
+                profileMsg.AddMessage("result", &resultMsg);
+            }
+
+            profileMsg.Flatten(&file);
+            printf("PerformanceStation: Profile saved to %s\n", settingsPath.Path());
+        }
+    }
+
     AnnounceStatusChange("Performance profile saved: " + name);
 }
 
@@ -2122,8 +2186,21 @@ std::string ResultsDetailView::GetAccessibilityDescription(BPoint where) {
 void ResultsDetailView::AnnounceStatusChange(const std::string& status) {
     if (status != fLastAnnouncedStatus) {
         fLastAnnouncedStatus = status;
-        // TODO: Send to screen reader API
-        printf("Status: %s\n", status.c_str()); // Debug output for now
+
+        // Send to screen reader API via BMessage
+        // Haiku accessibility framework uses system-wide notifications
+        BMessage accessMsg(B_ACCESSIBILITY_EVENT);
+        accessMsg.AddString("event_type", "status_change");
+        accessMsg.AddString("message", status.c_str());
+        accessMsg.AddInt64("timestamp", system_time());
+
+        // Send to accessibility services (if available)
+        BMessenger accessibilityService("application/x-vnd.Haiku-accessibility");
+        if (accessibilityService.IsValid()) {
+            accessibilityService.SendMessage(&accessMsg);
+        }
+
+        printf("Status: %s\n", status.c_str()); // Debug output
     }
 }
 
@@ -2481,8 +2558,53 @@ void ResultsDetailView::SavePerformanceHistory() {
 }
 
 void ResultsDetailView::LoadPerformanceHistory() {
-    // TODO: Load from persistent storage
-    // For now, generate some sample historical data for demo
+    // Load from persistent storage
+    BPath settingsPath;
+    if (find_directory(B_USER_SETTINGS_DIRECTORY, &settingsPath) == B_OK) {
+        settingsPath.Append("VeniceDAW");
+        settingsPath.Append("performance_history.dat");
+
+        BFile historyFile(settingsPath.Path(), B_READ_ONLY);
+        if (historyFile.InitCheck() == B_OK) {
+            BMessage historyMsg;
+            if (historyMsg.Unflatten(&historyFile) == B_OK) {
+                int32 snapshotCount;
+                if (historyMsg.FindInt32("snapshot_count", &snapshotCount) == B_OK) {
+                    fHistoricalData.clear();
+
+                    for (int32 i = 0; i < snapshotCount; i++) {
+                        BMessage snapshotMsg;
+                        if (historyMsg.FindMessage("snapshot", i, &snapshotMsg) == B_OK) {
+                            PerformanceSnapshot snapshot;
+                            snapshotMsg.FindInt64("timestamp", &snapshot.timestamp);
+
+                            int32 resultCount;
+                            if (snapshotMsg.FindInt32("result_count", &resultCount) == B_OK) {
+                                for (int32 j = 0; j < resultCount; j++) {
+                                    BMessage resultMsg;
+                                    if (snapshotMsg.FindMessage("result", j, &resultMsg) == B_OK) {
+                                        BenchmarkResult result;
+                                        const char* name;
+                                        if (resultMsg.FindString("name", &name) == B_OK)
+                                            result.name = name;
+                                        resultMsg.FindFloat("score", &result.score);
+                                        snapshot.results.push_back(result);
+                                    }
+                                }
+                            }
+                            fHistoricalData.push_back(snapshot);
+                        }
+                    }
+
+                    printf("PerformanceStation: Loaded %zu historical snapshots\n",
+                           fHistoricalData.size());
+                    return;
+                }
+            }
+        }
+    }
+
+    // If loading failed or no data, generate sample data for demo
     if (fHistoricalData.empty() && !fResults.empty()) {
         for (int i = 0; i < 10; i++) {
             PerformanceSnapshot snapshot;
