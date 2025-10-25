@@ -6,8 +6,6 @@
 #define SIMPLE_HAIKU_ENGINE_H
 
 #include <media/SoundPlayer.h>
-#include <media/MediaFile.h>
-#include <media/MediaTrack.h>
 #include <storage/Entry.h>
 #include <storage/Path.h>
 #include <support/String.h>
@@ -17,6 +15,10 @@
 // Forward declaration to avoid circular includes
 namespace VeniceDAW {
     class RecordingSession;
+}
+
+namespace HaikuDAW {
+    class AudioFileStreamer;  // Forward declaration
 }
 
 namespace HaikuDAW {
@@ -94,16 +96,16 @@ public:
     void UnloadFile();
     bool HasFile() const { return fFileLoaded; }
     bool HasAudioFile() const { return fFileLoaded; }  // Alias for clarity
-    const char* GetFilePath() const { return fFilePath.String(); }
+    const char* GetFilePath() const;
     
     // Debug and fallback methods
     status_t LoadAudioFileAlternative(const entry_ref& ref);
     
-    // File playback state
-    void SetPlaybackPosition(int64 frame) { fPlaybackFrame = frame; }
-    int64 GetPlaybackPosition() const { return fPlaybackFrame; }
-    int64 GetFileDuration() const { return fFileDuration; }
-    float GetFileSampleRate() const { return fFileSampleRate; }
+    // File playback state (delegated to streamer)
+    void SetPlaybackPosition(int64 frame);
+    int64 GetPlaybackPosition() const;
+    int64 GetFileDuration() const;
+    float GetFileSampleRate() const;
     
     // File data access (for audio engine)
     status_t ReadFileData(float* buffer, int32 frameCount, float sampleRate);
@@ -123,15 +125,9 @@ private:
     float fPinkNoiseState[7];  // State for pink noise generator
     float fPinkNoiseMax;  // Maximum value for pink noise normalization
     
-    // Audio file playback members
-    BMediaFile* fMediaFile;
-    BMediaTrack* fMediaTrack;
-    media_format fFileFormat;
-    int64 fPlaybackFrame;
-    int64 fFileDuration;
-    float fFileSampleRate;
+    // Audio file streaming (lock-free asynchronous I/O)
+    AudioFileStreamer* fStreamer;
     bool fFileLoaded;
-    BString fFilePath;
 };
 
 class SimpleHaikuEngine {

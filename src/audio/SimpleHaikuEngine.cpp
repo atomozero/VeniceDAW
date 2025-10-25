@@ -3,6 +3,7 @@
  */
 
 #include "SimpleHaikuEngine.h"
+#include "AudioFileStreamer.h"
 // #include "AudioRecorder.h"  // Temporarily disabled
 #include "AudioConfig.h"
 #include <stdio.h>
@@ -19,8 +20,7 @@ namespace HaikuDAW {
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
       fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(kSignalSine), fFrequency(440.0f),
-      fMediaFile(nullptr), fMediaTrack(nullptr),
-      fPlaybackFrame(0), fFileDuration(0), fFileSampleRate(44100.0f), fFileLoaded(false), fPinkNoiseMax(1.0f)
+      fStreamer(nullptr), fFileLoaded(false), fPinkNoiseMax(1.0f)
 {
     // Track created
     // Initialize pink noise state
@@ -40,20 +40,15 @@ SimpleTrack::~SimpleTrack()
 void SimpleTrack::UnloadFile()
 {
     if (fFileLoaded) {
-        printf("SimpleTrack: Unloading file '%s'\n", fFilePath.String());
-        
-        if (fMediaFile && fMediaTrack) {
-            fMediaFile->ReleaseTrack(fMediaTrack);
-            fMediaTrack = nullptr;
-        }
-        
-        delete fMediaFile;
-        fMediaFile = nullptr;
+        printf("SimpleTrack: Unloading file\n");
 
-        fPlaybackFrame = 0;
-        fFileDuration = 0;
+        if (fStreamer) {
+            fStreamer->CloseFile();
+            delete fStreamer;
+            fStreamer = nullptr;
+        }
+
         fFileLoaded = false;
-        fFilePath.SetTo("");
     }
 }
 
@@ -72,201 +67,71 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
 {
     // Unload any existing file first
     UnloadFile();
-    
-    printf("SimpleTrack: Loading audio file '%s'\n", ref.name);
-    
-    // Get file info first
-    BPath path(&ref);
-    printf("SimpleTrack: Full path: %s\n", path.Path());
-    
-    // Check if file exists and is readable
-    BEntry entry(&ref);
-    if (!entry.Exists()) {
-        printf("SimpleTrack: File does not exist\n");
-        return B_ENTRY_NOT_FOUND;
-    }
-    
-    if (!entry.IsFile()) {
-        printf("SimpleTrack: Path is not a file\n");
-        return B_ERROR;
-    }
-    
-    // Debug: print entry_ref details
-    printf("SimpleTrack: entry_ref details:\n");
-    printf("  device: %d\n", (int)ref.device);
-    printf("  directory: %lld\n", (long long)ref.directory);
-    printf("  name: '%s'\n", ref.name ? ref.name : "NULL");
-    
-    // Get file size
-    off_t fileSize;
-    if (entry.GetSize(&fileSize) != B_OK) {
-        printf("SimpleTrack: Cannot get file size\n");
-        return B_ERROR;
-    }
-    printf("SimpleTrack: File size: %ld bytes\n", (long)fileSize);
-    
-    if (fileSize == 0) {
-        printf("SimpleTrack: File is empty\n");
-        return B_ERROR;
-    }
-    
-    // Try to create BMediaFile with detailed error reporting
-    printf("SimpleTrack: Creating BMediaFile...\n");
-    
-    // Try the simplest approach first (no format specification)
-    fMediaFile = new BMediaFile(&ref);
-    
-    status_t status = fMediaFile->InitCheck();
-    if (status != B_OK) {
-        printf("SimpleTrack: BMediaFile init failed: %s (0x%x)\n", strerror(status), (unsigned)status);
-        printf("SimpleTrack: This usually means:\n");
-        printf("  - Unsupported file format\n");
-        printf("  - Corrupted file header\n");
-        printf("  - Missing media codec\n");
-        printf("  - File access permissions\n");
-        
-        // Try to get more info about the file format
-        printf("SimpleTrack: Attempting format detection...\n");
-        
-        // Read first few bytes to check file signature
-        BFile file(&ref, B_READ_ONLY);
-        if (file.InitCheck() == B_OK) {
-            char header[16];
-            ssize_t bytesRead = file.Read(header, sizeof(header));
-            if (bytesRead >= 4) {
-                printf("SimpleTrack: File header: ");
-                for (int i = 0; i < min_c(bytesRead, 12); i++) {
-                    if (header[i] >= 32 && header[i] <= 126) {
-                        printf("%c", header[i]);
-                    } else {
-                        printf("\\x%02x", (unsigned char)header[i]);
-                    }
-                }
-                printf("\n");
-                
-                // Check for common audio file signatures
-                if (strncmp(header, "RIFF", 4) == 0) {
-                    printf("SimpleTrack: Detected RIFF/WAV format\n");
-                } else if (strncmp(header, "FORM", 4) == 0) {
-                    printf("SimpleTrack: Detected FORM/AIFF format\n");
-                } else if ((header[0] == 0xFF && (header[1] & 0xF0) == 0xF0)) {
-                    printf("SimpleTrack: Detected MP3 format\n");
-                } else {
-                    printf("SimpleTrack: Unknown file format\n");
-                }
-            }
-        }
-        
-        // Skip media format enumeration for now - focus on file loading
-        printf("SimpleTrack: Media format enumeration skipped\n");
-        
-        delete fMediaFile;
-        fMediaFile = nullptr;
-        return status;
-    }
-    
-    // Get first audio track
-    int32 numTracks = fMediaFile->CountTracks();
-    printf("SimpleTrack: Found %d tracks in file\n", (int)numTracks);
-    
-    fMediaTrack = nullptr;
-    for (int32 i = 0; i < numTracks; i++) {
-        BMediaTrack* track = fMediaFile->TrackAt(i);
-        if (!track) continue;
-        
-        media_format format;
-        status = track->DecodedFormat(&format);
-        if (status == B_OK && format.type == B_MEDIA_RAW_AUDIO) {
-            fMediaTrack = track;
-            fFileFormat = format;
-            printf("SimpleTrack: Found audio track %d, format: %d Hz, %d channels\n", 
-                   (int)i, (int)format.u.raw_audio.frame_rate, 
-                   (int)format.u.raw_audio.channel_count);
-            break;
-        } else {
-            fMediaFile->ReleaseTrack(track);
-        }
-    }
-    
-    if (!fMediaTrack) {
-        printf("SimpleTrack: No audio track found in file\n");
-        delete fMediaFile;
-        fMediaFile = nullptr;
-        return B_ERROR;
-    }
-    
-    // Configure for stereo float output
-    media_raw_audio_format& rawFormat = fFileFormat.u.raw_audio;
-    rawFormat.format = media_raw_audio_format::B_AUDIO_FLOAT;
-    rawFormat.channel_count = 2;  // Force stereo output
-    rawFormat.byte_order = B_MEDIA_HOST_ENDIAN;
-    
-    status = fMediaTrack->DecodedFormat(&fFileFormat);
-    if (status != B_OK) {
-        printf("SimpleTrack: Failed to set decoded format: %s\n", strerror(status));
-        fMediaFile->ReleaseTrack(fMediaTrack);
-        fMediaTrack = nullptr;
-        delete fMediaFile;
-        fMediaFile = nullptr;
-        return status;
-    }
-    
-    // Get file info
-    fFileSampleRate = rawFormat.frame_rate;
-    fFileDuration = fMediaTrack->CountFrames();
 
-    // Store file path for display
-    BPath filePath(&ref);
-    fFilePath.SetTo(filePath.Path());
-    
+    printf("SimpleTrack: Loading audio file '%s' via AudioFileStreamer\n", ref.name);
+
+    // Create and initialize AudioFileStreamer
+    fStreamer = new AudioFileStreamer();
+    status_t status = fStreamer->OpenFile(ref);
+
+    if (status != B_OK) {
+        printf("SimpleTrack: AudioFileStreamer failed to open file: %s\n", strerror(status));
+        delete fStreamer;
+        fStreamer = nullptr;
+        return status;
+    }
+
     fFileLoaded = true;
-    fPlaybackFrame = 0;
-    
-    printf("SimpleTrack: Successfully loaded '%s'\n", ref.name);
-    printf("  Duration: %ld frames (%.2f seconds)\n", (long)fFileDuration, 
-           (double)fFileDuration / fFileSampleRate);
-    printf("  Sample rate: %.0f Hz\n", fFileSampleRate);
-    printf("  Channels: %d\n", (int)rawFormat.channel_count);
-    
+
+    printf("SimpleTrack: Successfully loaded '%s' with lock-free streaming\n", ref.name);
+    printf("  Duration: %lld frames (%.2f seconds)\n", fStreamer->GetDuration(),
+           (double)fStreamer->GetDuration() / fStreamer->GetSampleRate());
+    printf("  Sample rate: %.0f Hz\n", fStreamer->GetSampleRate());
+    printf("  Ring buffer: 4 seconds (~353KB)\n");
+
     return B_OK;
 }
 
 status_t SimpleTrack::ReadFileData(float* buffer, int32 frameCount, float sampleRate)
 {
-    if (!fFileLoaded || !fMediaTrack || !buffer) {
+    if (!fFileLoaded || !fStreamer || !buffer) {
         // Fill with silence if no file loaded
         memset(buffer, 0, frameCount * 2 * sizeof(float));
         return B_OK;
     }
-    
-    // Simple playback - read frames directly from file
-    int64 framesRead = 0;
-    media_header mh;
-    
-    status_t status = fMediaTrack->ReadFrames(buffer, &framesRead, &mh);
-    if (status != B_OK || framesRead == 0) {
-        // End of file or error - loop back to beginning
-        fMediaTrack->SeekToFrame(&fPlaybackFrame);
-        fPlaybackFrame = 0;
-        
-        // Try reading again from beginning
-        status = fMediaTrack->ReadFrames(buffer, &framesRead, &mh);
-        if (status != B_OK || framesRead == 0) {
-            // Still failed - fill with silence
-            memset(buffer, 0, frameCount * 2 * sizeof(float));
-            return B_OK;
-        }
+
+    // RT-safe read from lock-free ring buffer
+    // This replaces the old synchronous BMediaTrack::ReadFrames() call
+    return fStreamer->GetAudioData(buffer, frameCount);
+}
+
+// Delegated methods to AudioFileStreamer
+
+void SimpleTrack::SetPlaybackPosition(int64 frame)
+{
+    if (fStreamer) {
+        fStreamer->SetPlaybackPosition(frame);
     }
-    
-    // Fill remaining buffer with silence if we read less than requested
-    if (framesRead < frameCount) {
-        float* remainingBuffer = buffer + (framesRead * 2);
-        int32 remainingFrames = frameCount - framesRead;
-        memset(remainingBuffer, 0, remainingFrames * 2 * sizeof(float));
-    }
-    
-    fPlaybackFrame += framesRead;
-    return B_OK;
+}
+
+int64 SimpleTrack::GetPlaybackPosition() const
+{
+    return fStreamer ? fStreamer->GetPlaybackPosition() : 0;
+}
+
+int64 SimpleTrack::GetFileDuration() const
+{
+    return fStreamer ? fStreamer->GetDuration() : 0;
+}
+
+float SimpleTrack::GetFileSampleRate() const
+{
+    return fStreamer ? fStreamer->GetSampleRate() : 44100.0f;
+}
+
+const char* SimpleTrack::GetFilePath() const
+{
+    return fStreamer ? fStreamer->GetFilePath() : "";
 }
 
 // === SimpleHaikuEngine ===
