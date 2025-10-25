@@ -25,27 +25,27 @@
 namespace VeniceDAW {
 
 // Audio channel configuration for surround sound
-enum class ChannelConfiguration {
-    MONO = 1,
-    STEREO = 2,
-    SURROUND_5_1 = 6,
-    SURROUND_7_1 = 8,
-    DOLBY_ATMOS = 16  // Base channels for object-based audio
+enum ChannelConfiguration {
+    kMono = 1,
+    kStereo = 2,
+    kSurround51 = 6,
+    kSurround71 = 8,
+    kDolbyAtmos = 16  // Base channels for object-based audio
 };
 
 // Professional audio sample formats
-enum class SampleFormat {
-    PCM_16,     // CD quality
-    PCM_24,     // Professional standard
-    PCM_32,     // High precision
-    FLOAT_32    // Internal processing
+enum SampleFormat {
+    kPCM16,     // CD quality
+    kPCM24,     // Professional standard
+    kPCM32,     // High precision
+    kFloat32    // Internal processing
 };
 
 // Audio processing quality levels
-enum class ProcessingQuality {
-    REALTIME,      // Optimized for low latency
-    BALANCED,      // Good quality with reasonable CPU usage
-    HIGHEST        // Maximum quality for offline processing
+enum ProcessingQuality {
+    kRealtime,      // Optimized for low latency
+    kBalanced,      // Good quality with reasonable CPU usage
+    kHighest        // Maximum quality for offline processing
 };
 
 // Advanced audio buffer for multi-channel processing
@@ -99,15 +99,15 @@ protected:
 // Professional EQ effect
 class ProfessionalEQ : public AudioEffect {
 public:
-    enum class FilterType {
-        LowPass,
-        HighPass,
-        LowShelf,
-        HighShelf,
-        Peak,
-        Notch,
-        BandPass,
-        AllPass
+    enum FilterType {
+        kLowPass,
+        kHighPass,
+        kLowShelf,
+        kHighShelf,
+        kPeak,
+        kNotch,
+        kBandPass,
+        kAllPass
     };
 
     struct EQBand {

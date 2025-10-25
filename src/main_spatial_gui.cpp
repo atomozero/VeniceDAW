@@ -67,7 +67,7 @@ public:
         
         // Initialize advanced audio processor with spatial capabilities
         fAudioProcessor = new VeniceDAW::AdvancedAudioProcessor();
-        fAudioProcessor->Initialize(44100.0f, 1024, VeniceDAW::ChannelConfiguration::STEREO);
+        fAudioProcessor->Initialize(44100.0f, 1024, VeniceDAW::kStereo);
         if (!fAudioProcessor->IsInitialized()) {
             ShowError("Failed to initialize spatial audio processor");
             PostMessage(B_QUIT_REQUESTED);
@@ -78,7 +78,7 @@ public:
         // Configure spatial audio processor
         VeniceDAW::SurroundProcessor& spatialProcessor = fAudioProcessor->GetSurroundProcessor();
         spatialProcessor.Initialize(44100.0f);
-        spatialProcessor.SetChannelConfiguration(VeniceDAW::ChannelConfiguration::STEREO);
+        spatialProcessor.SetChannelConfiguration(VeniceDAW::kStereo);
         spatialProcessor.SetSpatialMode(VeniceDAW::SurroundProcessor::SpatialMode::SPATIAL_3D);
         
         // Set up initial spatial scene

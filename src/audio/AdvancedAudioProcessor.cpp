@@ -57,14 +57,14 @@ AudioEffect::AudioEffect(const std::string& name) : fName(name) {}
 // ProfessionalEQ implementation
 ProfessionalEQ::ProfessionalEQ() : AudioEffect("ProfessionalEQ") {
     // Initialize EQ bands with professional default settings
-    fBands[0] = {60.0f, 0.0f, 0.707f, FilterType::HighPass, false};      // HPF at 60Hz
-    fBands[1] = {150.0f, 0.0f, 1.0f, FilterType::LowShelf, false};       // Low shelf
-    fBands[2] = {500.0f, 0.0f, 2.0f, FilterType::Peak, false};           // Low-mid peak
-    fBands[3] = {1000.0f, 0.0f, 2.0f, FilterType::Peak, false};          // Mid peak
-    fBands[4] = {2000.0f, 0.0f, 2.0f, FilterType::Peak, false};          // High-mid peak
-    fBands[5] = {4000.0f, 0.0f, 2.0f, FilterType::Peak, false};          // Presence peak
-    fBands[6] = {8000.0f, 0.0f, 1.0f, FilterType::HighShelf, false};     // High shelf
-    fBands[7] = {16000.0f, 0.0f, 0.707f, FilterType::LowPass, false};    // Anti-aliasing LPF
+    fBands[0] = {60.0f, 0.0f, 0.707f, kHighPass, false};      // HPF at 60Hz
+    fBands[1] = {150.0f, 0.0f, 1.0f, kLowShelf, false};       // Low shelf
+    fBands[2] = {500.0f, 0.0f, 2.0f, kPeak, false};           // Low-mid peak
+    fBands[3] = {1000.0f, 0.0f, 2.0f, kPeak, false};          // Mid peak
+    fBands[4] = {2000.0f, 0.0f, 2.0f, kPeak, false};          // High-mid peak
+    fBands[5] = {4000.0f, 0.0f, 2.0f, kPeak, false};          // Presence peak
+    fBands[6] = {8000.0f, 0.0f, 1.0f, kHighShelf, false};     // High shelf
+    fBands[7] = {16000.0f, 0.0f, 0.707f, kLowPass, false};    // Anti-aliasing LPF
 }
 
 void ProfessionalEQ::Initialize(float sampleRate) {
@@ -261,7 +261,7 @@ ProfessionalEQ::EQBand ProfessionalEQ::GetBand(size_t band) const {
     if (band < MAX_BANDS) {
         return fBands[band];
     }
-    return {0.0f, 0.0f, 1.0f, FilterType::Peak, false};
+    return {0.0f, 0.0f, 1.0f, kPeak, false};
 }
 
 void ProfessionalEQ::EnableBand(size_t band, bool enabled) {
@@ -330,14 +330,14 @@ float ProfessionalEQ::ProcessBandFilter(size_t band, size_t channel, float input
 
 DSP::BiquadFilter::FilterType ProfessionalEQ::ConvertFilterType(FilterType type) const {
     switch (type) {
-        case FilterType::LowPass:    return DSP::BiquadFilter::LowPass;
-        case FilterType::HighPass:   return DSP::BiquadFilter::HighPass;
-        case FilterType::LowShelf:   return DSP::BiquadFilter::LowShelf;
-        case FilterType::HighShelf:  return DSP::BiquadFilter::HighShelf;
-        case FilterType::Peak:       return DSP::BiquadFilter::Peak;
-        case FilterType::Notch:      return DSP::BiquadFilter::Notch;
-        case FilterType::BandPass:   return DSP::BiquadFilter::BandPass;
-        case FilterType::AllPass:    return DSP::BiquadFilter::AllPass;
+        case kLowPass:    return DSP::BiquadFilter::LowPass;
+        case kHighPass:   return DSP::BiquadFilter::HighPass;
+        case kLowShelf:   return DSP::BiquadFilter::LowShelf;
+        case kHighShelf:  return DSP::BiquadFilter::HighShelf;
+        case kPeak:       return DSP::BiquadFilter::Peak;
+        case kNotch:      return DSP::BiquadFilter::Notch;
+        case kBandPass:   return DSP::BiquadFilter::BandPass;
+        case kAllPass:    return DSP::BiquadFilter::AllPass;
         default:                     return DSP::BiquadFilter::Peak;
     }
 }
@@ -1253,7 +1253,7 @@ void SurroundProcessor::ProcessCrossfeed(AdvancedAudioBuffer& stereo) {
 }
 
 // AdvancedAudioProcessor implementation
-AdvancedAudioProcessor::AdvancedAudioProcessor() : fSurroundProcessor(ChannelConfiguration::STEREO) {}
+AdvancedAudioProcessor::AdvancedAudioProcessor() : fSurroundProcessor(kStereo) {}
 
 void AdvancedAudioProcessor::Initialize(float sampleRate, size_t bufferSize, ChannelConfiguration config) {
     fSampleRate = sampleRate;

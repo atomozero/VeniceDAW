@@ -111,11 +111,11 @@ private:
             eq.SetBandFrequency(testBand, testFrequencies[testBand]);
             eq.SetBandGain(testBand, expectedGains[testBand]);
             eq.SetBandQ(testBand, 2.0f);
-            eq.SetBandType(testBand, ProfessionalEQ::FilterType::Peak);
+            eq.SetBandType(testBand, ProfessionalEQ::kPeak);
             
             // Test with sine wave at target frequency
             const size_t testSize = 4096;
-            AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
+            AdvancedAudioBuffer buffer(kMono, testSize, 44100.0f);
             
             float* channelData = buffer.GetChannelData(0);
             for (size_t i = 0; i < testSize; ++i) {
@@ -171,10 +171,10 @@ private:
         eq.SetBandFrequency(3, 1000.0f);
         eq.SetBandGain(3, 12.0f);
         eq.SetBandQ(3, 1.0f);
-        eq.SetBandType(3, ProfessionalEQ::FilterType::Peak);
+        eq.SetBandType(3, ProfessionalEQ::kPeak);
         
         const size_t testSize = 44100;
-        AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer buffer(kMono, testSize, 44100.0f);
         
         // Generate 1kHz sine wave
         float* channelData = buffer.GetChannelData(0);
@@ -221,17 +221,17 @@ private:
         eq.SetBypassed(false);
         
         eq.SetBandEnabled(0, true);
-        eq.SetBandType(0, ProfessionalEQ::FilterType::HighPass);
+        eq.SetBandType(0, ProfessionalEQ::kHighPass);
         eq.SetBandFrequency(0, 80.0f);
         eq.SetBandQ(0, 0.707f);
         
         eq.SetBandEnabled(1, true);
-        eq.SetBandType(1, ProfessionalEQ::FilterType::LowShelf);
+        eq.SetBandType(1, ProfessionalEQ::kLowShelf);
         eq.SetBandFrequency(1, 200.0f);
         eq.SetBandGain(1, -3.0f);
         
         eq.SetBandEnabled(7, true);
-        eq.SetBandType(7, ProfessionalEQ::FilterType::HighShelf);
+        eq.SetBandType(7, ProfessionalEQ::kHighShelf);
         eq.SetBandFrequency(7, 10000.0f);
         eq.SetBandGain(7, 4.0f);
         
@@ -281,15 +281,15 @@ private:
         eq.SetBypassed(false);
         
         eq.SetBandEnabled(0, true);
-        eq.SetBandType(0, ProfessionalEQ::FilterType::Peak);
+        eq.SetBandType(0, ProfessionalEQ::kPeak);
         eq.SetBandFrequency(0, 1000.0f);
         eq.SetBandQ(0, 1.0f);
         
         const size_t blockSize = 1024;
         
         // Test with 1kHz sine wave
-        AdvancedAudioBuffer buffer1(ChannelConfiguration::MONO, blockSize, 44100.0f);
-        AdvancedAudioBuffer buffer2(ChannelConfiguration::MONO, blockSize, 44100.0f);
+        AdvancedAudioBuffer buffer1(kMono, blockSize, 44100.0f);
+        AdvancedAudioBuffer buffer2(kMono, blockSize, 44100.0f);
         
         float* data1 = buffer1.GetChannelData(0);
         float* data2 = buffer2.GetChannelData(0);
@@ -344,7 +344,7 @@ private:
             eq.SetBandEnabled(i, false);
         }
         eq.SetBandEnabled(3, true);
-        eq.SetBandType(3, ProfessionalEQ::FilterType::Peak);
+        eq.SetBandType(3, ProfessionalEQ::kPeak);
         eq.SetBandFrequency(3, 1000.0f);
         eq.SetBandGain(3, 18.0f);
         eq.SetBandQ(3, 2.0f);
@@ -352,8 +352,8 @@ private:
         const size_t blockSize = 1024;
         
         // Create 1kHz sine wave - matches the peak frequency
-        AdvancedAudioBuffer bufferActive(ChannelConfiguration::MONO, blockSize, 44100.0f);
-        AdvancedAudioBuffer bufferBypassed(ChannelConfiguration::MONO, blockSize, 44100.0f);
+        AdvancedAudioBuffer bufferActive(kMono, blockSize, 44100.0f);
+        AdvancedAudioBuffer bufferBypassed(kMono, blockSize, 44100.0f);
         
         float* dataActive = bufferActive.GetChannelData(0);
         float* dataBypassed = bufferBypassed.GetChannelData(0);

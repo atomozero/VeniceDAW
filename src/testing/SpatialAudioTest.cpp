@@ -204,7 +204,7 @@ private:
     
     // Test 6: Spatial positioning accuracy
     void TestSpatialPositioning() {
-        SurroundProcessor processor(ChannelConfiguration::SURROUND_5_1);
+        SurroundProcessor processor(kSurround51);
         processor.Initialize(44100.0f);
         processor.SetSpatialMode(SurroundProcessor::SpatialMode::SPATIAL_3D);
         
@@ -233,7 +233,7 @@ private:
     
     // Test 7: Distance modeling and attenuation
     void TestDistanceModeling() {
-        SurroundProcessor processor(ChannelConfiguration::STEREO);
+        SurroundProcessor processor(kStereo);
         processor.Initialize(44100.0f);
         processor.SetSpatialMode(SurroundProcessor::SpatialMode::SPATIAL_3D);
         
@@ -242,7 +242,7 @@ private:
         processor.SetListenerPosition(Vector3D(0.0f, 0.0f, 0.0f));
         
         // Create test buffer
-        AdvancedAudioBuffer buffer(ChannelConfiguration::STEREO, 1024, 44100.0f);
+        AdvancedAudioBuffer buffer(kStereo, 1024, 44100.0f);
         for (size_t i = 0; i < buffer.frameCount; ++i) {
             buffer.channels[0][i] = 1.0f;
             buffer.channels[1][i] = 1.0f;
@@ -270,7 +270,7 @@ private:
     
     // Test 8: Doppler effect calculation
     void TestDopplerEffect() {
-        SurroundProcessor processor(ChannelConfiguration::STEREO);
+        SurroundProcessor processor(kStereo);
         processor.Initialize(44100.0f);
         processor.SetDopplerEffect(true, 343.0f);
         
@@ -299,7 +299,7 @@ private:
     
     // Test 9: Air absorption modeling
     void TestAirAbsorption() {
-        SurroundProcessor processor(ChannelConfiguration::STEREO);
+        SurroundProcessor processor(kStereo);
         processor.Initialize(44100.0f);
         processor.SetAirAbsorption(true, 50.0f);
         
@@ -318,7 +318,7 @@ private:
     
     // Test 10: HRTF processing functionality
     void TestHRTFProcessing() {
-        SurroundProcessor processor(ChannelConfiguration::STEREO);
+        SurroundProcessor processor(kStereo);
         processor.Initialize(44100.0f);
         processor.SetSpatialMode(SurroundProcessor::SpatialMode::BINAURAL_HRTF);
         
@@ -338,8 +338,8 @@ private:
         AssertTest(processor.GetLatencySamples() > 0, "HRTF Processing Enabled (Latency > 0)");
         
         // Create mono input buffer
-        AdvancedAudioBuffer monoInput(ChannelConfiguration::MONO, 256, 44100.0f);
-        AdvancedAudioBuffer stereoOutput(ChannelConfiguration::STEREO, 256, 44100.0f);
+        AdvancedAudioBuffer monoInput(kMono, 256, 44100.0f);
+        AdvancedAudioBuffer stereoOutput(kStereo, 256, 44100.0f);
         
         // Impulse input
         monoInput.channels[0][0] = 1.0f;
@@ -364,7 +364,7 @@ private:
     
     // Test 11: Binaural spatial processing
     void TestBinauralSpatial() {
-        SurroundProcessor processor(ChannelConfiguration::STEREO);
+        SurroundProcessor processor(kStereo);
         processor.Initialize(44100.0f);
         
         // Test ITD and ILD calculations for side position
@@ -391,12 +391,12 @@ private:
     
     // Test 12: Crossfeed processing
     void TestCrossfeedProcessing() {
-        SurroundProcessor processor(ChannelConfiguration::STEREO);
+        SurroundProcessor processor(kStereo);
         processor.Initialize(44100.0f);
         processor.EnableCrossfeed(true, 0.3f);
         
         // Create test stereo buffer with different L/R content
-        AdvancedAudioBuffer buffer(ChannelConfiguration::STEREO, 1024, 44100.0f);
+        AdvancedAudioBuffer buffer(kStereo, 1024, 44100.0f);
         for (size_t i = 0; i < buffer.frameCount; ++i) {
             buffer.channels[0][i] = 1.0f;  // Left channel full
             buffer.channels[1][i] = 0.0f;  // Right channel silent
@@ -414,13 +414,13 @@ private:
     
     // Test 13: Intelligent upmixing
     void TestIntelligentUpmixing() {
-        SurroundProcessor processor(ChannelConfiguration::SURROUND_5_1);
+        SurroundProcessor processor(kSurround51);
         processor.Initialize(44100.0f);
         processor.SetSpatialMode(SurroundProcessor::SpatialMode::BASIC_SURROUND);
         
         // Create stereo input
-        AdvancedAudioBuffer stereoInput(ChannelConfiguration::STEREO, 1024, 44100.0f);
-        AdvancedAudioBuffer surroundOutput(ChannelConfiguration::SURROUND_5_1, 1024, 44100.0f);
+        AdvancedAudioBuffer stereoInput(kStereo, 1024, 44100.0f);
+        AdvancedAudioBuffer surroundOutput(kSurround51, 1024, 44100.0f);
         
         // Different L/R content for upmix testing
         for (size_t i = 0; i < stereoInput.frameCount; ++i) {
@@ -451,11 +451,11 @@ private:
     
     // Test 14: Bass management
     void TestBassManagement() {
-        SurroundProcessor processor(ChannelConfiguration::SURROUND_5_1);
+        SurroundProcessor processor(kSurround51);
         processor.Initialize(44100.0f);
         
         // Create 5.1 buffer with bass content in main channels
-        AdvancedAudioBuffer buffer(ChannelConfiguration::SURROUND_5_1, 1024, 44100.0f);
+        AdvancedAudioBuffer buffer(kSurround51, 1024, 44100.0f);
         for (size_t i = 0; i < buffer.frameCount; ++i) {
             for (size_t ch = 0; ch < 6; ++ch) {
                 buffer.channels[ch][i] = 1.0f;
@@ -473,12 +473,12 @@ private:
     
     // Test 15: Surround downmix accuracy
     void TestSurroundDownmix() {
-        SurroundProcessor processor(ChannelConfiguration::STEREO);
+        SurroundProcessor processor(kStereo);
         processor.Initialize(44100.0f);
         
         // Create 5.1 source with known content
-        AdvancedAudioBuffer surroundInput(ChannelConfiguration::SURROUND_5_1, 1024, 44100.0f);
-        AdvancedAudioBuffer stereoOutput(ChannelConfiguration::STEREO, 1024, 44100.0f);
+        AdvancedAudioBuffer surroundInput(kSurround51, 1024, 44100.0f);
+        AdvancedAudioBuffer stereoOutput(kStereo, 1024, 44100.0f);
         
         // Set specific values for each channel
         for (size_t i = 0; i < surroundInput.frameCount; ++i) {
@@ -502,7 +502,7 @@ private:
     
     // Test 16: Processing latency measurement
     void TestProcessingLatency() {
-        SurroundProcessor processor(ChannelConfiguration::SURROUND_5_1);
+        SurroundProcessor processor(kSurround51);
         processor.Initialize(44100.0f);
         
         // Test basic latency
@@ -523,7 +523,7 @@ private:
     
     // Test 17: CPU usage estimation
     void TestCPUUsage() {
-        SurroundProcessor processor(ChannelConfiguration::SURROUND_5_1);
+        SurroundProcessor processor(kSurround51);
         processor.Initialize(44100.0f);
         
         // Test basic mode CPU usage
@@ -551,7 +551,7 @@ private:
     
     // Test 18: Spatial positioning accuracy
     void TestAccuracyMeasurements() {
-        SurroundProcessor processor(ChannelConfiguration::STEREO);
+        SurroundProcessor processor(kStereo);
         processor.Initialize(44100.0f);
         
         // Test positioning accuracy at various angles

@@ -55,11 +55,11 @@ public:
 
     // Test signal type
     enum SignalType {
-        SIGNAL_SINE,
-        SIGNAL_SQUARE,
-        SIGNAL_SAW,
-        SIGNAL_WHITE_NOISE,
-        SIGNAL_PINK_NOISE
+        kSignalSine,
+        kSignalSquare,
+        kSignalSaw,
+        kSignalWhiteNoise,
+        kSignalPinkNoise
     };
 
     void SetSignalType(SignalType type) { fSignalType = type; }
@@ -174,9 +174,9 @@ public:
     status_t LoadAudioFileAsTrack(const char* path);
 
 private:
-    static void AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format);
-    void ProcessAudio(float* buffer, size_t frameCount);
-    float GenerateTestSignal(SimpleTrack* track, float sampleRate);
+    static void _AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format);
+    void _ProcessAudio(float* buffer, size_t frameCount);
+    float _GenerateTestSignal(SimpleTrack* track, float sampleRate);
     
     BSoundPlayer* fSoundPlayer;
     std::vector<SimpleTrack*> fTracks;

@@ -56,8 +56,8 @@ TestResult AdvancedAudioProcessorTest::TestBufferCreationAndAccess() {
     
     try {
         // Test different channel configurations
-        AdvancedAudioBuffer stereoBuffer(ChannelConfiguration::STEREO, 1024, 44100.0f);
-        AdvancedAudioBuffer surroundBuffer(ChannelConfiguration::SURROUND_5_1, 1024, 44100.0f);
+        AdvancedAudioBuffer stereoBuffer(kStereo, 1024, 44100.0f);
+        AdvancedAudioBuffer surroundBuffer(kSurround51, 1024, 44100.0f);
         
         // Validate creation
         bool stereoValid = (stereoBuffer.GetChannelCount() == 2) && 
@@ -102,7 +102,7 @@ TestResult AdvancedAudioProcessorTest::TestBufferResizing() {
     result.testName = "Buffer Resizing Operations";
     
     try {
-        AdvancedAudioBuffer buffer(ChannelConfiguration::STEREO, 512, 44100.0f);
+        AdvancedAudioBuffer buffer(kStereo, 512, 44100.0f);
         
         // Fill with test data
         GenerateTestSignal(buffer, 1000.0f);
@@ -136,7 +136,7 @@ TestResult AdvancedAudioProcessorTest::TestMultiChannelOperations() {
     result.testName = "Multi-Channel Operations";
     
     try {
-        AdvancedAudioBuffer buffer(ChannelConfiguration::SURROUND_7_1, 1024, 44100.0f);
+        AdvancedAudioBuffer buffer(kSurround71, 1024, 44100.0f);
         
         // Generate different signals for each channel
         for (size_t ch = 0; ch < buffer.GetChannelCount(); ch++) {
@@ -178,11 +178,11 @@ TestResult AdvancedAudioProcessorTest::TestChannelConfigurationHandling() {
         };
         
         std::vector<ConfigTest> configs = {
-            {ChannelConfiguration::MONO, 1},
-            {ChannelConfiguration::STEREO, 2},
-            {ChannelConfiguration::SURROUND_5_1, 6},
-            {ChannelConfiguration::SURROUND_7_1, 8},
-            {ChannelConfiguration::DOLBY_ATMOS, 16}
+            {kMono, 1},
+            {kStereo, 2},
+            {kSurround51, 6},
+            {kSurround71, 8},
+            {kDolbyAtmos, 16}
         };
         
         bool allConfigsValid = true;
@@ -257,7 +257,7 @@ TestResult AdvancedAudioProcessorTest::TestRealtimeProcessingCapability() {
     
     try {
         // Test buffer processing speed
-        AdvancedAudioBuffer buffer(ChannelConfiguration::STEREO, 1024, 44100.0f);
+        AdvancedAudioBuffer buffer(kStereo, 1024, 44100.0f);
         GenerateTestSignal(buffer, 1000.0f);
         
         auto processStart = StartTimer();
@@ -303,7 +303,7 @@ TestResult AdvancedAudioProcessorTest::TestMemoryEfficiency() {
         std::vector<std::unique_ptr<AdvancedAudioBuffer>> buffers;
         for (int i = 0; i < 10; i++) {
             auto buffer = std::make_unique<AdvancedAudioBuffer>(
-                ChannelConfiguration::STEREO, 1024, 44100.0f);
+                kStereo, 1024, 44100.0f);
             totalMemory += buffer->GetChannelCount() * buffer->frameCount * sizeof(float);
             buffers.push_back(std::move(buffer));
         }
@@ -346,7 +346,7 @@ TestResult AdvancedAudioProcessorTest::TestPhase2OptimizationCompatibility() {
         bool compatible = true;
         
         for (size_t bufferSize : phase2BufferSizes) {
-            AdvancedAudioBuffer buffer(ChannelConfiguration::STEREO, bufferSize, 44100.0f);
+            AdvancedAudioBuffer buffer(kStereo, bufferSize, 44100.0f);
             
             // Test basic operations
             GenerateTestSignal(buffer, 440.0f);

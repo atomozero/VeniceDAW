@@ -18,7 +18,7 @@ int main() {
     
     // Set up a simple peak filter at 1kHz with +12dB gain
     eq.SetBandEnabled(0, true);
-    eq.SetBandType(0, ProfessionalEQ::FilterType::Peak);
+    eq.SetBandType(0, ProfessionalEQ::kPeak);
     eq.SetBandFrequency(0, 1000.0f);
     eq.SetBandGain(0, 12.0f);
     eq.SetBandQ(0, 1.0f);
@@ -27,7 +27,7 @@ int main() {
     
     // Test with a small buffer
     const size_t bufferSize = 1024;
-    AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, bufferSize, 44100.0f);
+    AdvancedAudioBuffer buffer(kMono, bufferSize, 44100.0f);
     
     // Generate 1kHz sine wave
     float* channelData = buffer.GetChannelData(0);

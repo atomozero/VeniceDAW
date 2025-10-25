@@ -18,7 +18,7 @@ namespace HaikuDAW {
 
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
-      fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(SIGNAL_SINE), fFrequency(440.0f),
+      fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(kSignalSine), fFrequency(440.0f),
       fMediaFile(nullptr), fMediaTrack(nullptr), fFileBuffer(nullptr), fFileBufferSize(0),
       fPlaybackFrame(0), fFileDuration(0), fFileSampleRate(44100.0f), fFileLoaded(false), fPinkNoiseMax(1.0f)
 {
@@ -329,7 +329,7 @@ status_t SimpleHaikuEngine::Start()
     // Using default format
     
     // Create BSoundPlayer with minimal parameters - let it negotiate everything
-    fSoundPlayer = new BSoundPlayer(&format, "VeniceDAW", AudioCallback, nullptr, this);
+    fSoundPlayer = new BSoundPlayer(&format, "VeniceDAW", _AudioCallback, nullptr, this);
     
     status_t status = fSoundPlayer->InitCheck();
     if (status != B_OK) {
@@ -450,7 +450,7 @@ BString SimpleHaikuEngine::GetStatus() const
     return status;
 }
 
-void SimpleHaikuEngine::AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format)
+void SimpleHaikuEngine::_AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format)
 {
     SimpleHaikuEngine* engine = static_cast<SimpleHaikuEngine*>(cookie);
     
@@ -466,7 +466,7 @@ void SimpleHaikuEngine::AudioCallback(void* cookie, void* buffer, size_t size, c
     
     if (format.format == media_raw_audio_format::B_AUDIO_FLOAT) {
         // Native float format - process directly
-        engine->ProcessAudio(static_cast<float*>(buffer), frameCount);
+        engine->_ProcessAudio(static_cast<float*>(buffer), frameCount);
     } else {
         // For any other format, clear buffer (silent audio)
         // In a real implementation, you'd convert, but for now keep it simple
@@ -476,12 +476,12 @@ void SimpleHaikuEngine::AudioCallback(void* cookie, void* buffer, size_t size, c
         static float dummyBuffer[1024 * 2];  // Max 1024 stereo frames
         if (frameCount * format.channel_count <= 1024 * 2) {
             memset(dummyBuffer, 0, frameCount * format.channel_count * sizeof(float));
-            engine->ProcessAudio(dummyBuffer, frameCount);
+            engine->_ProcessAudio(dummyBuffer, frameCount);
         }
     }
 }
 
-void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
+void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
 {
     // Master level calculation variables
     float masterPeakLeft = 0.0f;
@@ -561,7 +561,7 @@ void SimpleHaikuEngine::ProcessAudio(float* buffer, size_t frameCount)
         } else {
             // TEST SIGNAL GENERATION: For tracks without files
             for (size_t i = 0; i < frameCount; i++) {
-                float sample = GenerateTestSignal(track, sampleRate);
+                float sample = _GenerateTestSignal(track, sampleRate);
                 
                 buffer[i * 2] += sample * leftGain;      // Left
                 buffer[i * 2 + 1] += sample * rightGain; // Right
@@ -650,7 +650,7 @@ void SimpleHaikuEngine::SetTrackSolo(int trackIndex, bool solo)
     }
 }
 
-float SimpleHaikuEngine::GenerateTestSignal(SimpleTrack* track, float sampleRate)
+float SimpleHaikuEngine::_GenerateTestSignal(SimpleTrack* track, float sampleRate)
 {
     // If track has a file loaded, we need to use a different approach
     // The per-sample file reading will be replaced with buffer-level reading
@@ -672,7 +672,7 @@ float SimpleHaikuEngine::GenerateTestSignal(SimpleTrack* track, float sampleRate
     float frequency = track->GetFrequency();
     
     switch (track->GetSignalType()) {
-        case SimpleTrack::SIGNAL_SINE:
+        case SimpleTrack::kSignalSine:
         {
             // Sine wave generator
             float phaseIncrement = (2.0f * M_PI * frequency) / sampleRate;
@@ -684,7 +684,7 @@ float SimpleHaikuEngine::GenerateTestSignal(SimpleTrack* track, float sampleRate
             break;
         }
         
-        case SimpleTrack::SIGNAL_SQUARE:
+        case SimpleTrack::kSignalSquare:
         {
             // Square wave generator
             float phaseIncrement = (2.0f * M_PI * frequency) / sampleRate;
@@ -696,7 +696,7 @@ float SimpleHaikuEngine::GenerateTestSignal(SimpleTrack* track, float sampleRate
             break;
         }
         
-        case SimpleTrack::SIGNAL_SAW:
+        case SimpleTrack::kSignalSaw:
         {
             // Sawtooth wave generator
             float phaseIncrement = frequency / sampleRate;
@@ -708,14 +708,14 @@ float SimpleHaikuEngine::GenerateTestSignal(SimpleTrack* track, float sampleRate
             break;
         }
         
-        case SimpleTrack::SIGNAL_WHITE_NOISE:
+        case SimpleTrack::kSignalWhiteNoise:
         {
             // White noise generator
             sample = ((float)rand() / (float)RAND_MAX * 2.0f - 1.0f) * 0.3f;
             break;
         }
         
-        case SimpleTrack::SIGNAL_PINK_NOISE:
+        case SimpleTrack::kSignalPinkNoise:
         {
             // Pink noise generator (1/f spectrum)
             // Using the Voss-McCartney algorithm
@@ -773,11 +773,11 @@ void SimpleHaikuEngine::CreateDemoScene()
     };
     
     DemoTrackConfig configs[] = {
-        { "Sine 220Hz (A3)",     SimpleTrack::SIGNAL_SINE,        220.0f,  -2.0f,  0.0f,  2.0f, -0.7f, 0.8f },
-        { "Sine 440Hz (A4)",     SimpleTrack::SIGNAL_SINE,        440.0f,   0.0f,  0.0f,  3.0f,  0.0f, 0.7f },
-        { "Square 880Hz (A5)",   SimpleTrack::SIGNAL_SQUARE,      880.0f,   2.0f,  0.0f,  2.0f,  0.7f, 0.5f },
-        { "White Noise",         SimpleTrack::SIGNAL_WHITE_NOISE,   0.0f,  -1.0f,  2.0f,  1.0f, -0.3f, 0.4f },
-        { "Pink Noise",          SimpleTrack::SIGNAL_PINK_NOISE,    0.0f,   1.0f, -2.0f,  1.0f,  0.3f, 0.4f }
+        { "Sine 220Hz (A3)",     SimpleTrack::kSignalSine,        220.0f,  -2.0f,  0.0f,  2.0f, -0.7f, 0.8f },
+        { "Sine 440Hz (A4)",     SimpleTrack::kSignalSine,        440.0f,   0.0f,  0.0f,  3.0f,  0.0f, 0.7f },
+        { "Square 880Hz (A5)",   SimpleTrack::kSignalSquare,      880.0f,   2.0f,  0.0f,  2.0f,  0.7f, 0.5f },
+        { "White Noise",         SimpleTrack::kSignalWhiteNoise,   0.0f,  -1.0f,  2.0f,  1.0f, -0.3f, 0.4f },
+        { "Pink Noise",          SimpleTrack::kSignalPinkNoise,    0.0f,   1.0f, -2.0f,  1.0f,  0.3f, 0.4f }
     };
     
     for (int i = 0; i < 5; i++) {

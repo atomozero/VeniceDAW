@@ -341,7 +341,7 @@ void SpatialMixer3DView::DrawSurroundSpeakerLayout()
     
     glColor3f(1.0f, 1.0f, 0.0f);  // Yellow for speakers
     
-    if (config == ChannelConfiguration::SURROUND_5_1) {
+    if (config == kSurround51) {
         // Standard 5.1 layout
         float radius = 3.0f;
         float angles[] = { 0.0f, 30.0f, -30.0f, 110.0f, -110.0f };  // Front L/R, Rear L/R

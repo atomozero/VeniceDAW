@@ -54,7 +54,7 @@ private:
         const size_t testSize = 4096;
         
         // Test with signal above threshold (-6dB)
-        AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer buffer(kMono, testSize, 44100.0f);
         float* data = buffer.GetChannelData(0);
         
         float inputAmplitude = std::pow(10.0f, -6.0f / 20.0f); // -6dB in linear
@@ -106,7 +106,7 @@ private:
         limiter.SetParameter("release", 10.0f);  // Fast release for testing
         
         const size_t testSize = 4096;
-        AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer buffer(kMono, testSize, 44100.0f);
         float* data = buffer.GetChannelData(0);
         
         // Test with signal well above threshold (0dB)
@@ -152,7 +152,7 @@ private:
         gate.SetParameter("release", 10.0f); // Fast release for testing
         
         const size_t testSize = 4096;
-        AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer buffer(kMono, testSize, 44100.0f);
         float* data = buffer.GetChannelData(0);
         
         // Test with quiet signal below threshold (-40dB)
@@ -200,7 +200,7 @@ private:
         expander.SetParameter("release", 10.0f); // Fast release for testing
         
         const size_t testSize = 4096;
-        AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer buffer(kMono, testSize, 44100.0f);
         float* data = buffer.GetChannelData(0);
         
         // Test with signal below threshold (-30dB)
@@ -257,8 +257,8 @@ private:
         compSoft.SetParameter("knee", 6.0f); // Soft knee
         
         const size_t testSize = 4096;
-        AdvancedAudioBuffer bufferHard(ChannelConfiguration::MONO, testSize, 44100.0f);
-        AdvancedAudioBuffer bufferSoft(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer bufferHard(kMono, testSize, 44100.0f);
+        AdvancedAudioBuffer bufferSoft(kMono, testSize, 44100.0f);
         
         // Test with signal around threshold (-10dB, just above threshold)
         float inputAmplitude = std::pow(10.0f, -10.0f / 20.0f);
@@ -307,8 +307,8 @@ private:
         compRMS.SetParameter("ratio", 4.0f);
         
         const size_t testSize = 4096;
-        AdvancedAudioBuffer bufferPeak(ChannelConfiguration::MONO, testSize, 44100.0f);
-        AdvancedAudioBuffer bufferRMS(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer bufferPeak(kMono, testSize, 44100.0f);
+        AdvancedAudioBuffer bufferRMS(kMono, testSize, 44100.0f);
         
         // Test with signal above threshold
         float inputAmplitude = std::pow(10.0f, -6.0f / 20.0f);
@@ -347,8 +347,8 @@ private:
         comp.SetParameter("ratio", 8.0f); // High ratio for obvious effect
         
         const size_t testSize = 1024;
-        AdvancedAudioBuffer bufferActive(ChannelConfiguration::MONO, testSize, 44100.0f);
-        AdvancedAudioBuffer bufferBypassed(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer bufferActive(kMono, testSize, 44100.0f);
+        AdvancedAudioBuffer bufferBypassed(kMono, testSize, 44100.0f);
         
         // Test signal above threshold
         float inputAmplitude = std::pow(10.0f, -6.0f / 20.0f);
@@ -403,7 +403,7 @@ private:
         comp.SetParameter("makeup", 6.0f); // +6dB makeup gain
         
         const size_t testSize = 4096;
-        AdvancedAudioBuffer buffer(ChannelConfiguration::MONO, testSize, 44100.0f);
+        AdvancedAudioBuffer buffer(kMono, testSize, 44100.0f);
         float* data = buffer.GetChannelData(0);
         
         // Test with signal above threshold
@@ -451,7 +451,7 @@ private:
         limiter.SetParameter("lookahead_time", 5.0f); // 5ms lookahead
         
         const size_t testSize = 4096;
-        AdvancedAudioBuffer buffer(ChannelConfiguration::STEREO, testSize, 44100.0f);
+        AdvancedAudioBuffer buffer(kStereo, testSize, 44100.0f);
         
         // Create test signal with peak that would clip without lookahead
         float peakAmplitude = std::pow(10.0f, -3.0f / 20.0f); // -3dB peak (above -6dB threshold)
