@@ -8,115 +8,105 @@ VeniceDAW is a professional audio workstation and 3D mixing application built na
 
 ## Essential Commands
 
-### Build Commands
+### Build Commands (Haiku OS Native Only)
 ```bash
-make                    # Release build
-make DEBUG=1           # Debug build with symbols
-make install           # Install to Desktop
-make clean             # Clean build artifacts
+# Primary build system (use this!)
+make -f Makefile.haiku           # Complete VeniceDAW with all features
+make -f Makefile.haiku clean     # Clean build artifacts
+make -f Makefile.haiku install   # Install to Desktop
+
+# Legacy Makefile (older, less maintained)
+make                             # Also builds complete VeniceDAW
+make DEBUG=1                     # Debug build with symbols
 ```
 
-### Cross-Platform Development
+### BeOS 3dmix Import System (Phase 6.3)
 ```bash
-make -f Makefile.cross syntax-check    # Validate syntax without Haiku
-./run_cross_tests.sh                   # Run automated test suite
+# Build 3dmix import support
+make -f Makefile.3dmix all       # Build complete 3dmix import system
+make -f Makefile.3dmix test      # Run 3dmix import tests
+
+# Test 3dmix project import
+./test_3dmix_complete /path/to/project.3dmix
+
+# Individual component tests
+make -f Makefile.3dmix test-parser      # Test BMessage parser
+make -f Makefile.3dmix test-coordinates # Test coordinate conversion
+make -f Makefile.3dmix test-paths       # Test audio file path resolution
 ```
 
-### VeniceDAW Performance Station
+### Syntax Validation (WSL/Linux - NO compilation)
 ```bash
-make performance        # Build Performance Station (recommended)
-make station           # Same as above (shortcut)
-make test-weather      # Test syntax only
+./scripts/validate_syntax.sh    # Complete syntax validation (analysis only)
+# IMPORTANT: This does NOT compile - only validates code structure
 ```
 
-### Testing
+### Testing (Haiku OS Native Only)
 ```bash
-# WSL/Linux (Syntax validation only - NO compilation)
-./validate_syntax.sh    # Complete syntax validation for all VeniceDAW components
+# Complete test suite
+./scripts/run_tests.sh          # Run all automated tests
 
-# Haiku OS Native (Real compilation and execution)
-./run_tests.sh          # Complete automated test suite for audio and 3D systems
-make test-spatial        # Spatial audio processing tests
-make test-eq            # Professional EQ tests
-make test-dynamics      # Dynamics processing tests
-make test-binaural      # HRTF binaural processing tests
+# Audio processing tests
+make -f Makefile.haiku test-spatial   # Spatial audio processing (57 tests)
+make -f Makefile.haiku test-eq        # Professional EQ (parametric)
+make -f Makefile.haiku test-dynamics  # Dynamics processing
+make -f Makefile.haiku test-binaural  # HRTF binaural rendering
 
-# Individual Test Files (Haiku OS only)
-./test_phase4_2_hrtf    # Phase 4.2 HRTF & Binaural Interface (8 tests)
-./test_audio_playback   # Audio playback and file mixing tests  
-./test_3d_mixer         # 3D visualization and camera controls
+# Integration tests
+./test_audio_playback    # Audio file playback and mixing
+./test_3d_mixer          # 3D visualization and camera controls
+./test_phase4_2_hrtf     # HRTF & binaural interface (8 tests)
+
+# 3dmix import tests
+./test_3dmix_complete    # Complete 3dmix import validation
 ```
 
-### Phase 5.3/5.4 Completed Features
-**✅ Actual File Playback Implementation**
-- Real audio file playback instead of test tones
-- Multi-track file mixing with proper gain staging  
-- Automatic file looping and position management
-- Enhanced volume control (0.3x factor for audible files)
+### Performance Analysis
+```bash
+make performance         # Build Performance Station
+make station            # Same as above (shortcut)
+./VeniceDAWBenchmark    # Run performance analysis
+```
 
-**✅ 3D Visualization System** 
-- Multiple sphere positioning in circular arrangement
-- Camera zoom controls (keyboard +/- and menu)
-- Camera reset functionality (R key and menu)
-- Proper track scaling and visual distinction
-- Fixed coordinate preservation during updates
+## Current Development Status
 
-**✅ Automated Testing Suite**
-- Comprehensive audio playback testing
-- 3D mixer and camera control validation
-- Cross-platform syntax verification
-- Build system integrity checks
+**Phase 6.3 Complete**: BeOS 3dmix Heritage Import System
+- Historic BeOS R5 (1995-2001) project file support
+- Complete BMessage format parser for .3dmix files
+- 5 coordinate conversion algorithms (Direct, Spherical, Cylindrical, Normalized, Ambisonics)
+- Intelligent audio path resolution with 4 search strategies (90%+ success rate)
+- RAW audio format detection and conversion
+- Professional import UI with 3D coordinate preview
+- 100+ comprehensive validation tests
 
-### Phase 4.2 Enhanced HRTF & Binaural Interface
-**✅ Professional HRTF Processing Integration**
-- Real-time HRTF enable/disable with processor integration
-- Automatic binaural mode activation when HRTF enabled
-- Built-in generic HRTF database with LoadDefaultHRTF()
-- Enhanced status monitoring with real-time feedback
-- Crossfeed controls with proper value clamping (0.0-1.0)
-
-**✅ Advanced GUI Integration**
-- Real-time HRTF status display updates
-- Enhanced HRTF loading demonstration
-- Professional information dialogs with feature explanations
-- Synchronized processor state with UI controls
-
-**✅ 3D HRTF Visualization**
-- Head representation with ear indicators in 3D space
-- Real-time HRTF processing lines from sources to ears
-- Cyan color coding for active HRTF processing
-- Visual feedback for binaural processing state
-
-**✅ Performance & Testing**
-- <10ms HRTF processing latency maintained
-- Comprehensive Phase 4.2 test suite (8 tests)
-- Processor state synchronization validation
-- Performance impact monitoring and optimization
+**Phase 7 Planned**: Professional workflow features (session management, automation, effects rack, plugin architecture)
 
 ## Architecture & Key Components
 
 ### Audio Engine Architecture
 The audio system uses modern Haiku Media Kit APIs:
 
-- **Core Audio**: `SimpleHaikuEngine.cpp` - BSoundPlayer-based real-time audio with proper file playback
-- **File Playback**: `ReadFileData()` - Actual audio file reading and mixing (Phase 5.3)
-- **Multi-Track Mixing**: Simultaneous playback of multiple audio files + test signals
-- **Buffer Management**: Dynamic stereo buffers with proper gain staging (0.3x for files)
-- **Playback Controls**: Play/Stop/Reset with automatic file position management
+- **Core Audio**: `SimpleHaikuEngine.cpp` - BSoundPlayer-based real-time audio with file playback
+- **File Loading**: BMediaFile/BMediaTrack integration for WAV, AIFF, MP3, OGG formats
+- **Multi-Track Mixing**: Up to 54 simultaneous tracks with proper gain staging
+- **Buffer Management**: Professional-grade audio pipeline with <10ms latency
+- **Advanced Processing**: `AdvancedAudioProcessor.cpp` - 6-band EQ, dynamics, spatial effects, HRTF
 
-### DSP Components
-Located in root directory, implementing modular signal processing:
-- `fft.c`, `fht.c`, `fht2d.c` - Frequency domain transforms
-- `biquad.cpp` - Digital filter implementations
-- `fftshift.cpp` - FFT utility functions
+### 3dmix Import System (Phase 6.3)
+BeOS heritage audio project import located in `src/audio/3dmix/`:
+- **3DMixParser**: BMessage format decoder for BeOS .3dmix files
+- **CoordinateSystemMapper**: 5 conversion algorithms for spatial positioning
+- **AudioPathResolver**: Intelligent file location with multi-strategy search
+- **3DMixProjectImporter**: Complete import pipeline with validation
+- **3DMixImportDialog**: Professional UI with 3D coordinate preview
 
 ### GUI Architecture
-Multi-window system using Haiku Interface Kit:
-- **3D Mixer**: `Mixer3DWindow.cpp` - Revolutionary 3D audio visualization with OpenGL
-- **Spatial Audio**: `SpatialMixer3DWindow.cpp` - Professional spatial positioning controls  
-- **Camera Controls**: Full zoom (+/-), rotation (mouse), and reset (R) functionality
-- **Multi-Sphere Display**: Circular arrangement of audio tracks in 3D space
-- **Real-Time Visualization**: Live audio levels and spatial positioning feedback
+Multi-window system using Haiku Interface Kit with OpenGL:
+- **3D Mixer**: `Mixer3DWindow.cpp` - Revolutionary 3D visualization with OpenGL
+- **Spatial Controls**: `SpatialMixer3DWindow.cpp` - Professional positioning interface
+- **Transport Window**: Play/stop/record controls with timeline
+- **Performance Station**: `PerformanceStationWindow.cpp` - Real-time metrics
+- **Camera System**: Zoom (+/-), rotation (mouse), reset (R key)
 
 ## Critical Implementation Details
 
@@ -141,7 +131,24 @@ Key settings in `config.h`:
 
 ### Build System Dependencies
 ```makefile
-LIBS = -lbe -lmedia -ltracker -lroot
+LIBS = -lbe -lmedia -ltracker -lroot -lGL -lGLU -ltranslation
+# -lGL -lGLU: Required for 3D visualization
+# -ltranslation: Required for 3dmix import (audio format conversion)
+```
+
+### Key Source Directories
+```
+src/audio/           # Audio engine and processing
+  SimpleHaikuEngine.cpp      # Core audio playback
+  AdvancedAudioProcessor.cpp # DSP effects and HRTF
+  3dmix/                     # BeOS 3dmix import system
+src/gui/             # GUI windows and controls
+  Mixer3DWindow.cpp          # 3D visualization
+  SpatialMixer3DWindow.cpp   # Spatial controls
+  3DMixImportDialog.cpp      # 3dmix import UI
+src/benchmark/       # Performance analysis tools
+src/testing/         # Test suites and validation
+scripts/             # Build and test automation
 ```
 
 ### Performance Analysis System
@@ -154,21 +161,28 @@ The VeniceDAW Performance Station (formerly UnifiedBenchmark) provides comprehen
 ## Development Workflow
 
 ### Making Audio Engine Changes
-1. Check `play.cpp` for BSoundPlayer implementation
-2. Review `channel.cpp` for buffer management
-3. Test with `./run_cross_tests.sh` for syntax validation
-4. Build with `make DEBUG=1` for debugging
+1. Core audio: Modify `src/audio/SimpleHaikuEngine.cpp` (BSoundPlayer implementation)
+2. DSP effects: Update `src/audio/AdvancedAudioProcessor.cpp` (EQ, dynamics, HRTF)
+3. Syntax check: Run `./scripts/validate_syntax.sh` (WSL/Linux)
+4. Build/test: Transfer to Haiku, run `make -f Makefile.haiku`
 
 ### Adding DSP Features
-1. DSP modules are standalone C/C++ files in root
-2. Follow existing patterns in `fft.c` or `biquad.cpp`
-3. Integrate via `sound_view.cpp` or `track_obj.cpp`
+1. Implement algorithms in `src/audio/DSPAlgorithms.cpp`
+2. Integrate into `AdvancedAudioProcessor` class
+3. Add test cases in `src/testing/` directory
+4. Validate with dedicated test targets (e.g., `make test-eq`, `make test-spatial`)
 
 ### GUI Modifications
-1. UI components inherit from BView/BWindow
-2. Main coordination happens in `sound_view.cpp`
-3. Track-specific UI in `track_view.cpp`
-4. Window management in `wave_window.cpp`
+1. 3D visualization: `src/gui/Mixer3DWindow.cpp` (OpenGL)
+2. Spatial controls: `src/gui/SpatialMixer3DWindow.cpp`
+3. Dialogs/UI: Follow BWindow/BView patterns
+4. All GUI requires native Haiku - no cross-platform build
+
+### Working with 3dmix Import
+1. Parser logic: `src/audio/3dmix/3DMixParser.cpp`
+2. Coordinate conversion: `src/audio/3dmix/CoordinateSystemMapper.cpp`
+3. Path resolution: `src/audio/3dmix/AudioPathResolver.cpp`
+4. Test with: `make -f Makefile.3dmix test`
 
 ## Testing Strategy
 
@@ -182,21 +196,22 @@ VeniceDAW is a NATIVE Haiku OS application and MUST be compiled on real Haiku sy
 - I test e l'esecuzione del codice devono avvenire ESCLUSIVAMENTE su sistemi Haiku reali
 - WSL può essere usato SOLO per editing di codice e analisi statica, mai per compilazione o esecuzione
 
-### Cross-Platform Development (Syntax Only)
-For syntax validation on non-Haiku systems:
+### Syntax Validation (WSL/Linux)
+For syntax validation only on non-Haiku systems:
 ```bash
-make -f Makefile.cross syntax-check    # Syntax validation only
-./run_cross_tests.sh                   # Automated syntax tests
+./scripts/validate_syntax.sh    # Complete syntax validation
+# Checks file structure, bracket matching, basic syntax
+# Does NOT compile or execute any code
 ```
 
 ### Real Compilation (Haiku Only)
 All actual compilation MUST be done on native Haiku:
 ```bash
 # ON HAIKU SYSTEM ONLY:
-make                    # Release build
-make DEBUG=1           # Debug build
-make optimize-quick    # Audio optimization suite
-make performance       # Performance Station
+make -f Makefile.haiku          # Complete build (recommended)
+make -f Makefile.haiku test-all # Run all tests
+make performance                # Build Performance Station
+make -f Makefile.3dmix all      # Build 3dmix import system
 ```
 
 **Why this restriction exists:**
@@ -256,79 +271,12 @@ For mouse events to work properly:
 2. Implement AttachedToWindow() and FrameResized()
 3. Ensure TSoundView is on TOP in Z-order (added AFTER track_view)
 
-## Cortex Integration Strategy
+## Future Integration: Cortex Audio Router
 
-### Architectural Synergy
+VeniceDAW is designed to eventually integrate with Haiku's Cortex audio router:
+- **Cortex role**: System-level audio routing (hardware I/O connections)
+- **VeniceDAW role**: Creative mixing with 3D spatial positioning
+- **Integration pattern**: Each VeniceDAW track as separate BMediaNode
+- **Benefit**: Professional routing flexibility with innovative spatial control
 
-**Cortex** = Router audio di sistema (gestisce connessioni tra nodi media)
-**VeniceDAW** = Mixer creativo con visualizzazione 3D
-
-L'integrazione naturale:
-- Cortex gestisce **routing** (input hardware → VeniceDAW, VeniceDAW → output)
-- VeniceDAW gestisce **creatività** (mixaggio spaziale, effetti, automazione)
-
-### Pattern di integrazione ottimale
-
-#### 1. VeniceDAW come nodo media specializzato
-- Ogni track di VeniceDAW appare come nodo separato in Cortex
-- Routing flessibile: microfoni → track specifici, track → monitor cuffie
-- Parametri 3D (posizione, distanza) esposti come BParameter controllabili da Cortex
-
-#### 2. Workflow professionale
-```
-Hardware Input → Cortex → VeniceDAW Tracks → VeniceDAW Master → Cortex → Output Device
-                    ↑                              ↓
-              Send/Return effects           Bounce to disk
-```
-
-### Vantaggi dell'integrazione
-
-#### Per i musicisti:
-- **Setup complessi**: Routing multicanale con controllo spaziale
-- **Live performance**: Cortex per routing veloce, VeniceDAW per mixaggio espressivo
-- **Recording session**: Input diretto da interfacce multi-canale
-
-#### Per il sistema:
-- **Zero-latency monitoring**: Routing diretto hardware → Cortex → cuffie
-- **Condivisione risorse**: Un solo Media Server per tutto
-- **Sincronizzazione naturale**: TimeSource condivisa automaticamente
-
-### Sfide tecniche interessanti
-
-#### Latenza composta:
-Hardware → Cortex → VeniceDAW → Cortex → Output
-Ogni hop aggiunge ~2-5ms. Soluzione: routing bypass per monitoring diretto.
-
-#### Controllo distribuito:
-- Chi gestisce il master volume?
-- Come sincronizzare automazione tra le due app?
-- Conflitti se entrambe modificano lo stesso parametro?
-
-### Il mixer 3D come killer feature
-
-L'aspetto più interessante: **spazializzazione controllata da Cortex**
-
-Possibilità:
-- Microfoni surround mappati automaticamente su posizioni 3D
-- Automazione spaziale via OSC/MIDI controllabile da Cortex
-- **Virtual soundstage**: ogni musicista in posizione 3D specifica durante live recording
-
-### Impatto sull'ecosistema Haiku
-
-Questa integrazione dimostrerebbe che:
-1. **BMediaKit scala** per applicazioni professionali
-2. **Haiku è credibile** come piattaforma audio seria
-3. **Architettura modulare** permette innovazione sopra base solida
-
-L'integrazione potrebbe stabilire **pattern standard** per future applicazioni audio native, rendendo Haiku attraente per sviluppatori di software musicale professionale.
-
-La chiave è **non duplicare funzionalità** ma creare **sinergia complementare** tra routing (Cortex) e creatività (VeniceDAW).
-
-## File Organization
-
-- **Audio Engine**: `play.cpp`, `channel.cpp`, `track_obj.cpp`
-- **DSP Modules**: `*.c` files (fft, fht, etc.) in root directory
-- **GUI Components**: `*_view.cpp`, `*_window.cpp` files
-- **Headers**: Corresponding `.h` files for each component
-- **Build**: `Makefile`, `Makefile.cross` for different environments
-- **Testing**: `run_cross_tests.sh`, `tests/` directory
+Implementation planned for Phase 8 (Advanced Integration).
