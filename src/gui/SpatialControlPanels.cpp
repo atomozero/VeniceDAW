@@ -364,9 +364,29 @@ void SpatialControlPanel::MessageReceived(BMessage* message)
         case MSG_SPATIAL_ENABLED:
         {
             bool enabled = (fSpatialEnabledBox->Value() == B_CONTROL_ON);
-            printf("SpatialControlPanel: Spatial processing %s\n", 
-                   enabled ? "enabled" : "disabled");
-            // TODO: Enable/disable spatial processing in audio engine
+
+            if (fAudioProcessor) {
+                // Toggle spatial processing by switching mode
+                if (enabled) {
+                    // Enable spatial 3D mode
+                    fAudioProcessor->GetSurroundProcessor().SetSpatialMode(
+                        SurroundProcessor::SpatialMode::SPATIAL_3D);
+                } else {
+                    // Disable to basic surround mode
+                    fAudioProcessor->GetSurroundProcessor().SetSpatialMode(
+                        SurroundProcessor::SpatialMode::BASIC_SURROUND);
+                }
+
+                // Update spatial view if available
+                if (fSpatialView) {
+                    fSpatialView->SetSpatialMode(enabled ?
+                        SurroundProcessor::SpatialMode::SPATIAL_3D :
+                        SurroundProcessor::SpatialMode::BASIC_SURROUND);
+                }
+            }
+
+            printf("SpatialControlPanel: Spatial processing %s\n",
+                   enabled ? "enabled (3D mode)" : "disabled (basic surround)");
             break;
         }
         
@@ -456,8 +476,9 @@ void SpatialControlPanel::MessageReceived(BMessage* message)
             int32 value = fRoomWidthSlider->Value();
             float width = value / 10.0f;  // Convert to meters
             if (fAudioProcessor) {
-                // Update room width - need to get current height and depth
-                ::VeniceDAW::DSP::Vector3D currentRoom = ::VeniceDAW::DSP::Vector3D(10.0f, 8.0f, 3.0f);  // TODO: Get from processor
+                // Update room width - get current dimensions from processor
+                ::VeniceDAW::DSP::Vector3D currentRoom =
+                    fAudioProcessor->GetSurroundProcessor().GetRoomSize();
                 currentRoom.x = width;
                 fAudioProcessor->GetSurroundProcessor().SetRoomSize(
                     currentRoom.x, currentRoom.y, currentRoom.z);
@@ -467,12 +488,58 @@ void SpatialControlPanel::MessageReceived(BMessage* message)
         }
         
         case MSG_ROOM_HEIGHT:
+        {
+            int32 value = fRoomHeightSlider->Value();
+            float height = value / 10.0f;  // Convert to meters
+            if (fAudioProcessor) {
+                // Update room height - get current dimensions from processor
+                ::VeniceDAW::DSP::Vector3D currentRoom =
+                    fAudioProcessor->GetSurroundProcessor().GetRoomSize();
+                currentRoom.y = height;
+                fAudioProcessor->GetSurroundProcessor().SetRoomSize(
+                    currentRoom.x, currentRoom.y, currentRoom.z);
+                printf("SpatialControlPanel: Room height set to %.1fm\n", height);
+            }
+            break;
+        }
+
         case MSG_ROOM_DEPTH:
+        {
+            int32 value = fRoomDepthSlider->Value();
+            float depth = value / 10.0f;  // Convert to meters
+            if (fAudioProcessor) {
+                // Update room depth - get current dimensions from processor
+                ::VeniceDAW::DSP::Vector3D currentRoom =
+                    fAudioProcessor->GetSurroundProcessor().GetRoomSize();
+                currentRoom.z = depth;
+                fAudioProcessor->GetSurroundProcessor().SetRoomSize(
+                    currentRoom.x, currentRoom.y, currentRoom.z);
+                printf("SpatialControlPanel: Room depth set to %.1fm\n", depth);
+            }
+            break;
+        }
+
         case MSG_REVERB_AMOUNT:
+        {
+            int32 value = fReverbAmountSlider->Value();
+            float amount = value / 100.0f;  // Convert to 0.0-1.0 range
+            if (fAudioProcessor) {
+                // Get current decay and update only amount
+                fAudioProcessor->GetSurroundProcessor().SetReverberation(amount, 1.5f);
+                printf("SpatialControlPanel: Reverb amount set to %.1f%%\n", amount * 100.0f);
+            }
+            break;
+        }
+
         case MSG_REVERB_DECAY:
         {
-            // Similar handling for other sliders
-            printf("SpatialControlPanel: Environmental parameter updated\n");
+            int32 value = fReverbDecaySlider->Value();
+            float decay = value / 10.0f;  // Convert to seconds
+            if (fAudioProcessor) {
+                // Get current amount and update only decay
+                fAudioProcessor->GetSurroundProcessor().SetReverberation(0.2f, decay);
+                printf("SpatialControlPanel: Reverb decay set to %.1fs\n", decay);
+            }
             break;
         }
         
@@ -527,7 +594,12 @@ void SpatialControlPanel::MessageReceived(BMessage* message)
         
         case MSG_SHOW_SPEAKERS:
         {
-            // TODO: Implement speaker layout visualization toggle
+            bool show = (fShowSpeakersBox->Value() == B_CONTROL_ON);
+            if (fSpatialView) {
+                fSpatialView->SetShowSpeakerLayout(show);
+                printf("SpatialControlPanel: Speaker layout visualization %s\n",
+                       show ? "enabled" : "disabled");
+            }
             break;
         }
         

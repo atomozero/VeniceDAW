@@ -307,6 +307,7 @@ public:
     // Spatial parameters getters
     DSP::Vector3D GetSourcePosition() const { return fSourcePosition; }
     DSP::Vector3D GetListenerPosition() const { return fListenerPosition; }
+    DSP::Vector3D GetRoomSize() const { return fRoomSize; }
     DSP::SphericalCoordinate GetRelativePosition() const;
     float GetDistance() const;
     float GetAzimuth() const;
