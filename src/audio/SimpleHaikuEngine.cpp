@@ -19,7 +19,7 @@ namespace HaikuDAW {
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
       fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(kSignalSine), fFrequency(440.0f),
-      fMediaFile(nullptr), fMediaTrack(nullptr), fFileBuffer(nullptr), fFileBufferSize(0),
+      fMediaFile(nullptr), fMediaTrack(nullptr),
       fPlaybackFrame(0), fFileDuration(0), fFileSampleRate(44100.0f), fFileLoaded(false), fPinkNoiseMax(1.0f)
 {
     // Track created
@@ -49,11 +49,7 @@ void SimpleTrack::UnloadFile()
         
         delete fMediaFile;
         fMediaFile = nullptr;
-        
-        delete[] fFileBuffer;
-        fFileBuffer = nullptr;
-        fFileBufferSize = 0;
-        
+
         fPlaybackFrame = 0;
         fFileDuration = 0;
         fFileLoaded = false;
@@ -218,11 +214,7 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
     // Get file info
     fFileSampleRate = rawFormat.frame_rate;
     fFileDuration = fMediaTrack->CountFrames();
-    
-    // Create file buffer (1024 frames stereo)
-    fFileBufferSize = 1024;
-    fFileBuffer = new float[fFileBufferSize * 2];  // Stereo
-    
+
     // Store file path for display
     BPath filePath(&ref);
     fFilePath.SetTo(filePath.Path());

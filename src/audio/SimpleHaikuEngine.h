@@ -127,8 +127,6 @@ private:
     BMediaFile* fMediaFile;
     BMediaTrack* fMediaTrack;
     media_format fFileFormat;
-    float* fFileBuffer;
-    int32 fFileBufferSize;
     int64 fPlaybackFrame;
     int64 fFileDuration;
     float fFileSampleRate;
