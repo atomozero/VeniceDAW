@@ -26,23 +26,27 @@ Mixer3DView::Mixer3DView(BRect frame, SimpleHaikuEngine* engine)
     , fMouseDown(false)
     , fSelectedTrack(-1)
     , fAnimationTime(0.0f)
+    , fGLLocker("3D Mixer GL Lock")
 {
     fCameraTarget[0] = 0.0f;
-    fCameraTarget[1] = 0.0f; 
+    fCameraTarget[1] = 0.0f;
     fCameraTarget[2] = 0.0f;
-    
-    printf("Mixer3DView: Created 3D OpenGL view\n");
+
+    printf("Mixer3DView: Created 3D OpenGL view with thread-safe locking\n");
 }
 
 Mixer3DView::~Mixer3DView()
 {
     printf("Mixer3DView: Starting destruction...\n");
-    
+
+    // Lock to ensure no concurrent OpenGL operations
+    BAutolock locker(fGLLocker);
+
     // Properly cleanup OpenGL context
     if (Window()) {
         // Disable rendering updates first
         Window()->DisableUpdates();
-        
+
         // Use RAII guard for safe OpenGL cleanup
         WindowLockGuard windowGuard(Window());
         if (windowGuard) {
@@ -50,26 +54,23 @@ Mixer3DView::~Mixer3DView()
             if (glGuard) {
                 // Ensure all GL commands are completed
                 glFinish();
-                
+
                 // Unbind any active textures
                 glBindTexture(GL_TEXTURE_2D, 0);
-                
+
                 // Clear errors if any
                 while (glGetError() != GL_NO_ERROR) {
                     // Clear error queue
                 }
             }
         }
-        
+
         // Re-enable updates before window cleanup
         Window()->EnableUpdates();
     }
-    
-    // Allow time for OpenGL thread cleanup
-    // TODO: Replace with proper synchronization mechanism
-    snooze(100000); // 100ms temporary wait
-    
-    printf("Mixer3DView: Destroyed\n");
+
+    // BAutolock ensures synchronization without sleep
+    printf("Mixer3DView: Destroyed safely with proper synchronization\n");
 }
 
 void Mixer3DView::AttachedToWindow()
@@ -153,10 +154,13 @@ void Mixer3DView::FrameResized(float width, float height)
 
 void Mixer3DView::UpdateTracks()
 {
+    // Lock for thread-safe track updates
+    BAutolock locker(fGLLocker);
+
     f3DTracks.clear();
-    
+
     if (!fEngine) return;
-    
+
     // Get tracks from engine and create 3D representations
     int trackCount = fEngine->GetTrackCount();
     
@@ -325,6 +329,9 @@ void Mixer3DView::DrawTrack3D(const Track3D& track)
 
 void Mixer3DView::AnimateScene()
 {
+    // Lock for thread-safe animation updates
+    BAutolock locker(fGLLocker);
+
     // Animate track properties using REAL audio data
     for (size_t i = 0; i < f3DTracks.size(); i++) {
         Track3D& track3d = f3DTracks[i];

@@ -14,6 +14,7 @@
 #include <interface/Button.h>
 #include <interface/StringView.h>
 #include <app/MessageRunner.h>
+#include <support/Locker.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <vector>
@@ -101,10 +102,13 @@ private:
     BPoint fLastMousePos;
     bool fMouseDown;
     int fSelectedTrack;
-    
+
     // Animation (private)
     float fAnimationTime;
-    
+
+    // Thread safety (private)
+    BLocker fGLLocker;
+
     // Private OpenGL helpers
     void DrawGrid();
     void DrawAxisLabels();
