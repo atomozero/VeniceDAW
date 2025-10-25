@@ -534,16 +534,108 @@ std::vector<Coordinate3D> PositionPresets::GenerateRandomPositions(int32 count)
 // Stub implementations for missing methods
 // =====================================
 
-AudioSphericalCoordinate CoordinateSystemMapper::NormalizedCubeConversion(const Coordinate3D& /* coord */)
+AudioSphericalCoordinate CoordinateSystemMapper::NormalizedCubeConversion(const Coordinate3D& coord)
 {
-	// TODO: Implement normalized cube conversion
-	return AudioSphericalCoordinate(0.0f, 0.0f, 0.0f);
+	// Normalize cube coordinates to [-1, 1] range
+	// BeOS 3dmix uses [-12, 12] range
+	float normalizedX = coord.x / Format3DMix::kMaxCoordinate;
+	float normalizedY = coord.y / Format3DMix::kMaxCoordinate;
+	float normalizedZ = coord.z / Format3DMix::kMaxCoordinate;
+
+	// Clamp to valid range
+	normalizedX = std::max(-1.0f, std::min(1.0f, normalizedX));
+	normalizedY = std::max(-1.0f, std::min(1.0f, normalizedY));
+	normalizedZ = std::max(-1.0f, std::min(1.0f, normalizedZ));
+
+	// Convert normalized Cartesian to spherical
+	// Calculate radius (distance from origin, normalized to 0-1)
+	float radius = std::sqrt(normalizedX * normalizedX +
+	                         normalizedY * normalizedY +
+	                         normalizedZ * normalizedZ);
+
+	// Normalize radius to 0-1 range (max distance in cube is sqrt(3))
+	radius = std::min(1.0f, radius / std::sqrt(3.0f));
+
+	// Calculate azimuth (horizontal angle)
+	// atan2(z, x) gives angle in XZ plane
+	float azimuth = std::atan2(normalizedZ, normalizedX) * 180.0f / M_PI;
+
+	// Calculate elevation (vertical angle)
+	// asin(y / distance) gives vertical angle
+	float horizontalDistance = std::sqrt(normalizedX * normalizedX +
+	                                     normalizedZ * normalizedZ);
+	float elevation = 0.0f;
+	if (horizontalDistance > 0.001f) {
+		elevation = std::atan2(normalizedY, horizontalDistance) * 180.0f / M_PI;
+	}
+
+	// Clamp angles to valid ranges
+	// Azimuth: -180 to +180
+	// Elevation: -90 to +90
+	elevation = std::max(-90.0f, std::min(90.0f, elevation));
+
+	AUDIO_LOG_DEBUG("CoordinateMapper",
+	                "Normalized cube conversion: (%.2f, %.2f, %.2f) -> (r=%.2f, az=%.1f°, el=%.1f°)",
+	                coord.x, coord.y, coord.z, radius, azimuth, elevation);
+
+	return AudioSphericalCoordinate(radius, azimuth, elevation);
 }
 
 AudioSphericalCoordinate CoordinateSystemMapper::OptimizeForSpatializer(const AudioSphericalCoordinate& coord)
 {
-	// TODO: Implement spatialization optimization
-	return coord;  // Return unmodified for now
+	// Optimize spherical coordinates for spatial audio processing
+	AudioSphericalCoordinate optimized = coord;
+
+	// 1. Quantize elevation to reduce interpolation artifacts
+	// Most spatial audio systems work best with discrete elevation levels
+	const float elevationQuantization = 15.0f;  // 15-degree steps
+	optimized.elevation = std::round(coord.elevation / elevationQuantization) * elevationQuantization;
+
+	// 2. Apply perceptual distance curve
+	// Human perception of audio distance is non-linear
+	// Use logarithmic scaling for more natural distance perception
+	if (optimized.radius > 0.0f) {
+		// Apply subtle logarithmic curve: perceived = log(1 + k*r) / log(1 + k)
+		const float distortionFactor = 2.0f;
+		optimized.radius = std::log(1.0f + distortionFactor * coord.radius) /
+		                   std::log(1.0f + distortionFactor);
+	}
+
+	// 3. Snap near-center positions to exact center
+	// Reduces computational load for sources very close to listener
+	const float centerThreshold = 0.05f;
+	if (optimized.radius < centerThreshold) {
+		optimized.radius = 0.0f;
+		optimized.azimuth = 0.0f;
+		optimized.elevation = 0.0f;
+	}
+
+	// 4. Optimize azimuth for speaker layouts
+	// Align with common speaker positions (multiples of 30°)
+	if (optimized.radius > 0.5f) {  // Only for distant sources
+		const float azimuthSnap = 30.0f;
+		float snappedAzimuth = std::round(coord.azimuth / azimuthSnap) * azimuthSnap;
+
+		// Only apply snapping if close to speaker position (within 5°)
+		if (std::abs(coord.azimuth - snappedAzimuth) < 5.0f) {
+			optimized.azimuth = snappedAzimuth;
+		}
+	}
+
+	// 5. Ensure valid ranges
+	optimized.radius = std::max(0.0f, std::min(1.0f, optimized.radius));
+	optimized.elevation = std::max(-90.0f, std::min(90.0f, optimized.elevation));
+
+	// Normalize azimuth to -180 to +180 range
+	while (optimized.azimuth > 180.0f) optimized.azimuth -= 360.0f;
+	while (optimized.azimuth < -180.0f) optimized.azimuth += 360.0f;
+
+	AUDIO_LOG_DEBUG("CoordinateMapper",
+	                "Spatialization optimization: (r=%.2f, az=%.1f°, el=%.1f°) -> (r=%.2f, az=%.1f°, el=%.1f°)",
+	                coord.radius, coord.azimuth, coord.elevation,
+	                optimized.radius, optimized.azimuth, optimized.elevation);
+
+	return optimized;
 }
 
 } // namespace VeniceDAW
