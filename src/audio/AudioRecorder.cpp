@@ -350,8 +350,8 @@ bool AudioRecorder::HandleRecordedData(const void* data, size_t size, const medi
 
     // Send to VeniceDAW engine for live monitoring
     if (fEngine) {
-        // TODO: Add live monitoring integration with engine
-        // This could feed into a special "input" track for monitoring
+        // Feed audio to monitoring track for real-time visualization
+        fEngine->FeedMonitoringAudio(data, size, format);
     }
 
     return true;

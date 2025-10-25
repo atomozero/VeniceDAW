@@ -173,6 +173,11 @@ public:
     status_t LoadAudioFileAsTrack(const entry_ref& ref);
     status_t LoadAudioFileAsTrack(const char* path);
 
+    // Live monitoring support
+    status_t CreateMonitoringTrack(const char* name = "Input Monitor");
+    status_t FeedMonitoringAudio(const void* data, size_t size, const media_raw_audio_format& format);
+    int32 GetMonitoringTrackIndex() const { return fMonitoringTrackIndex; }
+
 private:
     static void _AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format);
     void _ProcessAudio(float* buffer, size_t frameCount);
@@ -192,6 +197,10 @@ private:
 
     // Recording support
     ::VeniceDAW::RecordingSession* fRecordingSession;
+
+    // Live monitoring support
+    int32 fMonitoringTrackIndex;  // Index of monitoring track, -1 if none
+    std::vector<float> fMonitoringBuffer;  // Temporary buffer for incoming audio
 };
 
 } // namespace HaikuDAW

@@ -282,7 +282,7 @@ status_t SimpleTrack::ReadFileData(float* buffer, int32 frameCount, float sample
 SimpleHaikuEngine::SimpleHaikuEngine()
     : fSoundPlayer(nullptr), fRunning(false), fMasterVolume(1.0f), fSoloTrack(-1),
       fMasterPeakLeft(0.0f), fMasterPeakRight(0.0f), fMasterRMSLeft(0.0f), fMasterRMSRight(0.0f),
-      fRecordingSession(nullptr)
+      fRecordingSession(nullptr), fMonitoringTrackIndex(-1)
 {
     // Engine created
 
@@ -1045,6 +1045,86 @@ bool SimpleHaikuEngine::IsRecording(int32 trackIndex) const
         // Check specific track
         return false; // fRecordingSession->IsTrackRecording(trackIndex);
     }
+}
+
+// =====================================
+// Live Monitoring Support
+// =====================================
+
+status_t SimpleHaikuEngine::CreateMonitoringTrack(const char* name)
+{
+    // Remove existing monitoring track if any
+    if (fMonitoringTrackIndex >= 0 && fMonitoringTrackIndex < (int32)fTracks.size()) {
+        delete fTracks[fMonitoringTrackIndex];
+        fTracks.erase(fTracks.begin() + fMonitoringTrackIndex);
+        fMonitoringTrackIndex = -1;
+    }
+
+    // Create new monitoring track
+    SimpleTrack* monitoringTrack = new SimpleTrack(fTracks.size(), name);
+    monitoringTrack->SetVolume(0.8f);  // Slightly reduced for monitoring
+    monitoringTrack->SetSignalType(SimpleTrack::kSignalWhiteNoise);  // Will be replaced by live audio
+
+    status_t status = AddTrack(monitoringTrack);
+    if (status != B_OK) {
+        delete monitoringTrack;
+        return status;
+    }
+
+    fMonitoringTrackIndex = fTracks.size() - 1;
+    printf("SimpleHaikuEngine: Created monitoring track '%s' at index %d\n", name, fMonitoringTrackIndex);
+
+    return B_OK;
+}
+
+status_t SimpleHaikuEngine::FeedMonitoringAudio(const void* data, size_t size,
+                                                  const media_raw_audio_format& format)
+{
+    if (fMonitoringTrackIndex < 0 || fMonitoringTrackIndex >= (int32)fTracks.size()) {
+        // No monitoring track - create one automatically
+        status_t status = CreateMonitoringTrack("Live Input");
+        if (status != B_OK) {
+            return status;
+        }
+    }
+
+    SimpleTrack* monitoringTrack = fTracks[fMonitoringTrackIndex];
+    if (!monitoringTrack) {
+        return B_ERROR;
+    }
+
+    // Convert incoming audio to float format for mixing
+    // Note: This is a simplified implementation - in production would need
+    // proper format conversion and buffering strategy
+
+    const int16* samples = static_cast<const int16*>(data);
+    size_t frameCount = size / (format.channel_count * sizeof(int16));
+
+    // Calculate RMS and peak levels for monitoring
+    float peakLevel = 0.0f;
+    float rmsSum = 0.0f;
+
+    for (size_t i = 0; i < frameCount * format.channel_count; i++) {
+        float sample = samples[i] / 32768.0f;  // Convert to float [-1.0, 1.0]
+        float absSample = fabs(sample);
+
+        if (absSample > peakLevel) {
+            peakLevel = absSample;
+        }
+
+        rmsSum += sample * sample;
+    }
+
+    float rmsLevel = sqrt(rmsSum / (frameCount * format.channel_count));
+
+    // Update monitoring track levels for visualization
+    monitoringTrack->UpdateLevels(peakLevel, rmsLevel);
+
+    // Store audio in monitoring buffer for playback
+    // Note: In production, this would need proper circular buffer implementation
+    // For now, we just update the levels for visual feedback
+
+    return B_OK;
 }
 
 } // namespace HaikuDAW
