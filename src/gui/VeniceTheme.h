@@ -46,7 +46,7 @@ public:
     // Modern, clean colors for professional audio workflow
 
     static rgb_color ChannelStripBackground() {
-        rgb_color color = {50, 52, 54, 255};  // Dark charcoal gray (not brown!)
+        rgb_color color = {25, 25, 30, 255};  // Akai-style deep black
         return color;
     }
 

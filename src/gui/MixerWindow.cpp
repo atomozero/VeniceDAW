@@ -1013,10 +1013,10 @@ void MixerWindow::CreateMixerView()
 {
     printf("MixerWindow: CreateMixerView() called\n");
     
-    // Main view with horizontal layout using VeniceTheme
+    // Main view with horizontal layout - Akai-style deep black background
     printf("MixerWindow: Creating main view...\n");
     fMainView = new BView("main_view", B_WILL_DRAW);
-    fMainView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    fMainView->SetViewColor(make_color(20, 20, 25, 255));  // Akai deep black
     BGroupLayout* mainLayout = new BGroupLayout(B_HORIZONTAL);
     fMainView->SetLayout(mainLayout);
     mainLayout->SetSpacing(VeniceDAW::VeniceTheme::MARGIN);
@@ -1051,9 +1051,9 @@ void MixerWindow::CreateMixerView()
 
 void MixerWindow::CreateChannelStrips()
 {
-    // Channel area (horizontal group of strips) with VeniceTheme spacing
+    // Channel area - Akai-style deep black background
     fChannelArea = new BView("channel_area", B_WILL_DRAW);
-    fChannelArea->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    fChannelArea->SetViewColor(make_color(20, 20, 25, 255));  // Akai deep black
     BGroupLayout* channelLayout = new BGroupLayout(B_HORIZONTAL);
     fChannelArea->SetLayout(channelLayout);
     channelLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
@@ -1117,8 +1117,8 @@ void MixerWindow::CreateMasterSection()
     fMasterSection = new BBox("master_section");
     fMasterSection->SetLabel("Master");
 
-    // Use standard panel background for clean appearance
-    fMasterSection->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    // Akai-style deep black background for Master section
+    fMasterSection->SetViewColor(make_color(20, 20, 25, 255));
 
     BGroupLayout* masterLayout = new BGroupLayout(B_VERTICAL);
     fMasterSection->SetLayout(masterLayout);
@@ -1130,7 +1130,7 @@ void MixerWindow::CreateMasterSection()
     BGroupLayout* transportLayout = new BGroupLayout(B_HORIZONTAL);
     transportLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* transportView = new BView("transport", B_WILL_DRAW);
-    transportView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    transportView->SetViewColor(make_color(20, 20, 25, 255));  // Akai black
     transportView->SetLayout(transportLayout);
 
     // Akai-style transport buttons with darker, more intense colors
@@ -1154,13 +1154,13 @@ void MixerWindow::CreateMasterSection()
     BGroupLayout* metersLayout = new BGroupLayout(B_HORIZONTAL);
     metersLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* metersContainer = new BView("master_meters", B_WILL_DRAW);
-    metersContainer->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    metersContainer->SetViewColor(make_color(20, 20, 25, 255));  // Akai black
     metersContainer->SetLayout(metersLayout);
     
     // Left channel VU meter
     BGroupLayout* leftMeterLayout = new BGroupLayout(B_VERTICAL);
     BView* leftMeterView = new BView("left_meter_view", B_WILL_DRAW);
-    leftMeterView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    leftMeterView->SetViewColor(make_color(20, 20, 25, 255));  // Akai black
     leftMeterView->SetLayout(leftMeterLayout);
     
     BStringView* leftLabel = new BStringView("left_label", "L");
@@ -1177,7 +1177,7 @@ void MixerWindow::CreateMasterSection()
     // Right channel VU meter
     BGroupLayout* rightMeterLayout = new BGroupLayout(B_VERTICAL);
     BView* rightMeterView = new BView("right_meter_view", B_WILL_DRAW);
-    rightMeterView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    rightMeterView->SetViewColor(make_color(20, 20, 25, 255));  // Akai black
     rightMeterView->SetLayout(rightMeterLayout);
     
     BStringView* rightLabel = new BStringView("right_label", "R");
