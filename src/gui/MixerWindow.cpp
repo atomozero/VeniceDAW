@@ -59,41 +59,63 @@ void ToggleButton::MouseDown(BPoint where)
 
 void ToggleButton::Draw(BRect updateRect)
 {
-    // Professional 3D button rendering with realistic lighting
+    // Professional 3D hardware button with pronounced bevel
     BRect bounds = Bounds();
 
     // Choose base color based on toggle state
     rgb_color baseColor = fToggled ? fPressedColor : fNormalColor;
 
-    // Create 3D effect with gradients
-    if (fToggled) {
-        // Pressed state: darker with inset shadow
-        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.6f));
-        FillRect(bounds);
+    // Strong black outer border for hardware appearance
+    SetHighColor(make_color(20, 20, 20, 255));
+    StrokeRect(bounds);
 
-        // Top-left dark edge (inset shadow)
+    // Inner working area
+    BRect innerBounds = bounds;
+    innerBounds.InsetBy(1, 1);
+
+    // Create 3D effect with pronounced gradients
+    if (fToggled) {
+        // Pressed state: darker with deep inset shadow
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.5f));
+        FillRect(innerBounds);
+
+        // Strong top-left dark edge (deep inset)
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.3f));
+        StrokeLine(innerBounds.LeftTop(), innerBounds.RightTop());
+        StrokeLine(innerBounds.LeftTop(), innerBounds.LeftBottom());
+
+        // Secondary inner shadow for depth
+        BRect innerShadow = innerBounds;
+        innerShadow.InsetBy(1, 1);
         SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.4f));
-        StrokeLine(bounds.LeftTop(), bounds.RightTop());
-        StrokeLine(bounds.LeftTop(), bounds.LeftBottom());
+        StrokeLine(innerShadow.LeftTop(), BPoint(innerShadow.right, innerShadow.top));
+        StrokeLine(innerShadow.LeftTop(), BPoint(innerShadow.left, innerShadow.bottom));
 
         // Bottom-right subtle highlight
         SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.7f));
-        StrokeLine(bounds.RightTop(), bounds.RightBottom());
-        StrokeLine(bounds.LeftBottom(), bounds.RightBottom());
+        StrokeLine(innerBounds.RightTop(), innerBounds.RightBottom());
+        StrokeLine(innerBounds.LeftBottom(), innerBounds.RightBottom());
     } else {
-        // Unpressed state: lighter with raised appearance
+        // Unpressed state: bright with strong raised appearance
         SetHighColor(baseColor);
-        FillRect(bounds);
+        FillRect(innerBounds);
 
-        // Top-left bright highlight (light source from top-left)
+        // Top-left BRIGHT highlight (strong light source)
         SetHighColor(VeniceDAW::VeniceTheme::Tint(baseColor, B_LIGHTEN_MAX_TINT));
-        StrokeLine(bounds.LeftTop(), bounds.RightTop());
-        StrokeLine(bounds.LeftTop(), bounds.LeftBottom());
+        StrokeLine(innerBounds.LeftTop(), innerBounds.RightTop());
+        StrokeLine(innerBounds.LeftTop(), innerBounds.LeftBottom());
 
-        // Bottom-right shadow (depth)
-        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.5f));
-        StrokeLine(bounds.RightTop(), bounds.RightBottom());
-        StrokeLine(bounds.LeftBottom(), bounds.RightBottom());
+        // Secondary highlight for more pronounced bevel
+        BRect innerHighlight = innerBounds;
+        innerHighlight.InsetBy(1, 1);
+        SetHighColor(VeniceDAW::VeniceTheme::Tint(baseColor, B_LIGHTEN_2_TINT));
+        StrokeLine(innerHighlight.LeftTop(), BPoint(innerHighlight.right, innerHighlight.top));
+        StrokeLine(innerHighlight.LeftTop(), BPoint(innerHighlight.left, innerHighlight.bottom));
+
+        // Bottom-right DARK shadow (strong depth)
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.4f));
+        StrokeLine(innerBounds.RightTop(), innerBounds.RightBottom());
+        StrokeLine(innerBounds.LeftBottom(), innerBounds.RightBottom());
     }
 
     // Draw label text centered
