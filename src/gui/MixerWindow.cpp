@@ -967,6 +967,9 @@ void MixerWindow::CreateMasterSection()
     fMasterSection = new BBox("master_section");
     fMasterSection->SetLabel("Master");
 
+    // Professional dark gray background matching channel strips
+    fMasterSection->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
+
     BGroupLayout* masterLayout = new BGroupLayout(B_VERTICAL);
     fMasterSection->SetLayout(masterLayout);
     masterLayout->SetSpacing(VeniceDAW::VeniceTheme::MARGIN);
@@ -977,6 +980,7 @@ void MixerWindow::CreateMasterSection()
     BGroupLayout* transportLayout = new BGroupLayout(B_HORIZONTAL);
     transportLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* transportView = new BView("transport", B_WILL_DRAW);
+    transportView->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
     transportView->SetLayout(transportLayout);
 
     fPlayButton = new BButton("play", "Play", new BMessage(MSG_PLAY));
@@ -992,11 +996,13 @@ void MixerWindow::CreateMasterSection()
     BGroupLayout* metersLayout = new BGroupLayout(B_HORIZONTAL);
     metersLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* metersContainer = new BView("master_meters", B_WILL_DRAW);
+    metersContainer->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
     metersContainer->SetLayout(metersLayout);
     
     // Left channel VU meter
     BGroupLayout* leftMeterLayout = new BGroupLayout(B_VERTICAL);
     BView* leftMeterView = new BView("left_meter_view", B_WILL_DRAW);
+    leftMeterView->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
     leftMeterView->SetLayout(leftMeterLayout);
     
     BStringView* leftLabel = new BStringView("left_label", "L");
@@ -1013,6 +1019,7 @@ void MixerWindow::CreateMasterSection()
     // Right channel VU meter
     BGroupLayout* rightMeterLayout = new BGroupLayout(B_VERTICAL);
     BView* rightMeterView = new BView("right_meter_view", B_WILL_DRAW);
+    rightMeterView->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
     rightMeterView->SetLayout(rightMeterLayout);
     
     BStringView* rightLabel = new BStringView("right_label", "R");
