@@ -115,10 +115,10 @@ public:
     static constexpr float SLIDER_WIDTH = 200.0f;
     static constexpr float TEXTBOX_HEIGHT = 20.0f;
 
-    // DAW-specific sizes
-    static constexpr float CHANNEL_STRIP_WIDTH = 80.0f;   // Compact mixer strip
-    static constexpr float FADER_HEIGHT = 150.0f;         // Vertical fader
-    static constexpr float METER_WIDTH = 8.0f;            // VU meter width
+    // DAW-specific sizes - Ultra compact professional layout
+    static constexpr float CHANNEL_STRIP_WIDTH = 60.0f;   // Very compact mixer strip
+    static constexpr float FADER_HEIGHT = 180.0f;         // Taller vertical fader
+    static constexpr float METER_WIDTH = 4.0f;            // Thin VU meter bar
     static constexpr float KNOB_SIZE = 40.0f;             // Rotary knob
 
     // ===== Utility Functions =====

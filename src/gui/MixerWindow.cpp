@@ -161,74 +161,67 @@ void ChannelStrip::CreateControls()
         return;
     }
     
-    // Track name at the top
+    // Track name at the top - very compact
     fTrackName = new BStringView("name", fTrack->GetName());
     fTrackName->SetAlignment(B_ALIGN_CENTER);
+    fTrackName->SetFont(be_plain_font);
+    fTrackName->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
     mainLayout->AddView(fTrackName);
-    
-    // Create horizontal group for VU meter and volume slider side by side
-    BGroupLayout* metersLayout = new BGroupLayout(B_HORIZONTAL);
-    metersLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
-    BView* metersContainer = new BView("meters", B_WILL_DRAW);
-    metersContainer->SetLayout(metersLayout);
 
-    // Level meter (VU meter) - compact professional width
-    fLevelMeter = new LevelMeter();
-    float meterWidth = VeniceDAW::VeniceTheme::METER_WIDTH;
+    // ONLY volume fader - no VU meter in strip (saves space)
     float faderHeight = VeniceDAW::VeniceTheme::FADER_HEIGHT;
-    fLevelMeter->SetExplicitMinSize(BSize(meterWidth, faderHeight));
-    fLevelMeter->SetExplicitMaxSize(BSize(meterWidth + 2, faderHeight + 50));
-    fLevelMeter->SetExplicitPreferredSize(BSize(meterWidth, faderHeight + 30));
-    metersLayout->AddView(fLevelMeter);
-
-    // Volume slider - compact professional layout
-    fVolumeSlider = new BSlider("volume", "Vol",
+    fVolumeSlider = new BSlider("volume", nullptr,  // No label to save space
                                new BMessage(MSG_VOLUME_CHANGED),
                                0, 200, B_VERTICAL);
     fVolumeSlider->SetValue((int)(fTrack->GetVolume() * 100));
     fVolumeSlider->SetTarget(this);
-    fVolumeSlider->SetLimitLabels("0", "200%");
+    fVolumeSlider->SetLimitLabels("0", "");  // Only bottom label
     fVolumeSlider->SetModificationMessage(new BMessage(MSG_VOLUME_CHANGED));
-    fVolumeSlider->SetHashMarks(B_HASH_MARKS_BOTH);
-    fVolumeSlider->SetHashMarkCount(5);
-    // Make slider more compact to fit 80px strip
-    fVolumeSlider->SetExplicitMinSize(BSize(55, faderHeight));
-    fVolumeSlider->SetExplicitMaxSize(BSize(65, faderHeight + 50));
-    fVolumeSlider->SetExplicitPreferredSize(BSize(60, faderHeight + 30));
-    metersLayout->AddView(fVolumeSlider);
+    fVolumeSlider->SetHashMarks(B_HASH_MARKS_NONE);  // No hash marks for cleaner look
+    fVolumeSlider->SetExplicitMinSize(BSize(50, faderHeight));
+    fVolumeSlider->SetExplicitMaxSize(BSize(58, faderHeight + 20));
+    fVolumeSlider->SetExplicitPreferredSize(BSize(54, faderHeight));
+    mainLayout->AddView(fVolumeSlider);
 
-    // Add the meters container to main layout
-    mainLayout->AddView(metersContainer);
-    
-    // Pan slider (horizontal) 
-    fPanSlider = new BSlider("pan", "Pan",
+    // Compact pan control - minimal height
+    fPanSlider = new BSlider("pan", nullptr,  // No label
                             new BMessage(MSG_PAN_CHANGED),
                             -100, 100, B_HORIZONTAL);
-    fPanSlider->SetValue((int)(fTrack->GetPan() * 100));  // Convert -1..1 to -100..100
+    fPanSlider->SetValue((int)(fTrack->GetPan() * 100));
     fPanSlider->SetTarget(this);
     fPanSlider->SetLimitLabels("L", "R");
-    fPanSlider->SetModificationMessage(new BMessage(MSG_PAN_CHANGED));  // Real-time pan
+    fPanSlider->SetModificationMessage(new BMessage(MSG_PAN_CHANGED));
+    fPanSlider->SetHashMarks(B_HASH_MARKS_NONE);
+    fPanSlider->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 18));  // Very compact
     mainLayout->AddView(fPanSlider);
+
+    // Hidden level meter (not displayed, but updated for master calculation)
+    fLevelMeter = new LevelMeter();
+    fLevelMeter->Hide();  // Don't show in channel strip
     
-    // Mute toggle button - compact professional style
+    // Mute toggle button - ultra compact
     fMuteButton = new ToggleButton("mute", "M", new BMessage(MSG_MUTE_TOGGLED));
     fMuteButton->SetTarget(this);
     fMuteButton->SetToggled(fTrack->IsMuted());
     fMuteButton->SetToggleColors(
         VeniceDAW::VeniceTheme::ControlBackground(),
-        VeniceDAW::VeniceTheme::MeterRed()  // Muted = red
+        VeniceDAW::VeniceTheme::MeterRed()
     );
-    fMuteButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+    fMuteButton->SetExplicitMinSize(BSize(50, 20));
+    fMuteButton->SetExplicitMaxSize(BSize(58, 22));
+    fMuteButton->SetExplicitPreferredSize(BSize(54, 20));
     mainLayout->AddView(fMuteButton);
 
-    // Solo toggle button - compact professional style
+    // Solo toggle button - ultra compact
     fSoloButton = new ToggleButton("solo", "S", new BMessage(MSG_SOLO_TOGGLED));
     fSoloButton->SetTarget(this);
     fSoloButton->SetToggleColors(
         VeniceDAW::VeniceTheme::ControlBackground(),
-        VeniceDAW::VeniceTheme::MeterGreen()  // Solo = green
+        VeniceDAW::VeniceTheme::MeterGreen()
     );
-    fSoloButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+    fSoloButton->SetExplicitMinSize(BSize(50, 20));
+    fSoloButton->SetExplicitMaxSize(BSize(58, 22));
+    fSoloButton->SetExplicitPreferredSize(BSize(54, 20));
     mainLayout->AddView(fSoloButton);
 }
 
@@ -738,10 +731,13 @@ void MixerWindow::CreateMixerView()
     printf("MixerWindow: Creating channel strips...\n");
     CreateChannelStrips();
 
-    // Create track inspector panel (right sidebar)
+    // Create track inspector panel (right sidebar) - COMPACT
     printf("MixerWindow: Creating track inspector panel...\n");
-    BRect inspectorRect(0, 0, 280, 500);
+    BRect inspectorRect(0, 0, 180, 450);  // Reduced from 280 to 180
     fInspectorPanel = new TrackInspectorPanel(inspectorRect);
+    fInspectorPanel->SetExplicitMinSize(BSize(180, 400));
+    fInspectorPanel->SetExplicitMaxSize(BSize(200, 500));
+    fInspectorPanel->SetExplicitPreferredSize(BSize(180, 450));
     mainLayout->AddView(fInspectorPanel);
 
     printf("MixerWindow: Creating master section...\n");
