@@ -136,8 +136,12 @@ ProfessionalFader::ProfessionalFader(const char* name, const char* label, BMessa
                                      int32 minValue, int32 maxValue, orientation posture)
     : BSlider(name, label, message, minValue, maxValue, posture)
 {
-    // Professional fader styling
+    // Professional fader styling with wider thumb for better usability
     SetBarColor(VeniceDAW::VeniceTheme::FaderGroove());
+
+    // Make the bar (groove) thicker for a more professional appearance
+    // Default is usually 6-8 pixels, we use 12 for better visibility
+    SetBarThickness(12.0f);
 }
 
 ProfessionalFader::~ProfessionalFader()
