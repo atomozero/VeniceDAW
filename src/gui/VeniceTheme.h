@@ -93,13 +93,13 @@ public:
         return palette[index % 12];
     }
 
-    // Much darker, subtle version for track headers (professional look)
+    // Vibrant Akai-style track headers (less darkened for intensity)
     static rgb_color TrackHeaderColor(int index) {
         rgb_color base = TrackColor(index);
         return make_color(
-            (uint8)(base.red * 0.6f),
-            (uint8)(base.green * 0.6f),
-            (uint8)(base.blue * 0.6f),
+            (uint8)(base.red * 0.85f),
+            (uint8)(base.green * 0.85f),
+            (uint8)(base.blue * 0.85f),
             255
         );
     }
