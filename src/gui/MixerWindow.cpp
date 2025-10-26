@@ -352,7 +352,11 @@ void ChannelStrip::CreateControls()
     // Track name at the top with colored background for easy identification
     fTrackName = new BStringView("name", fTrack->GetName());
     fTrackName->SetAlignment(B_ALIGN_CENTER);
-    fTrackName->SetFont(be_plain_font);
+
+    // Professional bold font for better readability
+    BFont trackFont(be_bold_font);
+    trackFont.SetSize(11.0f);  // Slightly larger than default
+    fTrackName->SetFont(&trackFont);
 
     // Use darkened track color for header background - FORCE DRAWING
     rgb_color headerColor = VeniceDAW::VeniceTheme::TrackHeaderColor(fTrack->GetColorIndex());
@@ -360,12 +364,12 @@ void ChannelStrip::CreateControls()
     fTrackName->SetLowColor(headerColor);
     fTrackName->SetFlags(fTrackName->Flags() | B_WILL_DRAW | B_FRAME_EVENTS);
 
-    // White text with black outline for maximum contrast
+    // White text for maximum contrast against dark header
     fTrackName->SetHighColor(make_color(255, 255, 255, 255));
 
-    fTrackName->SetExplicitMinSize(BSize(50, 20));  // Taller for better readability
-    fTrackName->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 22));
-    fTrackName->SetExplicitPreferredSize(BSize(54, 20));
+    fTrackName->SetExplicitMinSize(BSize(50, 22));  // Taller for larger font
+    fTrackName->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 26));
+    fTrackName->SetExplicitPreferredSize(BSize(54, 24));
     mainLayout->AddView(fTrackName);
 
     // Professional realistic fader with 3D metallic appearance
