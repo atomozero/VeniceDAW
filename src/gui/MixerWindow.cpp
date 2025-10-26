@@ -149,17 +149,48 @@ void ProfessionalFader::DrawBar()
     // Get bar rectangle
     BRect barRect = BarFrame();
 
-    // Draw dark groove with inset shadow effect
-    SetHighColor(VeniceDAW::VeniceTheme::FaderGroove());
+    // Professional fader slot/groove with realistic depth
+    // Simulates a milled aluminum channel like hardware consoles
+
+    // OUTER BORDER: Dark edge around the groove
+    rgb_color outerEdge = make_color(40, 42, 45, 255);
+    SetHighColor(outerEdge);
     FillRect(barRect);
 
-    // Inset shadow on left and top edges (groove depth)
-    SetHighColor(VeniceDAW::VeniceTheme::Dim(VeniceDAW::VeniceTheme::FaderGroove(), 0.5f));
+    // INNER GROOVE: Inset by 1 pixel
+    BRect grooveRect = barRect;
+    grooveRect.InsetBy(1, 1);
+
+    // GROOVE GRADIENT: Darker at edges, slightly lighter in center
+    float width = grooveRect.Width();
+    for (int x = 0; x < (int)width; x++) {
+        float ratio = (float)x / width;
+
+        // Create subtle gradient across groove width
+        rgb_color grooveColor;
+        if (ratio < 0.3f) {
+            // Left 30%: darkest (inset shadow)
+            grooveColor = make_color(25, 27, 30, 255);
+        } else if (ratio < 0.7f) {
+            // Center 40%: slightly lighter
+            grooveColor = make_color(30, 32, 35, 255);
+        } else {
+            // Right 30%: subtle highlight
+            grooveColor = make_color(35, 37, 40, 255);
+        }
+
+        SetHighColor(grooveColor);
+        StrokeLine(BPoint(grooveRect.left + x, grooveRect.top),
+                   BPoint(grooveRect.left + x, grooveRect.bottom));
+    }
+
+    // INSET SHADOW: Strong dark shadow on left and top (depth illusion)
+    SetHighColor(make_color(15, 17, 20, 255));
     StrokeLine(barRect.LeftTop(), barRect.LeftBottom());
     StrokeLine(barRect.LeftTop(), barRect.RightTop());
 
-    // Subtle highlight on right and bottom edges
-    SetHighColor(VeniceDAW::VeniceTheme::Dim(VeniceDAW::VeniceTheme::FaderGroove(), 1.3f));
+    // SUBTLE HIGHLIGHT: Right and bottom edges (groove opening)
+    SetHighColor(make_color(60, 62, 65, 255));
     StrokeLine(barRect.RightTop(), barRect.RightBottom());
     StrokeLine(barRect.LeftBottom(), barRect.RightBottom());
 }
@@ -169,70 +200,109 @@ void ProfessionalFader::DrawThumb()
     // Get thumb rectangle
     BRect thumbRect = ThumbFrame();
 
-    // Base metallic color
-    rgb_color thumbBase = VeniceDAW::VeniceTheme::FaderThumb();
+    // Professional DAW-style fader cap inspired by hardware mixing consoles
+    // Uses realistic metallic appearance with specular highlights
 
-    // Fill with gradient effect (simulated with horizontal bands)
-    float height = thumbRect.Height();
-    for (int y = 0; y < height; y++) {
-        float ratio = y / height;
+    // OUTER BORDER: Dark beveled edge (like real metal cap)
+    rgb_color darkEdge = make_color(60, 60, 65, 255);
+    SetHighColor(darkEdge);
+    FillRect(thumbRect);
 
-        // Create metallic gradient: bright at top, base in middle, dark at bottom
+    // INNER SURFACE: Inset by 2 pixels for beveled edge effect
+    BRect innerRect = thumbRect;
+    innerRect.InsetBy(2, 2);
+
+    // REALISTIC METALLIC GRADIENT (simulates brushed aluminum)
+    float height = innerRect.Height();
+    for (int y = 0; y < (int)height; y++) {
+        float ratio = (float)y / height;
+
+        // Create realistic metallic gradient with specular highlight
         rgb_color bandColor;
-        if (ratio < 0.3f) {
-            // Top 30%: bright highlight
+
+        if (ratio < 0.15f) {
+            // Top 15%: Bright specular highlight (light reflection)
+            float t = ratio / 0.15f;
             bandColor = VeniceDAW::VeniceTheme::Blend(
-                VeniceDAW::VeniceTheme::FaderThumbHighlight(),
-                thumbBase,
-                ratio / 0.3f
+                make_color(250, 250, 255, 255),  // Almost white highlight
+                make_color(210, 215, 220, 255),  // Light silver
+                t
             );
-        } else if (ratio < 0.7f) {
-            // Middle 40%: base metallic color
-            bandColor = thumbBase;
-        } else {
-            // Bottom 30%: shadow
+        } else if (ratio < 0.35f) {
+            // 15-35%: Fade to mid-tone
+            float t = (ratio - 0.15f) / 0.2f;
             bandColor = VeniceDAW::VeniceTheme::Blend(
-                thumbBase,
-                VeniceDAW::VeniceTheme::FaderThumbShadow(),
-                (ratio - 0.7f) / 0.3f
+                make_color(210, 215, 220, 255),  // Light silver
+                make_color(160, 165, 170, 255),  // Mid silver
+                t
+            );
+        } else if (ratio < 0.65f) {
+            // 35-65%: Main body (darkest part before bottom highlight)
+            float t = (ratio - 0.35f) / 0.3f;
+            bandColor = VeniceDAW::VeniceTheme::Blend(
+                make_color(160, 165, 170, 255),  // Mid silver
+                make_color(100, 105, 110, 255),  // Dark silver
+                t
+            );
+        } else if (ratio < 0.85f) {
+            // 65-85%: Subtle bottom highlight
+            float t = (ratio - 0.65f) / 0.2f;
+            bandColor = VeniceDAW::VeniceTheme::Blend(
+                make_color(100, 105, 110, 255),  // Dark silver
+                make_color(140, 145, 150, 255),  // Light mid silver
+                t
+            );
+        } else {
+            // 85-100%: Final edge highlight
+            float t = (ratio - 0.85f) / 0.15f;
+            bandColor = VeniceDAW::VeniceTheme::Blend(
+                make_color(140, 145, 150, 255),  // Light mid silver
+                make_color(180, 185, 190, 255),  // Lighter silver
+                t
             );
         }
 
         SetHighColor(bandColor);
-        StrokeLine(BPoint(thumbRect.left, thumbRect.top + y),
-                   BPoint(thumbRect.right, thumbRect.top + y));
+        StrokeLine(BPoint(innerRect.left, innerRect.top + y),
+                   BPoint(innerRect.right, innerRect.top + y));
     }
 
-    // Draw strong 3D border for depth and visibility
-    // Bright highlight on top and left (light source from top-left) - double line
-    SetHighColor(VeniceDAW::VeniceTheme::FaderThumbHighlight());
+    // BEVELED 3D EDGES: Create depth perception
+    // Top-left bright edge (3 pixels thick for prominence)
+    SetHighColor(make_color(220, 225, 230, 255));
     StrokeLine(thumbRect.LeftTop(), thumbRect.RightTop());
     StrokeLine(thumbRect.LeftTop(), thumbRect.LeftBottom());
-    // Second highlight line for more prominence
     thumbRect.InsetBy(1, 1);
+    SetHighColor(make_color(200, 205, 210, 255));
     StrokeLine(thumbRect.LeftTop(), thumbRect.RightTop());
     StrokeLine(thumbRect.LeftTop(), thumbRect.LeftBottom());
     thumbRect.InsetBy(-1, -1);
 
-    // Dark shadow on bottom and right (depth) - double line
-    SetHighColor(VeniceDAW::VeniceTheme::FaderThumbShadow());
+    // Bottom-right dark shadow (3 pixels thick for depth)
+    SetHighColor(make_color(50, 52, 55, 255));
     StrokeLine(thumbRect.RightTop(), thumbRect.RightBottom());
     StrokeLine(thumbRect.LeftBottom(), thumbRect.RightBottom());
-    // Second shadow line for more depth
     thumbRect.InsetBy(1, 1);
+    SetHighColor(make_color(70, 72, 75, 255));
     StrokeLine(thumbRect.RightTop(), thumbRect.RightBottom());
     StrokeLine(thumbRect.LeftBottom(), thumbRect.RightBottom());
     thumbRect.InsetBy(-1, -1);
 
-    // Draw center grip lines (5 darker vertical lines for better visibility)
-    SetHighColor(VeniceDAW::VeniceTheme::Dim(thumbBase, 0.5f));  // Darker grip lines
-    float centerX = thumbRect.left + thumbRect.Width() / 2.0f;
-    float gripTop = thumbRect.top + thumbRect.Height() * 0.25f;
-    float gripBottom = thumbRect.bottom - thumbRect.Height() * 0.25f;
+    // CENTER INDICATOR: White line for precise positioning feedback
+    float centerY = thumbRect.top + thumbRect.Height() / 2.0f;
+    SetHighColor(make_color(255, 255, 255, 255));
+    StrokeLine(BPoint(thumbRect.left + 3, centerY),
+               BPoint(thumbRect.right - 3, centerY));
 
-    for (int i = -2; i <= 2; i++) {  // 5 lines instead of 3
-        float x = centerX + i * 2.5f;
-        StrokeLine(BPoint(x, gripTop), BPoint(x, gripBottom));
+    // TACTILE GRIP PATTERN: Horizontal grooves like real faders
+    SetHighColor(make_color(80, 82, 85, 255));
+    for (int i = -3; i <= 3; i++) {
+        if (i == 0) continue;  // Skip center (has white line)
+        float y = centerY + i * 3;
+        if (y > thumbRect.top + 4 && y < thumbRect.bottom - 4) {
+            StrokeLine(BPoint(thumbRect.left + 4, y),
+                       BPoint(thumbRect.right - 4, y));
+        }
     }
 }
 
