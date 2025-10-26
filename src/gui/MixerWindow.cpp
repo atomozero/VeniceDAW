@@ -75,24 +75,32 @@ void ToggleButton::Draw(BRect updateRect)
 
     // Create 3D effect with pronounced gradients
     if (fToggled) {
-        // Pressed state: darker with deep inset shadow
-        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.5f));
+        // Pressed state: Akai-style GLOW effect from center
+        // Bright center that fades to darker edges for LED glow appearance
+
+        // Fill with full bright color first
+        SetHighColor(baseColor);
         FillRect(innerBounds);
 
-        // Strong top-left dark edge (deep inset)
-        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.3f));
+        // Center bright glow (Akai LED effect)
+        BRect glowCenter = innerBounds;
+        glowCenter.InsetBy(2, 2);
+        SetHighColor(VeniceDAW::VeniceTheme::Tint(baseColor, B_LIGHTEN_2_TINT));
+        FillRect(glowCenter);
+
+        // Inner most bright spot
+        BRect brightSpot = glowCenter;
+        brightSpot.InsetBy(2, 2);
+        SetHighColor(VeniceDAW::VeniceTheme::Tint(baseColor, B_LIGHTEN_MAX_TINT));
+        FillRect(brightSpot);
+
+        // Strong top-left dark edge (deep inset for hardware feel)
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.5f));
         StrokeLine(innerBounds.LeftTop(), innerBounds.RightTop());
         StrokeLine(innerBounds.LeftTop(), innerBounds.LeftBottom());
 
-        // Secondary inner shadow for depth
-        BRect innerShadow = innerBounds;
-        innerShadow.InsetBy(1, 1);
-        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.4f));
-        StrokeLine(innerShadow.LeftTop(), BPoint(innerShadow.right, innerShadow.top));
-        StrokeLine(innerShadow.LeftTop(), BPoint(innerShadow.left, innerShadow.bottom));
-
         // Bottom-right subtle highlight
-        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.7f));
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.8f));
         StrokeLine(innerBounds.RightTop(), innerBounds.RightBottom());
         StrokeLine(innerBounds.LeftBottom(), innerBounds.RightBottom());
     } else {
