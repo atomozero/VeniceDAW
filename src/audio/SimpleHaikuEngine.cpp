@@ -384,12 +384,15 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
         if (!shouldPlay) continue;
         
         float volume = track->GetVolume() * fMasterVolume * AudioConstants::FILE_PLAYBACK_GAIN;
-        
+
         // Use track pan setting (-1 = left, 0 = center, +1 = right)
         float pan = track->GetPan();
-        
-        float leftGain = (1.0f - pan) * 0.5f * volume;
-        float rightGain = (1.0f + pan) * 0.5f * volume;
+
+        // Equal-power panning law (constant perceived loudness)
+        // Maps pan [-1,+1] to angle [0, π/2], then applies sin/cos
+        float panAngle = (pan + 1.0f) * 0.5f * M_PI_2;  // M_PI_2 = π/2
+        float leftGain = cosf(panAngle) * volume;        // Left weight
+        float rightGain = sinf(panAngle) * volume;       // Right weight
         
         // Process audio based on track type
         float peakLevel = 0.0f;
