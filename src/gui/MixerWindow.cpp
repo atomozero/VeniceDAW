@@ -336,25 +336,27 @@ void ChannelStrip::CreateControls()
     fLevelMeter = new LevelMeter();
     fLevelMeter->Hide();  // Don't show in channel strip
     
-    // Mute toggle button - ultra compact
+    // Mute toggle button - ultra compact with professional colors
     fMuteButton = new ToggleButton("mute", "M", new BMessage(MSG_MUTE_TOGGLED));
     fMuteButton->SetTarget(this);
     fMuteButton->SetToggled(fTrack->IsMuted());
+    // Normal: light gray, Pressed: bright red for clear mute indication
     fMuteButton->SetToggleColors(
-        VeniceDAW::VeniceTheme::ControlBackground(),
-        VeniceDAW::VeniceTheme::MeterRed()
+        make_color(200, 200, 200, 255),  // Light gray unpressed
+        make_color(240, 80, 80, 255)     // Bright red when muted
     );
     fMuteButton->SetExplicitMinSize(BSize(50, 20));
     fMuteButton->SetExplicitMaxSize(BSize(58, 22));
     fMuteButton->SetExplicitPreferredSize(BSize(54, 20));
     mainLayout->AddView(fMuteButton);
 
-    // Solo toggle button - ultra compact
+    // Solo toggle button - ultra compact with professional colors
     fSoloButton = new ToggleButton("solo", "S", new BMessage(MSG_SOLO_TOGGLED));
     fSoloButton->SetTarget(this);
+    // Normal: light gray, Pressed: bright yellow/amber for clear solo indication
     fSoloButton->SetToggleColors(
-        VeniceDAW::VeniceTheme::ControlBackground(),
-        VeniceDAW::VeniceTheme::MeterGreen()
+        make_color(200, 200, 200, 255),  // Light gray unpressed
+        make_color(255, 200, 50, 255)    // Bright amber/yellow when soloed
     );
     fSoloButton->SetExplicitMinSize(BSize(50, 20));
     fSoloButton->SetExplicitMaxSize(BSize(58, 22));
