@@ -102,8 +102,8 @@ public:
     bool HasAudioFile() const { return fFileLoaded; }  // Alias for clarity
     const char* GetFilePath() const;
     
-    // Debug and fallback methods
-    status_t LoadAudioFileAlternative(const entry_ref& ref);
+    // Debug and fallback methods (DEPRECATED - incompatible with AudioFileStreamer architecture)
+    // status_t LoadAudioFileAlternative(const entry_ref& ref);
     
     // File playback state (delegated to streamer)
     void SetPlaybackPosition(int64 frame);

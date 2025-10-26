@@ -442,7 +442,7 @@ void TrackInspectorPanel::_ApplyPanChange(float pan)
 void TrackInspectorPanel::_ApplyMuteChange(bool muted)
 {
     if (fSelectedTrack) {
-        fSelectedTrack->SetMuted(muted);
+        fSelectedTrack->SetMute(muted);
         printf("TrackInspectorPanel: Mute %s\n", muted ? "ON" : "OFF");
     }
 }

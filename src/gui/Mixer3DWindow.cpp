@@ -8,6 +8,7 @@
 #include "../benchmark/PerformanceStation.h"  // Per i RAII guards
 #include <Application.h>
 #include <Alert.h>
+#include <Autolock.h>
 #include <stdio.h>
 #include <stdlib.h>
 

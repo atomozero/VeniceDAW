@@ -432,8 +432,8 @@ private:
     bool fInitialized{false};
     float fSampleRate{44100.0f};
     size_t fBufferSize{1024};
-    ChannelConfiguration fChannelConfig{ChannelConfiguration::STEREO};
-    ProcessingQuality fQuality{ProcessingQuality::BALANCED};
+    ChannelConfiguration fChannelConfig{ChannelConfiguration::kStereo};
+    ProcessingQuality fQuality{ProcessingQuality::kBalanced};
     
     std::vector<std::unique_ptr<AudioEffect>> fEffects;
     SurroundProcessor fSurroundProcessor;

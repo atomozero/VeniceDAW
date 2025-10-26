@@ -109,8 +109,9 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
         return;
     }
     
+    // Debug logging commented out - uncomment if needed
     // printf("ChannelStrip: Creating channel strip for track '%s' (ID: %d)\n",
-           track->GetName(), track->GetId());
+    //        track->GetName(), track->GetId());
 
     SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 
@@ -422,8 +423,9 @@ void ChannelStrip::Drop(BMessage* message, BPoint where)
     if (message->what == B_SIMPLE_DATA || message->what == B_REFS_RECEIVED) {
         entry_ref ref;
         if (message->FindRef("refs", 0, &ref) == B_OK) {
+            // Debug logging commented out - uncomment if needed
             // printf("ChannelStrip: File '%s' dropped on track '%s'\n",
-                   ref.name, fTrack->GetName());
+            //        ref.name, fTrack->GetName());
 
             // Create message to load to specific track
             BMessage loadMsg(MixerWindow::MSG_LOAD_AUDIO_TO_SPECIFIC_TRACK);
@@ -779,8 +781,9 @@ void MixerWindow::CreateChannelStrips()
         }
     }
     
-    // printf("MixerWindow: Created %d channel strips for range %d-%d (total tracks: %d)\n", 
-           (int)fChannelStrips.size(), fStartTrack, endTrack-1, totalTracks);
+    // Debug logging commented out - uncomment if needed
+    // printf("MixerWindow: Created %d channel strips for range %d-%d (total tracks: %d)\n",
+    //        (int)fChannelStrips.size(), fStartTrack, endTrack-1, totalTracks);
     
     // Always add the channel area to the layout, even if empty
     if (fMainView && fMainView->GetLayout() && fChannelArea) {
@@ -1243,13 +1246,12 @@ void MixerWindow::UpdateMeter()
                 float finalRight = trackPeak * volume * rightGain * masterVolume;
                 float finalRMSLeft = trackRMS * volume * leftGain * masterVolume;
                 float finalRMSRight = trackRMS * volume * rightGain * masterVolume;
-                
-                    // Accumulate levels (take maximum for peak, sum for RMS)
-                    mixPeakLeft = std::max(mixPeakLeft, finalLeft);
-                    mixPeakRight = std::max(mixPeakRight, finalRight);
-                    mixRMSLeft += finalRMSLeft * finalRMSLeft;  // Sum of squares for RMS
-                    mixRMSRight += finalRMSRight * finalRMSRight;
-                }
+
+                // Accumulate levels (take maximum for peak, sum for RMS)
+                mixPeakLeft = std::max(mixPeakLeft, finalLeft);
+                mixPeakRight = std::max(mixPeakRight, finalRight);
+                mixRMSLeft += finalRMSLeft * finalRMSLeft;  // Sum of squares for RMS
+                mixRMSRight += finalRMSRight * finalRMSRight;
             }
         }
         

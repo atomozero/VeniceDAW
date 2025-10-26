@@ -767,8 +767,9 @@ void SpatialMixer3DView::BeginTrackPositioning(SpatialTrack3D* track, BPoint sta
     track->selected = true;
     track->showParameters = true;
 
+    // Debug logging commented out - uncomment if needed
     // printf("SpatialMixer3DView: Started positioning track at (%.2f, %.2f, %.2f)\n",
-           track->spatialPosition.x, track->spatialPosition.y, track->spatialPosition.z);
+    //        track->spatialPosition.x, track->spatialPosition.y, track->spatialPosition.z);
 
     Invalidate();
 }
@@ -824,8 +825,9 @@ void SpatialMixer3DView::EndTrackPositioning()
     fDraggingTrack->selected = false;
     fDraggingTrack->showParameters = false;
     
+    // Debug logging commented out - uncomment if needed
     // printf("SpatialMixer3DView: Finished positioning track at (%.2f, %.2f, %.2f)\n",
-           fDraggingTrack->spatialPosition.x, fDraggingTrack->spatialPosition.y, fDraggingTrack->spatialPosition.z);
+    //        fDraggingTrack->spatialPosition.x, fDraggingTrack->spatialPosition.y, fDraggingTrack->spatialPosition.z);
     
     fDraggingTrack = nullptr;
     Invalidate();

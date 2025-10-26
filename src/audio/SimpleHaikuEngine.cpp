@@ -20,15 +20,14 @@ namespace HaikuDAW {
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
       fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(kSignalSine), fFrequency(440.0f),
-      fStreamer(nullptr), fFileLoaded(false), fPinkNoiseMax(1.0f), fColorIndex(0)
+      fPinkNoiseMax(1.0f), fStreamer(nullptr), fFileLoaded(false), fColorIndex(0)
 {
     // Track created
     // Initialize pink noise state
     for (int i = 0; i < 7; i++) {
         fPinkNoiseState[i] = 0.0f;
     }
-    // Initialize file format
-    fFileFormat = media_format();
+    // File format now managed by AudioFileStreamer
 }
 
 SimpleTrack::~SimpleTrack()
@@ -84,7 +83,7 @@ status_t SimpleTrack::LoadAudioFile(const entry_ref& ref)
     fFileLoaded = true;
 
     printf("SimpleTrack: Successfully loaded '%s' with lock-free streaming\n", ref.name);
-    printf("  Duration: %lld frames (%.2f seconds)\n", fStreamer->GetDuration(),
+    printf("  Duration: %ld frames (%.2f seconds)\n", (long)fStreamer->GetDuration(),
            (double)fStreamer->GetDuration() / fStreamer->GetSampleRate());
     printf("  Sample rate: %.0f Hz\n", fStreamer->GetSampleRate());
     printf("  Ring buffer: 4 seconds (~353KB)\n");
@@ -519,7 +518,7 @@ void SimpleHaikuEngine::SetTrackSolo(int trackIndex, bool solo)
         }
         
         printf("SimpleHaikuEngine: Track %d ('%s') solo OFF. Current solo: %d\n",
-               trackIndex, targetTrack->GetName(), fSoloTrack);
+               trackIndex, targetTrack->GetName(), fSoloTrack.load());
     }
 
     _SyncAudioTracks();  // Update audio thread's lock-free view
@@ -732,13 +731,10 @@ status_t SimpleHaikuEngine::LoadAudioFileAsTrack(const entry_ref& ref)
     // Try to load the audio file
     status_t status = newTrack->LoadAudioFile(ref);
     if (status != B_OK) {
-        printf("SimpleHaikuEngine: Primary loading failed, trying alternative method...\n");
-        status = newTrack->LoadAudioFileAlternative(ref);
-        if (status != B_OK) {
-            printf("SimpleHaikuEngine: All loading methods failed: %s\n", strerror(status));
-            delete newTrack;
-            return status;
-        }
+        printf("SimpleHaikuEngine: Loading failed: %s\n", strerror(status));
+        // Alternative method deprecated - incompatible with AudioFileStreamer architecture
+        delete newTrack;
+        return status;
     }
     
     // Position the track in 3D space (spread them out)
@@ -767,32 +763,38 @@ status_t SimpleHaikuEngine::LoadAudioFileAsTrack(const entry_ref& ref)
     return B_OK;
 }
 
+/*
+// DEPRECATED: LoadAudioFileAlternative - Incompatible with AudioFileStreamer architecture
+// This method used direct BMediaFile/BMediaTrack members that no longer exist in SimpleTrack.
+// The new architecture uses AudioFileStreamer for lock-free async I/O.
+// Kept here for reference only - DO NOT UNCOMMENT without major refactoring.
+
 status_t SimpleTrack::LoadAudioFileAlternative(const entry_ref& ref)
 {
     printf("SimpleTrack: Trying alternative loading method for '%s'\n", ref.name);
-    
+
     // Alternative approach: try different file format specifications
     media_file_format fileFormat;
-    
+
     // Try specific WAV format first
     memset(&fileFormat, 0, sizeof(fileFormat));
     strcpy(fileFormat.short_name, "wav");
     strcpy(fileFormat.pretty_name, "WAV audio");
     fileFormat.family = B_MISC_FORMAT_FAMILY;
-    
+
     printf("SimpleTrack: Trying with WAV format specification...\n");
     fMediaFile = new BMediaFile(&ref, &fileFormat);
     status_t status = fMediaFile->InitCheck();
-    
+
     if (status != B_OK) {
         delete fMediaFile;
         fMediaFile = nullptr;
-        
+
         // Try with no format specification (let BMediaFile auto-detect)
         printf("SimpleTrack: Trying with auto-detection...\n");
         fMediaFile = new BMediaFile(&ref);
         status = fMediaFile->InitCheck();
-        
+
         if (status != B_OK) {
             printf("SimpleTrack: Alternative method also failed: %s\n", strerror(status));
             delete fMediaFile;
@@ -800,55 +802,56 @@ status_t SimpleTrack::LoadAudioFileAlternative(const entry_ref& ref)
             return status;
         }
     }
-    
+
     printf("SimpleTrack: Alternative method succeeded!\n");
-    
+
     // Continue with normal track setup...
     int32 numTracks = fMediaFile->CountTracks();
     printf("SimpleTrack: Found %d tracks in file\n", (int)numTracks);
-    
+
     // Get first audio track
     fMediaTrack = nullptr;
     for (int32 i = 0; i < numTracks; i++) {
         BMediaTrack* track = fMediaFile->TrackAt(i);
         if (!track) continue;
-        
+
         media_format format;
         status = track->DecodedFormat(&format);
         if (status == B_OK && format.type == B_MEDIA_RAW_AUDIO) {
             fMediaTrack = track;
             fFileFormat = format;
-            printf("SimpleTrack: Found audio track %d, format: %d Hz, %d channels\n", 
-                   (int)i, (int)format.u.raw_audio.frame_rate, 
+            printf("SimpleTrack: Found audio track %d, format: %d Hz, %d channels\n",
+                   (int)i, (int)format.u.raw_audio.frame_rate,
                    (int)format.u.raw_audio.channel_count);
             break;
         } else {
             fMediaFile->ReleaseTrack(track);
         }
     }
-    
+
     if (!fMediaTrack) {
         printf("SimpleTrack: No audio track found in file\n");
         delete fMediaFile;
         fMediaFile = nullptr;
         return B_ERROR;
     }
-    
+
     // Set basic file info
     fFileSampleRate = fFileFormat.u.raw_audio.frame_rate;
     fFileDuration = fMediaTrack->CountFrames();
-    
+
     BPath altPath(&ref);
     fFilePath.SetTo(altPath.Path());
     fFileLoaded = true;
     fPlaybackFrame = 0;
-    
+
     printf("SimpleTrack: Alternative loading successful!\n");
     printf("  Sample rate: %.0f Hz\n", fFileSampleRate);
     printf("  Duration: %ld frames\n", (long)fFileDuration);
-    
+
     return B_OK;
 }
+*/
 
 // =====================================
 // Recording Methods

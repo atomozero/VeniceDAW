@@ -135,6 +135,7 @@ public:
     void SetShowSpatialIndicators(bool show) { fShowSpatialIndicators = show; Invalidate(); }
     void SetShowListenerVisualization(bool show) { fShowListener = show; Invalidate(); }
     void SetShowRoomBoundaries(bool show) { fShowRoomBounds = show; Invalidate(); }
+    void SetShowSpeakerLayout(bool show) { fShowSpeakerLayout = show; Invalidate(); }
     
 protected:
     // Enhanced OpenGL rendering
