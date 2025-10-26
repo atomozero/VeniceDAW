@@ -461,6 +461,22 @@ void ChannelStrip::CreateControls()
     fSoloButton->SetExplicitMaxSize(BSize(58, 22));
     fSoloButton->SetExplicitPreferredSize(BSize(54, 20));
     mainLayout->AddView(fSoloButton);
+
+    // Monitoring mode button - cycles through File/Input/Both
+    // Shows current mode and allows switching
+    const char* modeLabel = "Both";  // Default
+    switch (fTrack->GetMonitoringMode()) {
+        case SimpleTrack::kMonitorFile:  modeLabel = "File"; break;
+        case SimpleTrack::kMonitorInput: modeLabel = "In"; break;
+        case SimpleTrack::kMonitorBoth:  modeLabel = "Both"; break;
+    }
+    fMonitorModeButton = new BButton("monitor", modeLabel, new BMessage(MSG_MONITOR_MODE_CHANGED));
+    fMonitorModeButton->SetTarget(this);
+    fMonitorModeButton->SetViewColor(make_color(50, 50, 55, 255));  // Slightly lighter than background
+    fMonitorModeButton->SetExplicitMinSize(BSize(50, 20));
+    fMonitorModeButton->SetExplicitMaxSize(BSize(58, 22));
+    fMonitorModeButton->SetExplicitPreferredSize(BSize(54, 20));
+    mainLayout->AddView(fMonitorModeButton);
 }
 
 void ChannelStrip::MessageReceived(BMessage* message)
@@ -521,7 +537,7 @@ void ChannelStrip::MessageReceived(BMessage* message)
             bool soloToggled = false;
             message->FindBool("toggled", &soloToggled);
             printf("Track '%s' solo %s\n", fTrack->GetName(), soloToggled ? "ON" : "OFF");
-            
+
             // Use engine's solo management (only one track can be solo)
             MixerWindow* mixerWindow = dynamic_cast<MixerWindow*>(Window());
             if (mixerWindow) {
@@ -529,7 +545,36 @@ void ChannelStrip::MessageReceived(BMessage* message)
             }
             break;
         }
-        
+
+        case MSG_MONITOR_MODE_CHANGED:
+        {
+            // Cycle through monitoring modes: Both → File → Input → Both
+            SimpleTrack::MonitoringMode currentMode = fTrack->GetMonitoringMode();
+            SimpleTrack::MonitoringMode newMode;
+            const char* newLabel;
+
+            switch (currentMode) {
+                case SimpleTrack::kMonitorBoth:
+                    newMode = SimpleTrack::kMonitorFile;
+                    newLabel = "File";
+                    break;
+                case SimpleTrack::kMonitorFile:
+                    newMode = SimpleTrack::kMonitorInput;
+                    newLabel = "In";
+                    break;
+                case SimpleTrack::kMonitorInput:
+                default:
+                    newMode = SimpleTrack::kMonitorBoth;
+                    newLabel = "Both";
+                    break;
+            }
+
+            fTrack->SetMonitoringMode(newMode);
+            fMonitorModeButton->SetLabel(newLabel);
+            printf("Track '%s' monitoring mode: %s\n", fTrack->GetName(), newLabel);
+            break;
+        }
+
         case MSG_LOAD_AUDIO_TO_TRACK:
         {
             // Forward to mixer window with track ID

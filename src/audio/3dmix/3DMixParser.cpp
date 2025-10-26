@@ -227,6 +227,7 @@ Legacy3DMixLoader::Legacy3DMixLoader()
 	: fLoadingTime(0)
 	, fLoadedTrackCount(0)
 	, fFailedTrackCount(0)
+	, fExpectedTrackCount(0)
 	, fStrictValidation(false)
 	, fSearchMissingFiles(true)
 	, fAutoDetectFormat(true)
@@ -440,16 +441,49 @@ status_t Legacy3DMixLoader::ParseTrackRecords(BDataIO* stream)
 
 status_t Legacy3DMixLoader::ParseSingleTrackRecord(BDataIO* stream, Track3DMix* track)
 {
-	// Read audio file path
-	BString audioFilePath;
-	status_t status = ReadAudioFilePath(stream, &audioFilePath);
-	if (status != B_OK) {
-		return status;
+	// Read audio file path (fixed 2048 bytes as per original BeOS format)
+	const int32 kMaxPathLength = 2048;
+	char pathBuffer[kMaxPathLength];
+
+	ssize_t bytesRead = stream->Read(pathBuffer, kMaxPathLength);
+	if (bytesRead != kMaxPathLength) {
+		ReportError("Failed to read audio file path (incomplete read)");
+		return B_IO_ERROR;
 	}
+
+	// Ensure null termination
+	pathBuffer[kMaxPathLength - 1] = '\0';
+	BString audioFilePath(pathBuffer);
+
+	// Read X position (float, big-endian)
+	uint32 xRaw;
+	bytesRead = stream->Read(&xRaw, sizeof(xRaw));
+	if (bytesRead != sizeof(xRaw)) {
+		ReportError("Failed to read X coordinate");
+		return B_IO_ERROR;
+	}
+	xRaw = B_BENDIAN_TO_HOST_INT32(xRaw);
+	float x = *((float*)&xRaw);
+
+	// Read Y position (float, big-endian)
+	uint32 yRaw;
+	bytesRead = stream->Read(&yRaw, sizeof(yRaw));
+	if (bytesRead != sizeof(yRaw)) {
+		ReportError("Failed to read Y coordinate");
+		return B_IO_ERROR;
+	}
+	yRaw = B_BENDIAN_TO_HOST_INT32(yRaw);
+	float y = *((float*)&yRaw);
+
+	// Set 3D position (Z=0 since original format is 2D)
+	track->SetPosition(x, y, 0.0f);
+
+	AUDIO_LOG_DEBUG("3DMixLoader", "Track path: %s, position: (%.2f, %.2f, 0.0)",
+	                pathBuffer, x, y);
 
 	// Translate BeOS path to Haiku path
 	BString haikuPath;
-	status = TranslatePath(audioFilePath, &haikuPath);
+	status_t status = TranslatePath(audioFilePath, &haikuPath);
 	if (status == B_OK) {
 		track->SetAudioFilePath(haikuPath.String());
 	} else {
@@ -460,22 +494,6 @@ status_t Legacy3DMixLoader::ParseSingleTrackRecord(BDataIO* stream, Track3DMix* 
 	// Extract track name from file path
 	BString trackName = Format3DMixUtils::ExtractFileName(audioFilePath);
 	track->SetTrackName(trackName.String());
-
-	// Read BMessage data
-	std::vector<uint8> bMessageData;
-	status = ReadBMessageData(stream, &bMessageData);
-	if (status != B_OK) {
-		return status;
-	}
-
-	// Process BMessage data
-	status = ProcessTrackData(bMessageData, track);
-	if (status != B_OK) {
-		ReportWarning("Failed to process track data completely");
-	}
-
-	// Store raw BMessage data for future use
-	track->SetRawBMessageData(bMessageData);
 
 	// Auto-detect audio format if enabled
 	if (fAutoDetectFormat) {

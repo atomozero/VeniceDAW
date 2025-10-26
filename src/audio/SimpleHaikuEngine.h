@@ -86,6 +86,16 @@ public:
     void SetSignalType(SignalType type) { fSignalType = type; }
     SignalType GetSignalType() const { return fSignalType; }
 
+    // Monitoring mode (for tracks with both file and live input)
+    enum MonitoringMode {
+        kMonitorFile,      // Play only file (ignore live input)
+        kMonitorInput,     // Play only live input (ignore file)
+        kMonitorBoth       // Mix file + live input (default)
+    };
+
+    void SetMonitoringMode(MonitoringMode mode) { fMonitoringMode = mode; }
+    MonitoringMode GetMonitoringMode() const { return fMonitoringMode; }
+
     void SetFrequency(float freq) { fFrequency = freq; }
     float GetFrequency() const { return fFrequency; }
 
@@ -135,6 +145,7 @@ private:
     float fFrequency;  // Frequency for test signal
     float fPinkNoiseState[7];  // State for pink noise generator
     float fPinkNoiseMax;  // Maximum value for pink noise normalization
+    MonitoringMode fMonitoringMode;  // File/Input/Both monitoring mode
     
     // Audio file streaming (lock-free asynchronous I/O)
     AudioFileStreamer* fStreamer;

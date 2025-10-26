@@ -132,16 +132,18 @@ private:
     BSlider* fPanSlider;
     ToggleButton* fMuteButton;
     LevelMeter* fLevelMeter;
-    
+    BButton* fMonitorModeButton;  // Cycles through File/Input/Both
+
 public:
     ToggleButton* fSoloButton;  // Public for MixerWindow access
-    
+
     // Message constants
     enum {
         MSG_VOLUME_CHANGED = 'vol_',
         MSG_PAN_CHANGED = 'pan_',
         MSG_MUTE_TOGGLED = 'mut_',
         MSG_SOLO_TOGGLED = 'sol_',
+        MSG_MONITOR_MODE_CHANGED = 'mon_',
         MSG_LOAD_AUDIO_TO_TRACK = 'latt',
         MSG_CLEAR_TRACK = 'cltr'
     };

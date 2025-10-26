@@ -22,7 +22,7 @@ namespace HaikuDAW {
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
       fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(kSignalSine), fFrequency(440.0f),
-      fPinkNoiseMax(1.0f), fStreamer(nullptr), fFileLoaded(false),
+      fPinkNoiseMax(1.0f), fMonitoringMode(kMonitorBoth), fStreamer(nullptr), fFileLoaded(false),
       fLiveInputAvailable(false), fLiveInputFrameCount(0), fLiveInputChannels(0),
       fColorIndex(0)
 {
@@ -439,8 +439,13 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
 
         bool hasFileAudio = track->HasFile();
         bool hasLiveInput = track->HasLiveInput();
+        SimpleTrack::MonitoringMode mode = track->GetMonitoringMode();
 
-        if (hasFileAudio || hasLiveInput) {
+        // Apply monitoring mode filter
+        bool useFile = hasFileAudio && (mode == SimpleTrack::kMonitorFile || mode == SimpleTrack::kMonitorBoth);
+        bool useInput = hasLiveInput && (mode == SimpleTrack::kMonitorInput || mode == SimpleTrack::kMonitorBoth);
+
+        if (useFile || useInput) {
             // FILE PLAYBACK AND/OR LIVE INPUT
             // Use pre-allocated RT-safe buffer (no dynamic allocation!)
             size_t requiredSize = frameCount * 2;
@@ -453,17 +458,17 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
             // Clear buffer using memset (faster than std::fill)
             memset(fMixBuffer.data(), 0, requiredSize * sizeof(float));
 
-            // Read file audio if available
-            if (hasFileAudio) {
+            // Read file audio if monitoring mode allows
+            if (useFile) {
                 status_t status = track->ReadFileData(fMixBuffer.data(), frameCount, sampleRate);
                 if (status != B_OK) {
                     // File read failed, buffer remains cleared
-                    hasFileAudio = false;
+                    useFile = false;
                 }
             }
 
-            // Mix in live input if available (professional monitoring behavior)
-            if (hasLiveInput) {
+            // Mix in live input if monitoring mode allows
+            if (useInput) {
                 // Get live input data from track's buffer
                 size_t liveFrames = track->GetLiveInputFrameCount();
                 const float* liveData = track->GetLiveInputData();
@@ -477,8 +482,10 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
                         fMixBuffer[i * 2 + 1] += liveData[i * 2 + 1]; // Right
                     }
                 }
+            }
 
-                // Clear the live input flag (consumed)
+            // Always clear live input flag (consumed), even if mode filtered it out
+            if (hasLiveInput) {
                 track->ClearLiveInput();
             }
 
