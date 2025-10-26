@@ -1,11 +1,13 @@
 /*
- * Mixer3DWindow.cpp - Revolutionary 3D mixer implementation
- * First native 3D audio interface using Haiku BGL
+ * Mixer3DWindow.cpp - Unified 3D mixer implementation
+ * BeOS 3dmix heritage with optional spatial audio mode
  */
 
 #include "Mixer3DWindow.h"
+#include "SpatialMixer3DWindow.h"  // For spatial mode
 #include "VeniceTheme.h"
 #include "../audio/SimpleHaikuEngine.h"
+#include "../audio/AdvancedAudioProcessor.h"
 #include "../benchmark/PerformanceStation.h"  // Per i RAII guards
 #include <Application.h>
 #include <Alert.h>
@@ -27,6 +29,7 @@ Mixer3DView::Mixer3DView(BRect frame, SimpleHaikuEngine* engine)
     , fCameraDistance(20.0f)  // Increased to see all spheres initially
     , fMouseDown(false)
     , fSelectedTrack(-1)
+    , fDraggingTrack(false)  // NEW: Initialize drag state
     , fAnimationTime(0.0f)
     , fGLLocker("3D Mixer GL Lock")
     , fCameraDirty(true)  // Initial cache computation needed
@@ -84,15 +87,21 @@ Mixer3DView::~Mixer3DView()
 void Mixer3DView::AttachedToWindow()
 {
     BGLView::AttachedToWindow();
-    
+
     // Make the view focusable to receive keyboard events
     MakeFocus(true);
-    
+
     LockGL();
     InitGL();
     UpdateTracks();
+
+    // **CRITICAL**: Initialize camera cache to avoid NaN coordinates
+    UpdateCameraCache();
+    printf("Mixer3DView: Camera cache initialized (%.1f, %.1f, %.1f)\n",
+           fCachedCameraX, fCachedCameraY, fCachedCameraZ);
+
     UnlockGL();
-    
+
     printf("Mixer3DView: OpenGL initialized and tracks loaded\n");
 }
 
@@ -114,33 +123,58 @@ void Mixer3DView::DetachedFromWindow()
 
 void Mixer3DView::InitGL()
 {
-    printf("Mixer3DView: Initializing OpenGL...\n");
-    
+    printf("Mixer3DView: Initializing OpenGL (3dmix modern style)...\n");
+
     // Enable depth testing
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
-    
-    // Enable lighting
+
+    // Enable blending for transparency and glow effects
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Enable lighting with modern multi-light setup
     glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
-    
-    // Set up light
-    GLfloat lightPos[] = {5.0f, 5.0f, 5.0f, 1.0f};
-    GLfloat lightAmbient[] = {0.3f, 0.3f, 0.3f, 1.0f};
-    GLfloat lightDiffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
-    
-    glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
-    
-    // Material properties
+    glEnable(GL_LIGHT0);  // Main key light
+    glEnable(GL_LIGHT1);  // Fill light
+
+    // Key light (from upper front-right) - bright BeOS-style
+    GLfloat light0Pos[] = {8.0f, 10.0f, 8.0f, 1.0f};
+    GLfloat light0Ambient[] = {0.2f, 0.2f, 0.25f, 1.0f};
+    GLfloat light0Diffuse[] = {0.9f, 0.9f, 0.95f, 1.0f};
+    GLfloat light0Specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, light0Ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0Diffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, light0Specular);
+
+    // Fill light (from back-left) - subtle blue tint for depth
+    GLfloat light1Pos[] = {-5.0f, 6.0f, -5.0f, 1.0f};
+    GLfloat light1Ambient[] = {0.1f, 0.1f, 0.15f, 1.0f};
+    GLfloat light1Diffuse[] = {0.3f, 0.35f, 0.5f, 1.0f};
+
+    glLightfv(GL_LIGHT1, GL_POSITION, light1Pos);
+    glLightfv(GL_LIGHT1, GL_AMBIENT, light1Ambient);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1Diffuse);
+
+    // Material properties - enable color and specular highlights
     glEnable(GL_COLOR_MATERIAL);
-    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
-    
-    // Background color (dark space)
-    glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
-    
-    printf("Mixer3DView: OpenGL setup complete\n");
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+
+    // Smooth shading for spheres
+    glShadeModel(GL_SMOOTH);
+
+    // Enable anti-aliasing hints
+    glEnable(GL_LINE_SMOOTH);
+    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+    glEnable(GL_POINT_SMOOTH);
+    glHint(GL_POINT_SMOOTH_HINT, GL_NICEST);
+
+    // Background: Deep blue-grey gradient (3dmix heritage)
+    glClearColor(0.08f, 0.1f, 0.15f, 1.0f);
+
+    printf("Mixer3DView: 3dmix-inspired OpenGL setup complete\n");
 }
 
 void Mixer3DView::FrameResized(float width, float height)
@@ -218,13 +252,24 @@ void Mixer3DView::RenderScene()
         0.0f, 1.0f, 0.0f
     );
 
+    // **FIX**: Update light positions AFTER camera setup so they move with the view
+    // This makes the lighting follow the camera rotation for consistent illumination
+    GLfloat light0Pos[] = {8.0f, 10.0f, 8.0f, 1.0f};    // Upper front-right
+    GLfloat light1Pos[] = {-5.0f, 6.0f, -5.0f, 1.0f};   // Back-left fill
+    glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
+    glLightfv(GL_LIGHT1, GL_POSITION, light1Pos);
+
     // Draw grid
     DrawGrid();
 
     // Animate and draw tracks
     AnimateScene();
+    int trackIndex = 0;
     for (const Track3D& track : f3DTracks) {
         DrawTrack3D(track);
+        // Draw track number next to sphere (1-based for user display)
+        DrawTrackNumber(trackIndex + 1, track.x, track.y, track.z);
+        trackIndex++;
     }
 
     // Update and render particle system
@@ -241,108 +286,377 @@ void Mixer3DView::RenderScene()
 void Mixer3DView::DrawGrid()
 {
     glDisable(GL_LIGHTING);
-    glColor3f(0.3f, 0.3f, 0.3f);
+
+    // Draw subtle "glass floor" plane with gradient (3dmix heritage)
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBegin(GL_QUADS);
+    // Center brighter (BeOS yellow tint), edges darker
+    glColor4f(0.15f, 0.15f, 0.2f, 0.3f);  // Edge color (darker blue)
+    glVertex3f(-10, -0.01f, -10);
+    glVertex3f(10, -0.01f, -10);
+
+    glColor4f(0.2f, 0.22f, 0.28f, 0.5f);  // Center (lighter)
+    glVertex3f(10, -0.01f, 10);
+    glVertex3f(-10, -0.01f, 10);
+    glEnd();
+
+    // Draw elegant grid lines (3dmix style - sparse and clean)
+    glLineWidth(1.0f);
     glBegin(GL_LINES);
-    
-    // Grid lines
-    for (int i = -5; i <= 5; i++) {
-        glVertex3f(i, 0, -5); glVertex3f(i, 0, 5);  // X lines
-        glVertex3f(-5, 0, i); glVertex3f(5, 0, i);  // Z lines
+
+    // Outer grid - faint lines
+    for (int i = -10; i <= 10; i += 2) {
+        // Distance-based alpha for depth effect
+        float alpha = 1.0f - (abs(i) / 12.0f);
+        glColor4f(0.25f, 0.28f, 0.35f, alpha * 0.4f);
+
+        glVertex3f(i, 0, -10); glVertex3f(i, 0, 10);  // X lines
+        glVertex3f(-10, 0, i); glVertex3f(10, 0, i);  // Z lines
     }
-    
     glEnd();
-    
-    // Axis lines (colored)
+
+    // Center cross - brighter (BeOS signature yellow-orange)
+    glLineWidth(2.0f);
     glBegin(GL_LINES);
-    glColor3f(1.0f, 0.0f, 0.0f); glVertex3f(0, 0, 0); glVertex3f(2, 0, 0);  // X - Red
-    glColor3f(0.0f, 1.0f, 0.0f); glVertex3f(0, 0, 0); glVertex3f(0, 2, 0);  // Y - Green  
-    glColor3f(0.0f, 0.0f, 1.0f); glVertex3f(0, 0, 0); glVertex3f(0, 0, 2);  // Z - Blue
+    glColor4f(0.9f, 0.7f, 0.3f, 0.8f);  // BeOS yellow
+    glVertex3f(-10, 0, 0); glVertex3f(10, 0, 0);   // X axis
+    glVertex3f(0, 0, -10); glVertex3f(0, 0, 10);   // Z axis
     glEnd();
-    
+
+    // Axis indicators (subtle 3dmix style)
+    glLineWidth(3.0f);
+    glBegin(GL_LINES);
+    // X axis - warm orange-red (BeOS heritage)
+    glColor4f(1.0f, 0.5f, 0.2f, 0.9f);
+    glVertex3f(0, 0, 0); glVertex3f(3, 0, 0);
+
+    // Y axis - bright yellow-green
+    glColor4f(0.7f, 1.0f, 0.3f, 0.9f);
+    glVertex3f(0, 0, 0); glVertex3f(0, 3, 0);
+
+    // Z axis - cool blue-cyan
+    glColor4f(0.2f, 0.6f, 1.0f, 0.9f);
+    glVertex3f(0, 0, 0); glVertex3f(0, 0, 3);
+    glEnd();
+
+    glLineWidth(1.0f);  // Reset
+    glEnable(GL_LIGHTING);
+}
+
+void Mixer3DView::DrawTrackNumber(int trackNumber, float x, float y, float z)
+{
+    // Draw track number next to sphere (billboard style - always faces camera)
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);  // Draw on top for maximum visibility
+
+    glPushMatrix();
+
+    // Position next to sphere - ABOVE it for better visibility
+    glTranslatef(x, y + 2.0f, z);  // 2 units above sphere center
+
+    // **PERFECT BILLBOARD**: Calculate vector from number to camera
+    // This ensures the number ALWAYS faces the camera exactly
+    float dx = fCachedCameraX - x;
+    float dy = fCachedCameraY - (y + 2.0f);
+    float dz = fCachedCameraZ - z;
+
+    // Calculate angle to rotate around Y axis (horizontal rotation)
+    float angleY = atan2(dx, dz) * 180.0f / M_PI;
+
+    // Calculate angle to rotate around X axis (vertical tilt)
+    float distXZ = sqrt(dx*dx + dz*dz);
+    float angleX = atan2(dy, distXZ) * 180.0f / M_PI;
+
+    // Apply rotations: first Y (horizontal), then X (vertical tilt)
+    glRotatef(angleY, 0, 1, 0);   // Face camera horizontally
+    glRotatef(-angleX, 1, 0, 0);  // Tilt to face camera vertically
+
+    // MUCH larger background for visibility
+    float bgSize = 1.2f;  // Increased from 0.6f
+
+    // Draw semi-transparent dark background for visibility
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4f(0.05f, 0.05f, 0.1f, 0.85f);  // Darker, more opaque
+
+    glBegin(GL_QUADS);
+    glVertex3f(-bgSize, -bgSize, 0);
+    glVertex3f(bgSize, -bgSize, 0);
+    glVertex3f(bgSize, bgSize, 0);
+    glVertex3f(-bgSize, bgSize, 0);
+    glEnd();
+
+    // Draw track number in bright BeOS yellow
+    glColor4f(1.0f, 0.9f, 0.3f, 1.0f);  // Brighter yellow
+    glLineWidth(5.0f);  // MUCH thicker lines (was 3.0f)
+
+    float scale = 0.8f;  // DOUBLED from 0.4f for visibility
+    glScalef(scale, scale, scale);
+
+    // Draw digits using GL_LINES (stroke font style)
+    // Custom simple digit patterns for numbers 1-8
+    glBegin(GL_LINES);
+
+    switch (trackNumber) {
+        case 1:  // "1" - vertical line with cap
+            glVertex3f(0, -1, 0); glVertex3f(0, 1, 0);
+            glVertex3f(-0.3f, 0.7f, 0); glVertex3f(0, 1, 0);
+            break;
+
+        case 2:  // "2" - S curve with base
+            glVertex3f(-0.5f, 0.7f, 0); glVertex3f(0.5f, 0.7f, 0);
+            glVertex3f(0.5f, 0.7f, 0); glVertex3f(0.5f, 0, 0);
+            glVertex3f(0.5f, 0, 0); glVertex3f(-0.5f, 0, 0);
+            glVertex3f(-0.5f, 0, 0); glVertex3f(-0.5f, -0.7f, 0);
+            glVertex3f(-0.5f, -0.7f, 0); glVertex3f(0.5f, -0.7f, 0);
+            break;
+
+        case 3:  // "3" - Two humps
+            glVertex3f(-0.5f, 0.7f, 0); glVertex3f(0.5f, 0.7f, 0);
+            glVertex3f(0.5f, 0.7f, 0); glVertex3f(0.5f, 0, 0);
+            glVertex3f(0.5f, 0, 0); glVertex3f(-0.3f, 0, 0);
+            glVertex3f(0.5f, 0, 0); glVertex3f(0.5f, -0.7f, 0);
+            glVertex3f(0.5f, -0.7f, 0); glVertex3f(-0.5f, -0.7f, 0);
+            break;
+
+        case 4:  // "4" - Open box with vertical
+            glVertex3f(-0.5f, 0.7f, 0); glVertex3f(-0.5f, 0, 0);
+            glVertex3f(-0.5f, 0, 0); glVertex3f(0.5f, 0, 0);
+            glVertex3f(0.5f, 0.7f, 0); glVertex3f(0.5f, -0.7f, 0);
+            break;
+
+        case 5:  // "5" - Reverse S
+            glVertex3f(0.5f, 0.7f, 0); glVertex3f(-0.5f, 0.7f, 0);
+            glVertex3f(-0.5f, 0.7f, 0); glVertex3f(-0.5f, 0, 0);
+            glVertex3f(-0.5f, 0, 0); glVertex3f(0.5f, 0, 0);
+            glVertex3f(0.5f, 0, 0); glVertex3f(0.5f, -0.7f, 0);
+            glVertex3f(0.5f, -0.7f, 0); glVertex3f(-0.5f, -0.7f, 0);
+            break;
+
+        case 6:  // "6" - Lower loop
+            glVertex3f(0.5f, 0.7f, 0); glVertex3f(-0.5f, 0.7f, 0);
+            glVertex3f(-0.5f, 0.7f, 0); glVertex3f(-0.5f, -0.7f, 0);
+            glVertex3f(-0.5f, -0.7f, 0); glVertex3f(0.5f, -0.7f, 0);
+            glVertex3f(0.5f, -0.7f, 0); glVertex3f(0.5f, 0, 0);
+            glVertex3f(0.5f, 0, 0); glVertex3f(-0.5f, 0, 0);
+            break;
+
+        case 7:  // "7" - Top with diagonal
+            glVertex3f(-0.5f, 0.7f, 0); glVertex3f(0.5f, 0.7f, 0);
+            glVertex3f(0.5f, 0.7f, 0); glVertex3f(0, -0.7f, 0);
+            break;
+
+        case 8:  // "8" - Two boxes
+            glVertex3f(-0.5f, 0.7f, 0); glVertex3f(0.5f, 0.7f, 0);
+            glVertex3f(0.5f, 0.7f, 0); glVertex3f(0.5f, -0.7f, 0);
+            glVertex3f(0.5f, -0.7f, 0); glVertex3f(-0.5f, -0.7f, 0);
+            glVertex3f(-0.5f, -0.7f, 0); glVertex3f(-0.5f, 0.7f, 0);
+            glVertex3f(-0.5f, 0, 0); glVertex3f(0.5f, 0, 0);
+            break;
+    }
+
+    glEnd();
+    glLineWidth(1.0f);
+    glPopMatrix();
+
+    glEnable(GL_DEPTH_TEST);  // Re-enable depth test
     glEnable(GL_LIGHTING);
 }
 
 void Mixer3DView::DrawTrack3D(const Track3D& track)
 {
     glPushMatrix();
-    
+
     // Position
     glTranslatef(track.x, track.y, track.z);
-    
-    // Rotation animation
-    glRotatef(track.rotation + fAnimationTime * 20.0f, 0, 1, 0);
-    
+
+    // Gentle floating animation (3dmix heritage)
+    float floatOffset = sin(fAnimationTime * 1.5f + track.x) * 0.15f;
+    glTranslatef(0, floatOffset, 0);
+
     // Scale based on volume
-    float scale = 0.5f + track.scale * 0.5f;
-    glScalef(scale, scale, scale);
-    
-    // Color - grey out if muted, bright if active
-    if (track.track && track.track->IsMuted()) {
-        glColor3f(0.3f, 0.3f, 0.3f);  // Dark grey for muted tracks
+    float scale = 0.6f + track.scale * 0.4f;
+
+    // Determine track state and colors
+    bool isMuted = (track.track && track.track->IsMuted());
+    float baseColor[3];
+    float glowIntensity = 0.0f;
+
+    if (isMuted) {
+        // Muted: dark desaturated sphere
+        baseColor[0] = 0.25f;
+        baseColor[1] = 0.25f;
+        baseColor[2] = 0.3f;
+        glowIntensity = 0.0f;
     } else {
-        glColor3f(track.color[0], track.color[1], track.color[2]);  // Normal colors
+        // Active: vibrant BeOS-inspired colors with glow
+        baseColor[0] = track.color[0];
+        baseColor[1] = track.color[1];
+        baseColor[2] = track.color[2];
+        glowIntensity = track.levelHeight * 0.7f;  // Glow based on audio level
     }
-    
-    // Draw cube (representing the audio track)
-    glBegin(GL_QUADS);
-    
-    // Front face
-    glNormal3f(0, 0, 1);
-    glVertex3f(-0.5f, -0.5f, 0.5f); glVertex3f(0.5f, -0.5f, 0.5f);
-    glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, 0.5f);
-    
-    // Back face
-    glNormal3f(0, 0, -1);
-    glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, 0.5f, -0.5f);
-    glVertex3f(0.5f, 0.5f, -0.5f); glVertex3f(0.5f, -0.5f, -0.5f);
-    
-    // Top face
-    glNormal3f(0, 1, 0);
-    glVertex3f(-0.5f, 0.5f, -0.5f); glVertex3f(-0.5f, 0.5f, 0.5f);
-    glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(0.5f, 0.5f, -0.5f);
-    
-    // Bottom face
-    glNormal3f(0, -1, 0);
-    glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(0.5f, -0.5f, -0.5f);
-    glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(-0.5f, -0.5f, 0.5f);
-    
-    // Right face
-    glNormal3f(1, 0, 0);
-    glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(0.5f, 0.5f, -0.5f);
-    glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(0.5f, -0.5f, 0.5f);
-    
-    // Left face
-    glNormal3f(-1, 0, 0);
-    glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, -0.5f, 0.5f);
-    glVertex3f(-0.5f, 0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, -0.5f);
-    
-    glEnd();
-    
-    // Level meter (vertical bar above cube) OR mute indicator
-    if (track.track && track.track->IsMuted()) {
-        // Show "MUTE" indicator - red X above cube
-        glTranslatef(0, 1.5f, 0);
-        glColor3f(1.0f, 0.2f, 0.2f);  // Red for mute
-        glBegin(GL_LINES);
-        // Draw X
-        glVertex3f(-0.3f, -0.3f, 0); glVertex3f(0.3f, 0.3f, 0);
-        glVertex3f(-0.3f, 0.3f, 0); glVertex3f(0.3f, -0.3f, 0);
+
+    // === SELECTION RING (if track is selected) ===
+    if (track.selected) {
+        glDisable(GL_LIGHTING);
+        glLineWidth(4.0f);
+        glColor4f(1.0f, 1.0f, 0.0f, 1.0f);  // Bright yellow selection ring
+
+        glPushMatrix();
+        glScalef(scale * 1.3f, scale * 1.3f, scale * 1.3f);
+        glRotatef(90, 1, 0, 0);
+
+        glBegin(GL_LINE_LOOP);
+        for (int i = 0; i < 48; i++) {
+            float angle = (i / 48.0f) * 2.0f * M_PI;
+            glVertex3f(cos(angle), sin(angle), 0);
+        }
         glEnd();
-    } else if (track.levelHeight > 0) {
-        // Normal level meter
-        glTranslatef(0, 1.0f, 0);
-        glColor3f(0.0f, 1.0f, 0.0f);  // Green for level
-        glScalef(0.1f, track.levelHeight, 0.1f);
-        
-        // Simple level bar
+
+        glPopMatrix();
+        glLineWidth(1.0f);
+        glEnable(GL_LIGHTING);
+    }
+
+    // === OUTER GLOW HALO (3dmix signature effect) ===
+    if (!isMuted && glowIntensity > 0.05f) {
+        glDisable(GL_LIGHTING);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);  // Additive blending for glow
+
+        // Draw multiple expanding halos for bloom effect
+        for (int halo = 3; halo >= 1; halo--) {
+            float haloScale = scale * (1.0f + halo * 0.15f);
+            float haloAlpha = glowIntensity * (0.2f / halo);
+
+            glPushMatrix();
+            glScalef(haloScale, haloScale, haloScale);
+
+            glColor4f(baseColor[0], baseColor[1], baseColor[2], haloAlpha);
+
+            // Draw glow sphere (low detail for performance)
+            GLUquadric* glowQuad = gluNewQuadric();
+            gluQuadricDrawStyle(glowQuad, GLU_FILL);
+            gluQuadricNormals(glowQuad, GLU_SMOOTH);
+            gluSphere(glowQuad, 1.0, 12, 12);
+            gluDeleteQuadric(glowQuad);
+
+            glPopMatrix();
+        }
+
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  // Reset blend
+        glEnable(GL_LIGHTING);
+    }
+
+    // === MAIN SPHERE (3dmix iconic look) ===
+    glPushMatrix();
+    glScalef(scale, scale, scale);
+
+    // Material properties for glossy sphere
+    GLfloat matAmbient[] = {baseColor[0] * 0.3f, baseColor[1] * 0.3f, baseColor[2] * 0.3f, 1.0f};
+    GLfloat matDiffuse[] = {baseColor[0], baseColor[1], baseColor[2], 1.0f};
+    GLfloat matSpecular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    GLfloat matShininess[] = {80.0f};  // High shininess for glass-like look
+
+    glMaterialfv(GL_FRONT, GL_AMBIENT, matAmbient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, matDiffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, matSpecular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, matShininess);
+
+    // Draw main sphere (high quality - 3dmix signature)
+    GLUquadric* quadric = gluNewQuadric();
+    gluQuadricDrawStyle(quadric, GLU_FILL);
+    gluQuadricNormals(quadric, GLU_SMOOTH);
+    gluQuadricTexture(quadric, GL_FALSE);
+    gluSphere(quadric, 1.0, 32, 32);  // High detail for beauty
+    gluDeleteQuadric(quadric);
+
+    glPopMatrix();
+
+    // === EQUATOR RING (visual detail) ===
+    if (!isMuted) {
+        glDisable(GL_LIGHTING);
+        glLineWidth(2.0f);
+        glColor4f(baseColor[0] * 1.2f, baseColor[1] * 1.2f, baseColor[2] * 1.2f, 0.6f);
+
+        glPushMatrix();
+        glScalef(scale * 1.05f, scale * 1.05f, scale * 1.05f);
+        glRotatef(90, 1, 0, 0);  // Horizontal ring
+
+        glBegin(GL_LINE_LOOP);
+        for (int i = 0; i < 32; i++) {
+            float angle = (i / 32.0f) * 2.0f * M_PI;
+            glVertex3f(cos(angle), sin(angle), 0);
+        }
+        glEnd();
+
+        glPopMatrix();
+        glLineWidth(1.0f);
+        glEnable(GL_LIGHTING);
+    }
+
+    // === VERTICAL LEVEL INDICATOR (3dmix style) ===
+    if (!isMuted && track.levelHeight > 0.1f) {
+        glDisable(GL_LIGHTING);
+        glEnable(GL_BLEND);
+
+        float levelHeight = track.levelHeight * 2.0f;
+        float levelWidth = 0.12f;
+
+        // Vertical bar above sphere
+        glPushMatrix();
+        glTranslatef(0, scale + levelHeight * 0.5f, 0);
+
+        // Gradient: green to yellow to red based on level
+        float r = (levelHeight > 1.0f) ? 1.0f : levelHeight;
+        float g = (levelHeight < 1.0f) ? 1.0f : (2.0f - levelHeight);
+        float b = 0.2f;
+
         glBegin(GL_QUADS);
-        glVertex3f(-1, 0, -1); glVertex3f(1, 0, -1);
-        glVertex3f(1, 1, -1); glVertex3f(-1, 1, -1);
-        glVertex3f(-1, 0, 1); glVertex3f(-1, 1, 1);
-        glVertex3f(1, 1, 1); glVertex3f(1, 0, 1);
+        glColor4f(r * 0.7f, g * 0.7f, b, 0.8f);
+        glVertex3f(-levelWidth, -levelHeight * 0.5f, 0);
+        glVertex3f(levelWidth, -levelHeight * 0.5f, 0);
+
+        glColor4f(r, g, b, 0.95f);
+        glVertex3f(levelWidth, levelHeight * 0.5f, 0);
+        glVertex3f(-levelWidth, levelHeight * 0.5f, 0);
         glEnd();
+
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
     }
-    
+
+    // === MUTE INDICATOR ===
+    if (isMuted) {
+        glDisable(GL_LIGHTING);
+        glLineWidth(3.0f);
+        glColor4f(0.9f, 0.2f, 0.2f, 0.9f);
+
+        glPushMatrix();
+        glTranslatef(0, scale + 0.8f, 0);
+        glScalef(0.4f, 0.4f, 0.4f);
+
+        // Draw X
+        glBegin(GL_LINES);
+        glVertex3f(-1, -1, 0); glVertex3f(1, 1, 0);
+        glVertex3f(-1, 1, 0); glVertex3f(1, -1, 0);
+        glEnd();
+
+        // Draw circle around X
+        glBegin(GL_LINE_LOOP);
+        for (int i = 0; i < 24; i++) {
+            float angle = (i / 24.0f) * 2.0f * M_PI;
+            glVertex3f(cos(angle) * 1.3f, sin(angle) * 1.3f, 0);
+        }
+        glEnd();
+
+        glPopMatrix();
+        glLineWidth(1.0f);
+        glEnable(GL_LIGHTING);
+    }
+
     glPopMatrix();
 }
 
@@ -389,42 +703,129 @@ void Mixer3DView::MouseDown(BPoint where)
 {
     fMouseDown = true;
     fLastMousePos = where;
-    
-    // Check if clicking on a track
-    fSelectedTrack = -1;
-    // In a full implementation, would do 3D picking here
-    
-    printf("Mixer3DView: Mouse down at (%.0f, %.0f)\n", where.x, where.y);
+    fDragStartPos = where;
+
+    // Check if clicking on a track using 3D picking
+    Track3D* clickedTrack = GetTrackAt(where);
+
+    if (clickedTrack) {
+        // Find track index
+        for (size_t i = 0; i < f3DTracks.size(); i++) {
+            if (&f3DTracks[i] == clickedTrack) {
+                fSelectedTrack = i;
+                fDraggingTrack = true;
+
+                // Mark track as selected (visual feedback)
+                for (auto& t : f3DTracks) t.selected = false;  // Deselect all
+                clickedTrack->selected = true;  // Select clicked
+
+                printf("Mixer3DView: Selected Track %d for dragging\n", fSelectedTrack + 1);
+
+                if (Window() && Window()->LockLooper()) {
+                    Invalidate();
+                    Window()->UnlockLooper();
+                }
+                break;
+            }
+        }
+    } else {
+        // Clicking on empty space - prepare for camera rotation
+        fSelectedTrack = -1;
+        fDraggingTrack = false;
+        printf("Mixer3DView: Camera rotation mode\n");
+    }
 }
 
 void Mixer3DView::MouseUp(BPoint where)
 {
     fMouseDown = false;
-    printf("Mixer3DView: Mouse up\n");
+    fDraggingTrack = false;
+
+    if (fSelectedTrack >= 0) {
+        printf("Mixer3DView: Track %d final position: (%.2f, %.2f, %.2f)\n",
+               fSelectedTrack + 1,
+               f3DTracks[fSelectedTrack].x,
+               f3DTracks[fSelectedTrack].y,
+               f3DTracks[fSelectedTrack].z);
+    }
 }
 
 void Mixer3DView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage)
 {
     if (fMouseDown) {
-        // Camera rotation
-        float deltaX = where.x - fLastMousePos.x;
-        float deltaY = where.y - fLastMousePos.y;
+        if (fDraggingTrack && fSelectedTrack >= 0) {
+            // **DRAG TRACK IN 3D SPACE**
+            Track3D& track = f3DTracks[fSelectedTrack];
 
-        fCameraAngleY += deltaX * 0.5f;
-        fCameraAngleX -= deltaY * 0.5f;
+            float deltaX = where.x - fLastMousePos.x;
+            float deltaY = where.y - fLastMousePos.y;
 
-        // Clamp X angle
-        if (fCameraAngleX > 89.0f) fCameraAngleX = 89.0f;
-        if (fCameraAngleX < -89.0f) fCameraAngleX = -89.0f;
+            // Get keyboard modifiers to determine drag mode
+            uint32 modifiers = ::modifiers();
 
-        fCameraDirty = true;  // Invalidate cache
+            if (modifiers & B_CONTROL_KEY) {
+                // CTRL + Drag = Move track vertically (Y axis)
+                track.y -= deltaY * 0.05f;  // Invert for natural feel
 
-        fLastMousePos = where;
+                // Clamp Y position to reasonable range
+                if (track.y < -5.0f) track.y = -5.0f;
+                if (track.y > 10.0f) track.y = 10.0f;
 
-        // Trigger redraw
-        if (Window() && Window()->LockLooper()) {
-            Invalidate();
-            Window()->UnlockLooper();
+                printf("Track %d Y: %.2f\n", fSelectedTrack + 1, track.y);
+
+            } else {
+                // Normal Drag = Move track on horizontal plane (XZ)
+                // Convert screen delta to world space movement
+
+                float sensitivity = 0.05f;  // Movement speed
+
+                // Camera-relative movement (more intuitive)
+                float angleYRad = fCameraAngleY * M_PI / 180.0f;
+
+                // Right vector (perpendicular to camera forward on XZ plane)
+                float rightX = cos(angleYRad);
+                float rightZ = -sin(angleYRad);
+
+                // Forward vector
+                float forwardX = sin(angleYRad);
+                float forwardZ = cos(angleYRad);
+
+                // Apply movement
+                track.x += (deltaX * rightX - deltaY * forwardX) * sensitivity;
+                track.z += (deltaX * rightZ - deltaY * forwardZ) * sensitivity;
+
+                printf("Track %d XZ: (%.2f, %.2f)\n", fSelectedTrack + 1, track.x, track.z);
+            }
+
+            fLastMousePos = where;
+
+            // Trigger redraw
+            if (Window() && Window()->LockLooper()) {
+                Invalidate();
+                Window()->UnlockLooper();
+            }
+
+        } else {
+            // **ROTATE CAMERA** (no track selected)
+            float deltaX = where.x - fLastMousePos.x;
+            float deltaY = where.y - fLastMousePos.y;
+
+            fCameraAngleY += deltaX * 0.5f;
+            fCameraAngleX -= deltaY * 0.5f;
+
+            // Clamp X angle
+            if (fCameraAngleX > 89.0f) fCameraAngleX = 89.0f;
+            if (fCameraAngleX < -89.0f) fCameraAngleX = -89.0f;
+
+            fCameraDirty = true;  // Invalidate cache
+
+            fLastMousePos = where;
+
+            // Trigger redraw
+            if (Window() && Window()->LockLooper()) {
+                Invalidate();
+                Window()->UnlockLooper();
+            }
         }
     }
 }
@@ -509,29 +910,34 @@ void Mixer3DView::KeyDown(const char* bytes, int32 numBytes)
 // Mixer3DWindow Implementation
 // =====================================
 
-Mixer3DWindow::Mixer3DWindow(SimpleHaikuEngine* engine)
-    : BWindow(BRect(150, 150, 950, 650), "HaikuDAW - Revolutionary 3D Mixer", 
+Mixer3DWindow::Mixer3DWindow(SimpleHaikuEngine* engine, ::VeniceDAW::AdvancedAudioProcessor* processor)
+    : BWindow(BRect(150, 150, 950, 650), "VeniceDAW - 3D Mixer (3dmix heritage)",
               B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS)
     , fEngine(engine)
+    , fAudioProcessor(processor)
+    , fSpatialMode(processor != nullptr)  // Auto-detect spatial mode if processor provided
     , fMenuBar(nullptr)
     , f3DView(nullptr)
     , fControlsPanel(nullptr)
+    , fSpatialControlPanel(nullptr)
     , fPlayButton(nullptr)
     , fStopButton(nullptr)
     , fResetCameraButton(nullptr)
+    , fModeSwitchButton(nullptr)
     , fInfoDisplay(nullptr)
     , fUpdateRunner(nullptr)
 {
     CreateMenuBar();
     Create3DView();
     CreateControlsPanel();
-    
+
     // Start update timer for smooth animation
     BMessage updateMsg(MSG_UPDATE_3D);
     fUpdateRunner = new BMessageRunner(BMessenger(this), &updateMsg, 50000); // 20 FPS - optimized
-    
-    printf("Mixer3DWindow: Revolutionary 3D mixer created!\n");
-    printf("🚀 First native 3D audio interface for Haiku OS! 🚀\n");
+
+    printf("Mixer3DWindow: Unified 3dmix-inspired mixer created!\n");
+    printf("✨ Mode: %s\n", fSpatialMode ? "Spatial Audio (advanced)" : "Simple 3D (classic 3dmix)");
+    printf("✨ BeOS 3dmix heritage meets modern Haiku design! ✨\n");
 }
 
 Mixer3DWindow::~Mixer3DWindow()
@@ -576,7 +982,18 @@ void Mixer3DWindow::Create3DView()
 {
     // Main 3D view - large professional viewport (60% of window)
     BRect viewRect(0, 0, 900, 600);
-    f3DView = new Mixer3DView(viewRect, fEngine);
+
+    // Create appropriate view based on mode
+    if (fSpatialMode && fAudioProcessor) {
+        // Advanced spatial mode with HRTF
+        f3DView = new SpatialMixer3DView(viewRect, fEngine, fAudioProcessor);
+        printf("Mixer3DWindow: Created SpatialMixer3DView (advanced)\n");
+    } else {
+        // Classic 3dmix-inspired mode
+        f3DView = new Mixer3DView(viewRect, fEngine);
+        printf("Mixer3DWindow: Created Mixer3DView (classic 3dmix)\n");
+    }
+
     // Set explicit size to ensure 3D viewport dominates the window
     f3DView->SetExplicitMinSize(BSize(800, 500));
     f3DView->SetExplicitPreferredSize(BSize(900, 600));
@@ -586,30 +1003,41 @@ void Mixer3DWindow::CreateControlsPanel()
 {
     // Control panel at bottom with VeniceTheme
     fControlsPanel = new BView("controls", B_WILL_DRAW);
-    fControlsPanel->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    fControlsPanel->SetViewColor(::VeniceDAW::VeniceTheme::PanelBackground());
 
     BGroupLayout* controlsLayout = new BGroupLayout(B_HORIZONTAL);
     fControlsPanel->SetLayout(controlsLayout);
-    controlsLayout->SetInsets(VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::PADDING,
-                              VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::PADDING);
-    controlsLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
+    controlsLayout->SetInsets(::VeniceDAW::VeniceTheme::MARGIN, ::VeniceDAW::VeniceTheme::PADDING,
+                              ::VeniceDAW::VeniceTheme::MARGIN, ::VeniceDAW::VeniceTheme::PADDING);
+    controlsLayout->SetSpacing(::VeniceDAW::VeniceTheme::SPACING);
 
     // Transport controls - compact
     fPlayButton = new BButton("3d_play", "▶ Play 3D", new BMessage(MSG_PLAY));
-    fPlayButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+    fPlayButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, ::VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
     fStopButton = new BButton("3d_stop", "⏹ Stop", new BMessage(MSG_STOP));
-    fStopButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+    fStopButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, ::VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
 
     controlsLayout->AddView(fPlayButton);
     controlsLayout->AddView(fStopButton);
 
     // Camera controls - compact
     fResetCameraButton = new BButton("reset_cam", "📷 Reset", new BMessage(MSG_RESET_CAMERA));
-    fResetCameraButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+    fResetCameraButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, ::VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
     controlsLayout->AddView(fResetCameraButton);
 
+    // Mode switcher button (if processor available)
+    if (fAudioProcessor) {
+        const char* modeLabel = fSpatialMode ? "🎚️ Simple Mode" : "🌐 Spatial Mode";
+        fModeSwitchButton = new BButton("mode_switch", modeLabel, new BMessage(MSG_TOGGLE_SPATIAL_MODE));
+        fModeSwitchButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, ::VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+        controlsLayout->AddView(fModeSwitchButton);
+    }
+
     // Info display
-    fInfoDisplay = new BStringView("3d_info", "🎵 3D Audio Mixer - Drag to rotate camera");
+    const char* infoText = fSpatialMode ?
+        "🌐 Spatial 3D Mixer - Drag tracks for 3D positioning" :
+        "🎵 Classic 3D Mixer - Drag to rotate camera";
+    fInfoDisplay = new BStringView("3d_info", infoText);
     controlsLayout->AddView(fInfoDisplay);
     
     // Window layout
@@ -737,20 +1165,26 @@ void Mixer3DWindow::MessageReceived(BMessage* message)
                 f3DView->UnlockLooper();
             }
             break;
-            
+
+        case MSG_TOGGLE_SPATIAL_MODE:
+            // Toggle between simple and spatial modes
+            SetSpatialMode(!fSpatialMode);
+            break;
+
         case 'ab3d':
         {
             BAlert* alert = new BAlert("About 3D Mixer",
-                "HaikuDAW 3D Mixer v1.0\n"
-                "Revolutionary 3D Audio Visualization\n\n"
-                "🚀 First native OpenGL audio interface for Haiku OS!\n"
-                "🎵 Real-time 3D track positioning\n"
-                "🎚️ Interactive 3D controls\n"
-                "📊 Live audio level visualization\n\n"
+                "VeniceDAW 3D Mixer v2.0\n"
+                "A tribute to BeOS 3dmix by Benoit Schillings\n\n"
+                "✨ Modern reinterpretation of 3dmix heritage\n"
+                "🎵 Real-time spherical track visualization\n"
+                "💫 Glow effects and glass floor reflections\n"
+                "🎨 BeOS signature color palette\n"
+                "🎚️ Live audio level indicators\n\n"
                 "Built with native Haiku BGL (OpenGL)\n"
                 "Hardware accelerated graphics\n\n"
-                "This proves Haiku can do modern 3D interfaces! ✨",
-                "Amazing!");
+                "Keeping the BeOS spirit alive in Haiku! 🚀",
+                "Beautiful!");
             alert->Go();
             break;
         }
@@ -759,16 +1193,18 @@ void Mixer3DWindow::MessageReceived(BMessage* message)
         {
             BAlert* help = new BAlert("3D Controls",
                 "🖱️ MOUSE CONTROLS:\n"
-                "• Drag: Rotate camera around scene\n"
-                "• Click tracks: Select for editing\n\n"
+                "• Click sphere: Select track\n"
+                "• Drag sphere: Move track horizontally (XZ plane)\n"
+                "• CTRL + Drag sphere: Move track vertically (Y axis)\n"
+                "• Drag empty space: Rotate camera\n\n"
                 "⌨️ KEYBOARD:\n"
                 "• R: Reset camera\n"
-                "• Space: Play/Stop\n\n"
-                "🎵 FEATURES:\n"
-                "• Real-time 3D track visualization\n"
-                "• Animated level meters\n"
-                "• 3D spatial audio positioning\n"
-                "• Hardware accelerated OpenGL\n\n"
+                "• +/-: Zoom in/out\n\n"
+                "🎯 3D POSITIONING:\n"
+                "• Tracks can be moved freely in 3D space\n"
+                "• Yellow ring shows selected track\n"
+                "• Position affects spatial audio mixing\n"
+                "• Real-time visual feedback\n\n"
                 "Welcome to the future of audio mixing! 🚀",
                 "Got it!");
             help->Go();
@@ -847,6 +1283,199 @@ void Mixer3DView::SetParticlesEnabled(bool enabled)
 bool Mixer3DView::AreParticlesEnabled() const
 {
     return fParticleSystem.IsEnabled();
+}
+
+Track3D* Mixer3DView::GetTrackAt(BPoint screenPoint)
+{
+    // **3D PICKING**: Ray casting from screen point into 3D scene
+    // Returns the track clicked by the user, or nullptr if none
+
+    LockGL();
+
+    // Get OpenGL viewport, projection, and modelview matrices
+    GLint viewport[4];
+    GLdouble modelMatrix[16];
+    GLdouble projMatrix[16];
+
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    glGetDoublev(GL_MODELVIEW_MATRIX, modelMatrix);
+    glGetDoublev(GL_PROJECTION_MATRIX, projMatrix);
+
+    // Convert screen coordinates (flip Y for OpenGL)
+    float winX = screenPoint.x;
+    float winY = viewport[3] - screenPoint.y;  // Flip Y axis
+
+    // Un-project to get ray in 3D space
+    GLdouble nearX, nearY, nearZ;  // Ray start (near plane)
+    GLdouble farX, farY, farZ;     // Ray end (far plane)
+
+    gluUnProject(winX, winY, 0.0, modelMatrix, projMatrix, viewport, &nearX, &nearY, &nearZ);
+    gluUnProject(winX, winY, 1.0, modelMatrix, projMatrix, viewport, &farX, &farY, &farZ);
+
+    // Ray direction
+    float rayDirX = farX - nearX;
+    float rayDirY = farY - nearY;
+    float rayDirZ = farZ - nearZ;
+
+    // Normalize ray direction
+    float rayLength = sqrt(rayDirX*rayDirX + rayDirY*rayDirY + rayDirZ*rayDirZ);
+    rayDirX /= rayLength;
+    rayDirY /= rayLength;
+    rayDirZ /= rayLength;
+
+    // Ray origin
+    float rayOriginX = nearX;
+    float rayOriginY = nearY;
+    float rayOriginZ = nearZ;
+
+    UnlockGL();
+
+    // Test ray against all tracks (sphere collision)
+    Track3D* closestTrack = nullptr;
+    float closestDistance = 1000000.0f;
+
+    for (auto& track : f3DTracks) {
+        // Sphere center
+        float sphereX = track.x;
+        float sphereY = track.y;
+        float sphereZ = track.z;
+        float sphereRadius = 1.0f * track.scale;  // Sphere radius
+
+        // Vector from ray origin to sphere center
+        float ocX = rayOriginX - sphereX;
+        float ocY = rayOriginY - sphereY;
+        float ocZ = rayOriginZ - sphereZ;
+
+        // Ray-sphere intersection using quadratic formula
+        float a = rayDirX*rayDirX + rayDirY*rayDirY + rayDirZ*rayDirZ;
+        float b = 2.0f * (ocX*rayDirX + ocY*rayDirY + ocZ*rayDirZ);
+        float c = ocX*ocX + ocY*ocY + ocZ*ocZ - sphereRadius*sphereRadius;
+
+        float discriminant = b*b - 4*a*c;
+
+        if (discriminant >= 0) {
+            // Ray hits sphere!
+            float t = (-b - sqrt(discriminant)) / (2*a);  // Nearest intersection
+
+            if (t > 0 && t < closestDistance) {
+                closestDistance = t;
+                closestTrack = &track;
+            }
+        }
+    }
+
+    if (closestTrack) {
+        printf("Mixer3DView: 3D picking hit track at distance %.2f\n", closestDistance);
+    }
+
+    return closestTrack;
+}
+
+// =====================================
+// Mixer3DWindow Mode Switching
+// =====================================
+
+SpatialMixer3DView* Mixer3DWindow::GetSpatialView()
+{
+    // Safe cast - returns nullptr if not in spatial mode
+    return dynamic_cast<SpatialMixer3DView*>(f3DView);
+}
+
+void Mixer3DWindow::SetSpatialMode(bool enabled)
+{
+    if (enabled == fSpatialMode) return;  // Already in requested mode
+
+    if (enabled && !fAudioProcessor) {
+        printf("Mixer3DWindow: Cannot enable spatial mode - no audio processor!\n");
+        return;
+    }
+
+    if (enabled) {
+        SwitchToSpatialMode();
+    } else {
+        SwitchToSimpleMode();
+    }
+}
+
+void Mixer3DWindow::SwitchToSpatialMode()
+{
+    printf("Mixer3DWindow: Switching to Spatial Mode...\n");
+
+    if (!fAudioProcessor) {
+        printf("ERROR: Cannot switch to spatial mode without audio processor!\n");
+        return;
+    }
+
+    // Remove old view
+    if (f3DView) {
+        RemoveChild(f3DView);
+        delete f3DView;
+        f3DView = nullptr;
+    }
+
+    // Create new spatial view
+    BRect viewRect(0, 0, 900, 600);
+    f3DView = new SpatialMixer3DView(viewRect, fEngine, fAudioProcessor);
+    f3DView->SetExplicitMinSize(BSize(800, 500));
+    f3DView->SetExplicitPreferredSize(BSize(900, 600));
+
+    // Re-add to layout
+    BGroupLayout* layout = dynamic_cast<BGroupLayout*>(GetLayout());
+    if (layout) {
+        layout->AddView(1, f3DView);  // Position 1 (between menubar and controls)
+    }
+
+    fSpatialMode = true;
+
+    // Update button label
+    if (fModeSwitchButton) {
+        fModeSwitchButton->SetLabel("🎚️ Simple Mode");
+    }
+
+    // Update info text
+    if (fInfoDisplay) {
+        fInfoDisplay->SetText("🌐 Spatial 3D Mixer - Drag tracks for 3D positioning");
+    }
+
+    printf("Mixer3DWindow: ✅ Switched to Spatial Mode\n");
+}
+
+void Mixer3DWindow::SwitchToSimpleMode()
+{
+    printf("Mixer3DWindow: Switching to Simple 3dmix Mode...\n");
+
+    // Remove old view
+    if (f3DView) {
+        RemoveChild(f3DView);
+        delete f3DView;
+        f3DView = nullptr;
+    }
+
+    // Create classic 3dmix view
+    BRect viewRect(0, 0, 900, 600);
+    f3DView = new Mixer3DView(viewRect, fEngine);
+    f3DView->SetExplicitMinSize(BSize(800, 500));
+    f3DView->SetExplicitPreferredSize(BSize(900, 600));
+
+    // Re-add to layout
+    BGroupLayout* layout = dynamic_cast<BGroupLayout*>(GetLayout());
+    if (layout) {
+        layout->AddView(1, f3DView);  // Position 1 (between menubar and controls)
+    }
+
+    fSpatialMode = false;
+
+    // Update button label
+    if (fModeSwitchButton) {
+        fModeSwitchButton->SetLabel("🌐 Spatial Mode");
+    }
+
+    // Update info text
+    if (fInfoDisplay) {
+        fInfoDisplay->SetText("🎵 Classic 3D Mixer - Drag to rotate camera");
+    }
+
+    printf("Mixer3DWindow: ✅ Switched to Simple 3dmix Mode\n");
 }
 
 } // namespace HaikuDAW
