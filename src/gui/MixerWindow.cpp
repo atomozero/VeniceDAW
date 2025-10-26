@@ -187,12 +187,9 @@ void ChannelStrip::CreateControls()
     SetExplicitMaxSize(BSize(stripWidth, 450));
     SetExplicitPreferredSize(BSize(stripWidth, 380));
 
-    // Apply track color if available
-    if (fTrack) {
-        const TrackColor& trackColor = TrackColorManager::GetColorByIndex(fTrack->GetColorIndex());
-        SetViewColor(fTrack->IsMuted() ? trackColor.muted : trackColor.normal);
-    }
-    
+    // Professional dark gray background already set in constructor
+    // Track colors will only be used for track name header, not entire strip
+
     // Check if track exists before creating controls
     if (!fTrack) {
         // Create placeholder for empty strip
