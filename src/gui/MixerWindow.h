@@ -87,6 +87,7 @@ private:
     float fPeakLevel;
     float fRMSLevel;
     bigtime_t fLastUpdate;
+    bool fClipping;  // True when peak >= 0dB (1.0)
 };
 
 /*

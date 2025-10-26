@@ -721,6 +721,7 @@ LevelMeter::LevelMeter()
     , fPeakLevel(0.0f)
     , fRMSLevel(0.0f)
     , fLastUpdate(0)
+    , fClipping(false)
 {
     SetViewColor(B_TRANSPARENT_COLOR);
 }
@@ -801,6 +802,30 @@ void LevelMeter::Draw(BRect updateRect)
                       BPoint(bounds.right - 1, peakY));
         }
     }
+
+    // Professional clip indicator LED at top (like hardware consoles)
+    // Red LED that lights when signal reaches 0dB
+    BRect ledRect(bounds.left + 2, bounds.top + 2, bounds.right - 2, bounds.top + 8);
+
+    if (fClipping) {
+        // BRIGHT RED when clipping
+        SetHighColor(255, 30, 30, 255);
+        FillRect(ledRect);
+
+        // Bright center for LED glow effect
+        BRect centerRect = ledRect;
+        centerRect.InsetBy(1, 1);
+        SetHighColor(255, 100, 100, 255);
+        FillRect(centerRect);
+    } else {
+        // Dark red when not clipping (LED off)
+        SetHighColor(60, 15, 15, 255);
+        FillRect(ledRect);
+    }
+
+    // LED border
+    SetHighColor(30, 30, 30, 255);
+    StrokeRect(ledRect);
 }
 
 void LevelMeter::SetLevel(float peak, float rms)
@@ -808,7 +833,15 @@ void LevelMeter::SetLevel(float peak, float rms)
     fPeakLevel = std::max(0.0f, std::min(1.0f, peak));
     fRMSLevel = std::max(0.0f, std::min(1.0f, rms));
     fLastUpdate = system_time();
-    
+
+    // Detect clipping: peak at or above 0dB (1.0)
+    if (peak >= 0.99f) {
+        fClipping = true;
+    } else {
+        // Auto-reset after signal drops below threshold
+        fClipping = false;
+    }
+
     if (Window() && Window()->LockLooper()) {
         Invalidate();
         Window()->UnlockLooper();
