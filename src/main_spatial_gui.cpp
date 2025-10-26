@@ -17,6 +17,7 @@
 #include "gui/SpatialMixer3DWindow.h"
 #include "gui/MixerWindow.h"
 #include "gui/SuperMasterWindow.h"
+#include "gui/TimelineWindow.h"
 #include "audio/SimpleHaikuEngine.h"
 #include "audio/AdvancedAudioProcessor.h"
 
@@ -27,6 +28,7 @@ public:
         , fMainWindow(nullptr)
         , fMixerWindow(nullptr)
         , fSuperMasterWindow(nullptr)
+        , fTimelineWindow(nullptr)
         , fEngine(nullptr)
         , fAudioProcessor(nullptr)
     {
@@ -132,6 +134,26 @@ public:
                     printf("SpatialAudioApp: Recreating 3D mixer window\n");
                     fMainWindow = new HaikuDAW::SpatialMixer3DWindow(fEngine, fAudioProcessor);
                     fMainWindow->Show();
+                }
+                break;
+            }
+
+            case 'shtl':  // Show Timeline (from MixerWindow menu)
+            {
+                printf("SpatialAudioApp: Request to show timeline\n");
+                if (fTimelineWindow) {
+                    // Window exists but might be hidden
+                    if (fTimelineWindow->IsHidden()) {
+                        fTimelineWindow->Show();
+                        fTimelineWindow->Activate();
+                    } else {
+                        fTimelineWindow->Activate();  // Bring to front
+                    }
+                } else {
+                    // Create the window
+                    printf("SpatialAudioApp: Creating timeline window\n");
+                    fTimelineWindow = new HaikuDAW::TimelineWindow(fEngine);
+                    fTimelineWindow->Show();
                 }
                 break;
             }
@@ -247,6 +269,7 @@ private:
     HaikuDAW::SpatialMixer3DWindow* fMainWindow;
     HaikuDAW::MixerWindow* fMixerWindow;
     HaikuDAW::SuperMasterWindow* fSuperMasterWindow;
+    HaikuDAW::TimelineWindow* fTimelineWindow;
     HaikuDAW::SimpleHaikuEngine* fEngine;
     VeniceDAW::AdvancedAudioProcessor* fAudioProcessor;
 };

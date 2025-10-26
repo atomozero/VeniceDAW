@@ -679,7 +679,8 @@ void MixerWindow::CreateMenuBar()
     
     // Windows menu (with all windows)
     BMenu* windowMenu = new BMenu("Windows");
-    windowMenu->AddItem(new BMenuItem("Show 3D Mixer", new BMessage(MSG_SHOW_3D_MIXER), '3'));
+    windowMenu->AddItem(new BMenuItem("Show 3D Mixer", new BMessage(MSG_SHOW_3D_MIXER), '2'));
+    windowMenu->AddItem(new BMenuItem("Show Timeline", new BMessage(MSG_SHOW_TIMELINE), '3'));
     windowMenu->AddSeparatorItem();
     
     // We'll add mixer windows and super master dynamically
@@ -945,9 +946,9 @@ void MixerWindow::DispatchMessage(BMessage* message, BHandler* handler)
                         PostMessage(MSG_SHOW_3D_MIXER);
                         return;
 
-                    case '3':  // Cmd+3 - show timeline (future)
-                        // TODO: implement when timeline is ready
-                        break;
+                    case '3':  // Cmd+3 - show timeline
+                        PostMessage(MSG_SHOW_TIMELINE);
+                        return;
 
                     case KEY_QUIT:  // Cmd+Q - quit (handled by app)
                         be_app->PostMessage(B_QUIT_REQUESTED);
@@ -1051,6 +1052,13 @@ void MixerWindow::MessageReceived(BMessage* message)
             be_app->PostMessage(new BMessage(MSG_SHOW_3D_MIXER));
             break;
         }
+
+        case MSG_SHOW_TIMELINE:
+        {
+            // Send message to app to show timeline window
+            be_app->PostMessage(new BMessage(MSG_SHOW_TIMELINE));
+            break;
+        }
         
         case MSG_ADD_TRACK:
         {
@@ -1142,7 +1150,7 @@ void MixerWindow::MessageReceived(BMessage* message)
                 "WINDOWS:\n"
                 "  Cmd+1       - Show Mixer\n"
                 "  Cmd+2       - Show 3D Mixer\n"
-                "  Cmd+3       - Show Timeline (future)\n\n"
+                "  Cmd+3       - Show Timeline\n\n"
                 "GENERAL:\n"
                 "  Cmd+Q       - Quit application",
                 "Got it!", nullptr, nullptr,
