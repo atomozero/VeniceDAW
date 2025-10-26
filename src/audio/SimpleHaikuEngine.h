@@ -114,6 +114,11 @@ public:
     // File data access (for audio engine)
     status_t ReadFileData(float* buffer, int32 frameCount, float sampleRate);
 
+    // Live input support (Cortex integration)
+    void ProcessLiveInput(const float* inputData, size_t frameCount, uint32 channels);
+    bool HasLiveInput() const { return fLiveInputAvailable; }
+    void ClearLiveInput() { fLiveInputAvailable = false; }
+
 private:
     int fId;
     BString fName;
@@ -132,6 +137,13 @@ private:
     // Audio file streaming (lock-free asynchronous I/O)
     AudioFileStreamer* fStreamer;
     bool fFileLoaded;
+
+    // Live input buffer (Cortex integration)
+    static const size_t kLiveInputBufferSize = 4096 * 2;  // Stereo frames
+    float fLiveInputBuffer[kLiveInputBufferSize];
+    bool fLiveInputAvailable;
+    size_t fLiveInputFrameCount;
+    uint32 fLiveInputChannels;
 
     // Visual organization
     int fColorIndex;  // Index into TrackColors palette

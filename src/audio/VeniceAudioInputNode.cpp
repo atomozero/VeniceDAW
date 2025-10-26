@@ -350,16 +350,15 @@ status_t VeniceAudioInputNode::ProcessBuffer(const void* data, size_t size,
     float sampleRate = fFormat.u.raw_audio.frame_rate;
     uint32 frameCount = size / (channels * sizeof(float));
 
-    // TODO Phase 7.2: Route to track's live input buffer
-    // const float* audioData = (const float*)data;
-    // fTrack->ProcessLiveInput(audioData, frameCount, channels);
-    // For now, just log reception
+    // Route audio to track's live input buffer
+    const float* audioData = (const float*)data;
+    fTrack->ProcessLiveInput(audioData, frameCount, channels);
+
+    // Log every 100 buffers
     if (fBuffersReceived % 100 == 0) {
-        printf("VeniceAudioInputNode: Received buffer #%u (%u frames, %u channels, %.0f Hz)\n",
+        printf("VeniceAudioInputNode: Routed buffer #%u to track (%u frames, %u channels, %.0f Hz)\n",
                fBuffersReceived, frameCount, channels, sampleRate);
     }
-
-    // Future: fTrack->ProcessLiveInput(audioData, frameCount, channels);
 
     return B_OK;
 }

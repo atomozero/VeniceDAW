@@ -20,13 +20,17 @@ namespace HaikuDAW {
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
       fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(kSignalSine), fFrequency(440.0f),
-      fPinkNoiseMax(1.0f), fStreamer(nullptr), fFileLoaded(false), fColorIndex(0)
+      fPinkNoiseMax(1.0f), fStreamer(nullptr), fFileLoaded(false),
+      fLiveInputAvailable(false), fLiveInputFrameCount(0), fLiveInputChannels(0),
+      fColorIndex(0)
 {
     // Track created
     // Initialize pink noise state
     for (int i = 0; i < 7; i++) {
         fPinkNoiseState[i] = 0.0f;
     }
+    // Initialize live input buffer
+    memset(fLiveInputBuffer, 0, sizeof(fLiveInputBuffer));
     // File format now managed by AudioFileStreamer
 }
 
@@ -131,6 +135,40 @@ float SimpleTrack::GetFileSampleRate() const
 const char* SimpleTrack::GetFilePath() const
 {
     return fStreamer ? fStreamer->GetFilePath() : "";
+}
+
+// Live input processing (Cortex integration)
+void SimpleTrack::ProcessLiveInput(const float* inputData, size_t frameCount, uint32 channels)
+{
+    if (!inputData || frameCount == 0) return;
+
+    // Clamp to buffer size
+    size_t framesToCopy = (frameCount < kLiveInputBufferSize / 2) ? frameCount : (kLiveInputBufferSize / 2);
+
+    if (channels == 1) {
+        // Mono input - duplicate to stereo
+        for (size_t i = 0; i < framesToCopy; i++) {
+            fLiveInputBuffer[i * 2] = inputData[i] * fVolume;
+            fLiveInputBuffer[i * 2 + 1] = inputData[i] * fVolume;
+        }
+    } else if (channels == 2) {
+        // Stereo input - copy with volume
+        for (size_t i = 0; i < framesToCopy * 2; i++) {
+            fLiveInputBuffer[i] = inputData[i] * fVolume;
+        }
+    } else {
+        // Multi-channel - downmix to stereo
+        for (size_t i = 0; i < framesToCopy; i++) {
+            float left = inputData[i * channels] * fVolume;
+            float right = (channels > 1) ? inputData[i * channels + 1] * fVolume : left;
+            fLiveInputBuffer[i * 2] = left;
+            fLiveInputBuffer[i * 2 + 1] = right;
+        }
+    }
+
+    fLiveInputFrameCount = framesToCopy;
+    fLiveInputChannels = 2;  // Always output stereo
+    fLiveInputAvailable = true;
 }
 
 // === SimpleHaikuEngine ===
