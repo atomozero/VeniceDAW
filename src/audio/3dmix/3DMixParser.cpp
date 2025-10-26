@@ -362,6 +362,9 @@ status_t Legacy3DMixLoader::ValidateMagicNumber(BDataIO* stream)
 		return B_IO_ERROR;
 	}
 
+	// Convert from big-endian (BeOS file format standard for 4-char codes)
+	magic = B_BENDIAN_TO_HOST_INT32(magic);
+
 	if (magic != Format3DMix::kMagicNumber) {
 		ReportError("Invalid magic number in 3dmix file");
 		return B_BAD_DATA;
@@ -379,8 +382,8 @@ status_t Legacy3DMixLoader::ReadTrackCount(BDataIO* stream, int32* trackCount)
 		return B_IO_ERROR;
 	}
 
-	// Convert from little-endian if necessary
-	*trackCount = B_LENDIAN_TO_HOST_INT32(*trackCount);
+	// Convert from big-endian (BeOS file format standard)
+	*trackCount = B_BENDIAN_TO_HOST_INT32(*trackCount);
 
 	if (*trackCount < 0 || *trackCount > 1000) { // Reasonable limit
 		ReportError("Invalid track count in 3dmix file");

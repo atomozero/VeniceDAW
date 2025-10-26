@@ -1,0 +1,47 @@
+# Makefile.demo - Educational 3DMix Visualization Demo
+# Compiles standalone demo without audio engine
+
+CXX = g++
+CXXFLAGS = -Wall -Wno-multichar -std=c++17 -pthread -g -O2 -march=native -fPIC
+INCLUDES = -I. -Isrc -I/boot/system/develop/headers -I/boot/system/develop/headers/cpp
+LIBS = -lbe -lroot -lGL -lGLU -lmedia
+
+# Demo executable
+DEMO = demo_3dmix_viewer
+
+# Source files
+DEMO_SRC = src/demo_3dmix_viewer.cpp
+PARSER_SRC = src/audio/3dmix/3DMixParser.cpp \
+             src/audio/3dmix/3DMixFormat.cpp \
+             src/audio/3dmix/CoordinateSystemMapper.cpp \
+             src/audio/3dmix/AudioPathResolver.cpp \
+             src/audio/AudioLogging.cpp
+
+DEMO_OBJ = $(DEMO_SRC:.cpp=.o) $(PARSER_SRC:.cpp=.o)
+
+.PHONY: all clean demo
+
+all: demo
+
+demo: $(DEMO)
+
+$(DEMO): $(DEMO_OBJ)
+	@echo "Linking demo executable..."
+	$(CXX) $(DEMO_OBJ) $(LIBS) -o $(DEMO)
+	@echo "✅ Demo built successfully!"
+	@echo ""
+	@echo "Run with:"
+	@echo "  ./$(DEMO) /boot/home/Desktop/3D_Mixes/she-loves-it/she-loves-it-3dmix/she-loves-it.3dmix"
+	@echo ""
+
+%.o: %.cpp
+	@echo "Compiling $<..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+clean:
+	rm -f $(DEMO_OBJ) $(DEMO)
+	@echo "Demo cleaned"
+
+# Quick run shortcut
+run: demo
+	./$(DEMO) "/boot/home/Desktop/3D_Mixes/she-loves-it/she-loves-it-3dmix/she-loves-it.3dmix"
