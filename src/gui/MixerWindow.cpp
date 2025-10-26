@@ -8,6 +8,7 @@
 #include "AudioPreviewPanel.h"
 #include "3DMixImportDialog.h"
 #include "TrackInspectorPanel.h"
+#include "KeyboardShortcuts.h"
 #include <Alert.h>
 #include <Application.h>
 #include <SpaceLayoutItem.h>
@@ -633,8 +634,8 @@ void MixerWindow::CreateMenuBar()
     
     // Transport menu
     BMenu* transportMenu = new BMenu("Transport");
-    transportMenu->AddItem(new BMenuItem("Play", new BMessage(MSG_PLAY), ' '));
-    transportMenu->AddItem(new BMenuItem("Stop", new BMessage(MSG_STOP), 'S'));
+    transportMenu->AddItem(new BMenuItem("Play/Pause", new BMessage(MSG_PLAY), ' '));
+    transportMenu->AddItem(new BMenuItem("Stop", new BMessage(MSG_STOP), '.'));
     fMenuBar->AddItem(transportMenu);
     
     // Track menu
@@ -662,6 +663,8 @@ void MixerWindow::CreateMenuBar()
     
     // Help menu
     BMenu* helpMenu = new BMenu("Help");
+    helpMenu->AddItem(new BMenuItem("Keyboard Shortcuts", new BMessage('keys')));
+    helpMenu->AddSeparatorItem();
     helpMenu->AddItem(new BMenuItem("About HaikuDAW", new BMessage('abou')));
     fMenuBar->AddItem(helpMenu);
 }
@@ -851,9 +854,106 @@ bool MixerWindow::QuitRequested()
     BMessage removeMsg('rmvm');
     removeMsg.AddPointer("window", this);
     be_app->PostMessage(&removeMsg);
-    
+
     // Don't quit the whole app, just close this window
     return true;
+}
+
+void MixerWindow::DispatchMessage(BMessage* message, BHandler* handler)
+{
+    // Intercept keyboard messages for global shortcuts
+    if (message->what == B_KEY_DOWN) {
+        int32 key;
+        uint32 modifiers;
+
+        if (message->FindInt32("raw_char", &key) == B_OK &&
+            message->FindInt32("modifiers", (int32*)&modifiers) == B_OK) {
+
+            // Transport shortcuts (no modifiers)
+            if (KeyboardShortcuts::HasExactModifiers(modifiers, MOD_NONE)) {
+                switch (key) {
+                    case KEY_PLAY_PAUSE:  // Spacebar - toggle play/pause
+                        if (fEngine && fEngine->IsPlaying()) {
+                            PostMessage(MSG_STOP);
+                        } else {
+                            PostMessage(MSG_PLAY);
+                        }
+                        return;
+
+                    case KEY_STOP:  // Period - stop
+                        PostMessage(MSG_STOP);
+                        return;
+
+                    case KEY_MUTE:  // M - toggle mute on selected track
+                        // TODO: implement when track selection is available
+                        break;
+
+                    case KEY_SOLO:  // S - toggle solo on selected track
+                        // TODO: implement when track selection is available
+                        break;
+                }
+            }
+
+            // Command+key shortcuts
+            if (KeyboardShortcuts::HasExactModifiers(modifiers, MOD_COMMAND)) {
+                switch (key) {
+                    case KEY_NEW_TRACK:  // Cmd+T - add new track
+                        PostMessage(MSG_ADD_TRACK);
+                        return;
+
+                    case KEY_REMOVE_TRACK:  // Cmd+R - remove track
+                        PostMessage(MSG_REMOVE_TRACK);
+                        return;
+
+                    case KEY_IMPORT_AUDIO:  // Cmd+I - import audio
+                        PostMessage(MSG_IMPORT_AUDIO);
+                        return;
+
+                    case KEY_SHOW_MIXER:  // Cmd+1 - already in mixer
+                        // Already in mixer window
+                        return;
+
+                    case KEY_SHOW_3D:  // Cmd+2 - show 3D mixer
+                        PostMessage(MSG_SHOW_3D_MIXER);
+                        return;
+
+                    case '3':  // Cmd+3 - show timeline (future)
+                        // TODO: implement when timeline is ready
+                        break;
+
+                    case KEY_QUIT:  // Cmd+Q - quit (handled by app)
+                        be_app->PostMessage(B_QUIT_REQUESTED);
+                        return;
+                }
+            }
+
+            // Command+Shift+key shortcuts
+            if (KeyboardShortcuts::HasExactModifiers(modifiers, MOD_COMMAND | MOD_SHIFT)) {
+                switch (key) {
+                    case KEY_IMPORT_MULTIPLE:  // Cmd+Shift+M - import multiple
+                        PostMessage(MSG_IMPORT_MULTIPLE);
+                        return;
+
+                    case '3':  // Cmd+Shift+3 - import 3dmix
+                        PostMessage(MSG_IMPORT_3DMIX);
+                        return;
+                }
+            }
+
+            // Navigation shortcuts (arrow keys)
+            if (KeyboardShortcuts::HasExactModifiers(modifiers, MOD_NONE)) {
+                switch (key) {
+                    case KEY_SELECT_NEXT_TRACK:  // Down arrow
+                    case KEY_SELECT_PREV_TRACK:  // Up arrow
+                        // TODO: implement track selection navigation
+                        break;
+                }
+            }
+        }
+    }
+
+    // Let default handling proceed
+    BWindow::DispatchMessage(message, handler);
 }
 
 void MixerWindow::MessageReceived(BMessage* message)
@@ -995,12 +1095,45 @@ void MixerWindow::MessageReceived(BMessage* message)
             break;
         }
             
+        case 'keys':  // Show keyboard shortcuts
+        {
+            BAlert* shortcutsAlert = new BAlert("Keyboard Shortcuts",
+                "VeniceDAW Keyboard Shortcuts\n\n"
+                "TRANSPORT:\n"
+                "  Space       - Play/Pause\n"
+                "  .           - Stop\n\n"
+                "TRACKS:\n"
+                "  Cmd+T       - Add new track\n"
+                "  Cmd+R       - Remove track\n"
+                "  M           - Mute selected track\n"
+                "  S           - Solo selected track\n\n"
+                "IMPORT:\n"
+                "  Cmd+I       - Import audio file\n"
+                "  Cmd+Shift+M - Import multiple files\n"
+                "  Cmd+Shift+3 - Import 3dmix project\n\n"
+                "WINDOWS:\n"
+                "  Cmd+1       - Show Mixer\n"
+                "  Cmd+2       - Show 3D Mixer\n"
+                "  Cmd+3       - Show Timeline (future)\n\n"
+                "GENERAL:\n"
+                "  Cmd+Q       - Quit application",
+                "Got it!", nullptr, nullptr,
+                B_WIDTH_AS_USUAL, B_INFO_ALERT);
+            shortcutsAlert->Go();
+            break;
+        }
+
         case 'abou':
         {
             BAlert* alert = new BAlert("About",
-                "HaikuDAW v1.0\n"
-                "Native Digital Audio Workstation\n"
-                "Built with Haiku BMediaKit\n\n"
+                "VeniceDAW v1.0\n"
+                "Professional Audio Workstation for Haiku OS\n"
+                "Built with native Haiku BMediaKit\n\n"
+                "Features:\n"
+                "• Real-time multi-track mixing\n"
+                "• 3D spatial audio positioning\n"
+                "• Professional track inspector\n"
+                "• BeOS 3dmix project import\n\n"
                 "🎵 Powered by Haiku OS 🎵",
                 "Cool!");
             alert->Go();

@@ -72,7 +72,8 @@ GUI_SRCS = \
 	src/gui/BenchmarkWindow.cpp \
 	src/gui/AudioPreviewPanel.cpp \
 	src/gui/AudioParticleSystem.cpp \
-	src/gui/TrackInspectorPanel.cpp
+	src/gui/TrackInspectorPanel.cpp \
+	src/gui/KeyboardShortcuts.cpp
 
 # Phase 4 Spatial Audio GUI Components
 SPATIAL_GUI_SRCS = \

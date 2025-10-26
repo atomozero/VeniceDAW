@@ -144,6 +144,7 @@ public:
     // BWindow interface
     virtual bool QuitRequested();
     virtual void MessageReceived(BMessage* message);
+    virtual void DispatchMessage(BMessage* message, BHandler* handler);
     
     // Engine control
     void UpdateMeter();
