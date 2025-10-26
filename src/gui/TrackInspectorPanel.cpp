@@ -54,6 +54,17 @@ void TrackInspectorPanel::AttachedToWindow()
 
 void TrackInspectorPanel::SetTrack(SimpleTrack* track)
 {
+    // Thread-safe: Lock looper if we're in a window (floating window case)
+    bool needsUnlock = false;
+    if (Window() && !Window()->IsLocked()) {
+        if (Window()->LockWithTimeout(1000000) == B_OK) {  // 1 second timeout
+            needsUnlock = true;
+        } else {
+            printf("TrackInspectorPanel::SetTrack() - Failed to lock window\n");
+            return;  // Can't safely update without lock
+        }
+    }
+
     fSelectedTrack = track;
 
     if (track) {
@@ -70,11 +81,26 @@ void TrackInspectorPanel::SetTrack(SimpleTrack* track)
     }
 
     Invalidate();
+
+    if (needsUnlock) {
+        Window()->Unlock();
+    }
 }
 
 void TrackInspectorPanel::UpdateLevels()
 {
     if (!fSelectedTrack) return;
+
+    // Thread-safe: Lock looper if we're in a window (floating window case)
+    bool needsUnlock = false;
+    if (Window() && !Window()->IsLocked()) {
+        if (Window()->LockWithTimeout(100000) == B_OK) {  // 100ms timeout (fast for meter updates)
+            needsUnlock = true;
+        } else {
+            // Don't spam console on meter updates
+            return;  // Skip this update if can't lock quickly
+        }
+    }
 
     // Update level meters
     float peak = fSelectedTrack->GetPeakLevel();
@@ -102,6 +128,10 @@ void TrackInspectorPanel::UpdateLevels()
         BString rmsStr;
         rmsStr.SetToFormat("%.1f dB", rmsDB);
         fRMSValueLabel->SetText(rmsStr.String());
+    }
+
+    if (needsUnlock) {
+        Window()->Unlock();
     }
 }
 

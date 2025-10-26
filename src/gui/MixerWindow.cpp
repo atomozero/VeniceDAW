@@ -1050,8 +1050,8 @@ void MixerWindow::MessageReceived(BMessage* message)
             
         case MSG_UPDATE_METERS:
             UpdateMeter();
-            // Also update inspector panel levels
-            if (fInspectorPanel) {
+            // Also update inspector panel levels (if window is open)
+            if (fInspectorPanel && fInspectorPanel->Window()) {
                 fInspectorPanel->UpdateLevels();
             }
             break;
@@ -1068,9 +1068,9 @@ void MixerWindow::MessageReceived(BMessage* message)
                     }
                 }
 
-                // Update inspector panel to show selected track
+                // Update inspector panel to show selected track (if window is open)
                 SimpleTrack* selectedTrack = fEngine->GetTrack(trackIndex);
-                if (fInspectorPanel && selectedTrack) {
+                if (fInspectorPanel && fInspectorPanel->Window() && selectedTrack) {
                     fInspectorPanel->SetTrack(selectedTrack);
                 }
             }
