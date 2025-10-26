@@ -574,33 +574,40 @@ void Mixer3DWindow::CreateMenuBar()
 
 void Mixer3DWindow::Create3DView()
 {
-    // Main 3D view
-    BRect viewRect(0, 0, 700, 400);
+    // Main 3D view - large professional viewport (60% of window)
+    BRect viewRect(0, 0, 900, 600);
     f3DView = new Mixer3DView(viewRect, fEngine);
+    // Set explicit size to ensure 3D viewport dominates the window
+    f3DView->SetExplicitMinSize(BSize(800, 500));
+    f3DView->SetExplicitPreferredSize(BSize(900, 600));
 }
 
 void Mixer3DWindow::CreateControlsPanel()
 {
-    // Control panel at bottom
+    // Control panel at bottom with VeniceTheme
     fControlsPanel = new BView("controls", B_WILL_DRAW);
-    fControlsPanel->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-    
+    fControlsPanel->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+
     BGroupLayout* controlsLayout = new BGroupLayout(B_HORIZONTAL);
     fControlsPanel->SetLayout(controlsLayout);
-    controlsLayout->SetInsets(10, 10, 10, 10);
-    controlsLayout->SetSpacing(10);
-    
-    // Transport controls
+    controlsLayout->SetInsets(VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::PADDING,
+                              VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::PADDING);
+    controlsLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
+
+    // Transport controls - compact
     fPlayButton = new BButton("3d_play", "▶ Play 3D", new BMessage(MSG_PLAY));
+    fPlayButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
     fStopButton = new BButton("3d_stop", "⏹ Stop", new BMessage(MSG_STOP));
-    
+    fStopButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+
     controlsLayout->AddView(fPlayButton);
     controlsLayout->AddView(fStopButton);
-    
-    // Camera controls
-    fResetCameraButton = new BButton("reset_cam", "📷 Reset Camera", new BMessage(MSG_RESET_CAMERA));
+
+    // Camera controls - compact
+    fResetCameraButton = new BButton("reset_cam", "📷 Reset", new BMessage(MSG_RESET_CAMERA));
+    fResetCameraButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
     controlsLayout->AddView(fResetCameraButton);
-    
+
     // Info display
     fInfoDisplay = new BStringView("3d_info", "🎵 3D Audio Mixer - Drag to rotate camera");
     controlsLayout->AddView(fInfoDisplay);
