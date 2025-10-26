@@ -1099,10 +1099,18 @@ void MixerWindow::CreateMasterSection()
     transportView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     transportView->SetLayout(transportLayout);
 
-    fPlayButton = new BButton("play", "Play", new BMessage(MSG_PLAY));
+    // Professional transport buttons with hardware console appearance
+    fPlayButton = new BButton("play", "▶ Play", new BMessage(MSG_PLAY));
     fPlayButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
-    fStopButton = new BButton("stop", "Stop", new BMessage(MSG_STOP));
+    // Green background for Play (like hardware start button)
+    fPlayButton->SetViewColor(make_color(40, 120, 40, 255));
+    fPlayButton->SetLowColor(make_color(40, 120, 40, 255));
+
+    fStopButton = new BButton("stop", "■ Stop", new BMessage(MSG_STOP));
     fStopButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+    // Red background for Stop (like hardware stop button)
+    fStopButton->SetViewColor(make_color(140, 40, 40, 255));
+    fStopButton->SetLowColor(make_color(140, 40, 40, 255));
 
     transportLayout->AddView(fPlayButton);
     transportLayout->AddView(fStopButton);
