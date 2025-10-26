@@ -427,27 +427,27 @@ void ChannelStrip::CreateControls()
     fLevelMeter = new LevelMeter();
     fLevelMeter->Hide();  // Don't show in channel strip
     
-    // Mute toggle button - ultra compact with professional colors
+    // Mute toggle button - Akai-style with intense red
     fMuteButton = new ToggleButton("mute", "M", new BMessage(MSG_MUTE_TOGGLED));
     fMuteButton->SetTarget(this);
     fMuteButton->SetToggled(fTrack->IsMuted());
-    // Normal: light gray, Pressed: bright red for clear mute indication
+    // Akai style: dark gray unpressed, intense red when muted (like Akai MPC pads)
     fMuteButton->SetToggleColors(
-        make_color(200, 200, 200, 255),  // Light gray unpressed
-        make_color(240, 80, 80, 255)     // Bright red when muted
+        make_color(70, 70, 75, 255),     // Dark gray unpressed (Akai style)
+        make_color(220, 30, 30, 255)     // Intense Akai red when muted
     );
     fMuteButton->SetExplicitMinSize(BSize(50, 20));
     fMuteButton->SetExplicitMaxSize(BSize(58, 22));
     fMuteButton->SetExplicitPreferredSize(BSize(54, 20));
     mainLayout->AddView(fMuteButton);
 
-    // Solo toggle button - ultra compact with professional colors
+    // Solo toggle button - Akai-style with vibrant orange
     fSoloButton = new ToggleButton("solo", "S", new BMessage(MSG_SOLO_TOGGLED));
     fSoloButton->SetTarget(this);
-    // Normal: light gray, Pressed: bright yellow/amber for clear solo indication
+    // Akai style: dark gray unpressed, vibrant orange when soloed (like Akai controllers)
     fSoloButton->SetToggleColors(
-        make_color(200, 200, 200, 255),  // Light gray unpressed
-        make_color(255, 200, 50, 255)    // Bright amber/yellow when soloed
+        make_color(70, 70, 75, 255),     // Dark gray unpressed (Akai style)
+        make_color(255, 140, 0, 255)     // Vibrant Akai orange when soloed
     );
     fSoloButton->SetExplicitMinSize(BSize(50, 20));
     fSoloButton->SetExplicitMaxSize(BSize(58, 22));
@@ -1125,18 +1125,18 @@ void MixerWindow::CreateMasterSection()
     transportView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     transportView->SetLayout(transportLayout);
 
-    // Professional transport buttons with hardware console appearance
+    // Akai-style transport buttons with darker, more intense colors
     fPlayButton = new BButton("play", "▶ Play", new BMessage(MSG_PLAY));
     fPlayButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
-    // Green background for Play (like hardware start button)
-    fPlayButton->SetViewColor(make_color(40, 120, 40, 255));
-    fPlayButton->SetLowColor(make_color(40, 120, 40, 255));
+    // Darker green for Play (Akai MPC style)
+    fPlayButton->SetViewColor(make_color(30, 100, 30, 255));
+    fPlayButton->SetLowColor(make_color(30, 100, 30, 255));
 
     fStopButton = new BButton("stop", "■ Stop", new BMessage(MSG_STOP));
     fStopButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
-    // Red background for Stop (like hardware stop button)
-    fStopButton->SetViewColor(make_color(140, 40, 40, 255));
-    fStopButton->SetLowColor(make_color(140, 40, 40, 255));
+    // Darker, more intense red for Stop (Akai style)
+    fStopButton->SetViewColor(make_color(120, 25, 25, 255));
+    fStopButton->SetLowColor(make_color(120, 25, 25, 255));
 
     transportLayout->AddView(fPlayButton);
     transportLayout->AddView(fStopButton);
