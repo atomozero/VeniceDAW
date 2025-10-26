@@ -1533,11 +1533,13 @@ void MixerWindow::ImportAudioFile()
                                                                       true,     // Modal
                                                                       true);    // Hide when done
 
-    // Set window title
-    panel->Window()->SetTitle("Import Audio File - VeniceDAW (with Preview)");
-
-    // Show the panel
+    // Show the panel first (creates the window)
     panel->Show();
+
+    // Set window title AFTER Show() (Window() returns nullptr before Show())
+    if (panel->Window()) {
+        panel->Window()->SetTitle("Import Audio File - VeniceDAW (with Preview)");
+    }
 
     // Note: The panel will send B_REFS_RECEIVED message when file is selected
 }
@@ -1557,11 +1559,13 @@ void MixerWindow::ImportMultipleFiles()
                                                                       true,     // Modal
                                                                       true);    // Hide when done
 
-    // Set window title
-    panel->Window()->SetTitle("Import Multiple Audio Files - VeniceDAW (with Preview)");
-
-    // Show the panel
+    // Show the panel first (creates the window)
     panel->Show();
+
+    // Set window title AFTER Show() (Window() returns nullptr before Show())
+    if (panel->Window()) {
+        panel->Window()->SetTitle("Import Multiple Audio Files - VeniceDAW (with Preview)");
+    }
 }
 
 void MixerWindow::HandleDroppedFiles(BMessage* message)
@@ -1702,7 +1706,18 @@ void MixerWindow::Import3DMixProject()
 
     // Create file panel with 3dmix filter
     BFilePanel* filePanel = VeniceDAW::ThreeDMixUIUtils::CreateImportFilePanel(this);
-    filePanel->Show();
+
+    // Safety check: CreateImportFilePanel returns nullptr (stub implementation)
+    if (filePanel) {
+        filePanel->Show();
+    } else {
+        printf("MixerWindow: WARNING - 3dmix import not yet implemented\n");
+        BAlert* alert = new BAlert("Not Implemented",
+                                   "3dmix project import feature is not yet implemented.",
+                                   "OK", nullptr, nullptr,
+                                   B_WIDTH_AS_USUAL, B_INFO_ALERT);
+        alert->Go();
+    }
 }
 
 void MixerWindow::Show3DMixImportDialog(const char* filePath)
@@ -1800,14 +1815,16 @@ void MixerWindow::LoadAudioFileToSpecificTrack(int32 trackIndex)
                                       true,     // Modal
                                       true);    // Hide when done
 
-    // Set window title
-    SimpleTrack* track = fEngine->GetTrack(trackIndex);
-    BString title;
-    title << "Load Audio File to " << (track ? track->GetName() : "Track") << " - VeniceDAW";
-    panel->Window()->SetTitle(title.String());
-
-    // Show the panel
+    // Show the panel first (creates the window)
     panel->Show();
+
+    // Set window title AFTER Show() (Window() returns nullptr before Show())
+    if (panel->Window()) {
+        SimpleTrack* track = fEngine->GetTrack(trackIndex);
+        BString title;
+        title << "Load Audio File to " << (track ? track->GetName() : "Track") << " - VeniceDAW";
+        panel->Window()->SetTitle(title.String());
+    }
 }
 
 void MixerWindow::ShowTrackSelectionDialog()
