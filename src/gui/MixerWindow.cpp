@@ -701,7 +701,9 @@ void MixerWindow::CreateMenuBar()
     windowMenu->AddItem(new BMenuItem("Show 3D Mixer", new BMessage(MSG_SHOW_3D_MIXER), '2'));
     windowMenu->AddItem(new BMenuItem("Show Timeline", new BMessage(MSG_SHOW_TIMELINE), '3'));
     windowMenu->AddSeparatorItem();
-    
+    windowMenu->AddItem(new BMenuItem("Show Track Inspector", new BMessage(MSG_SHOW_INSPECTOR), 'I'));
+    windowMenu->AddSeparatorItem();
+
     // We'll add mixer windows and super master dynamically
     windowMenu->AddItem(new BMenuItem("Refresh Windows List", new BMessage(MSG_REFRESH_WINDOWS), 'R'));
     fMenuBar->AddItem(windowMenu);
@@ -731,14 +733,13 @@ void MixerWindow::CreateMixerView()
     printf("MixerWindow: Creating channel strips...\n");
     CreateChannelStrips();
 
-    // Create track inspector panel (right sidebar) - COMPACT
-    printf("MixerWindow: Creating track inspector panel...\n");
-    BRect inspectorRect(0, 0, 180, 450);  // Reduced from 280 to 180
+    // Inspector Panel removed from main layout for professional DAW workflow
+    // Industry standard: Faders | Master Section (clean, uncluttered)
+    // Inspector can be opened separately if needed
+    printf("MixerWindow: Track inspector available via menu (professional layout)\n");
+    BRect inspectorRect(0, 0, 250, 450);  // Standalone size
     fInspectorPanel = new TrackInspectorPanel(inspectorRect);
-    fInspectorPanel->SetExplicitMinSize(BSize(180, 400));
-    fInspectorPanel->SetExplicitMaxSize(BSize(200, 500));
-    fInspectorPanel->SetExplicitPreferredSize(BSize(180, 450));
-    mainLayout->AddView(fInspectorPanel);
+    // NOT added to main layout - will be shown in separate window when requested
 
     printf("MixerWindow: Creating master section...\n");
     CreateMasterSection();
@@ -1089,7 +1090,29 @@ void MixerWindow::MessageReceived(BMessage* message)
             be_app->PostMessage(new BMessage(MSG_SHOW_TIMELINE));
             break;
         }
-        
+
+        case MSG_SHOW_INSPECTOR:
+        {
+            // Show track inspector in a floating window (professional DAW style)
+            if (fInspectorPanel && !fInspectorPanel->Window()) {
+                BWindow* inspectorWindow = new BWindow(
+                    BRect(200, 200, 450, 650),
+                    "Track Inspector",
+                    B_FLOATING_WINDOW_LOOK,
+                    B_NORMAL_WINDOW_FEEL,
+                    B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS
+                );
+                inspectorWindow->AddChild(fInspectorPanel);
+                inspectorWindow->Show();
+                printf("MixerWindow: Track Inspector window opened\n");
+            } else if (fInspectorPanel && fInspectorPanel->Window()) {
+                // Already open, just activate it
+                fInspectorPanel->Window()->Activate();
+                printf("MixerWindow: Track Inspector window activated\n");
+            }
+            break;
+        }
+
         case MSG_ADD_TRACK:
         {
             AddTrack();

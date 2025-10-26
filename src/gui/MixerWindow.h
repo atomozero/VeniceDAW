@@ -191,6 +191,7 @@ public:
         MSG_UPDATE_METERS = 'updt',
         MSG_SHOW_3D_MIXER = 'sh3d',
         MSG_SHOW_TIMELINE = 'shtl',
+        MSG_SHOW_INSPECTOR = 'shin',
         MSG_ADD_TRACK = 'addt',
         MSG_REMOVE_TRACK = 'remt',
         MSG_IMPORT_AUDIO = 'impa',
