@@ -354,17 +354,18 @@ void ChannelStrip::CreateControls()
     fTrackName->SetAlignment(B_ALIGN_CENTER);
     fTrackName->SetFont(be_plain_font);
 
-    // Use darkened track color for header background
+    // Use darkened track color for header background - FORCE DRAWING
     rgb_color headerColor = VeniceDAW::VeniceTheme::TrackHeaderColor(fTrack->GetColorIndex());
     fTrackName->SetViewColor(headerColor);
     fTrackName->SetLowColor(headerColor);
+    fTrackName->SetFlags(fTrackName->Flags() | B_WILL_DRAW | B_FRAME_EVENTS);
 
-    // White text for good contrast against colored background
+    // White text with black outline for maximum contrast
     fTrackName->SetHighColor(make_color(255, 255, 255, 255));
 
-    fTrackName->SetExplicitMinSize(BSize(50, 18));  // Taller for better readability
-    fTrackName->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 20));
-    fTrackName->SetExplicitPreferredSize(BSize(54, 18));
+    fTrackName->SetExplicitMinSize(BSize(50, 20));  // Taller for better readability
+    fTrackName->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 22));
+    fTrackName->SetExplicitPreferredSize(BSize(54, 20));
     mainLayout->AddView(fTrackName);
 
     // Professional realistic fader with 3D metallic appearance
