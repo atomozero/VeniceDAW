@@ -216,59 +216,56 @@ void ProfessionalFader::DrawThumb()
     BRect innerRect = thumbRect;
     innerRect.InsetBy(2, 2);
 
-    // REALISTIC METALLIC GRADIENT (simulates brushed aluminum)
-    float height = innerRect.Height();
-    for (int y = 0; y < (int)height; y++) {
-        float ratio = (float)y / height;
+    // HIGH-CONTRAST METALLIC GRADIENT (horizontal for wider thumbs)
+    // More visible gradient from left to right simulating curved metallic surface
+    float width = innerRect.Width();
 
-        // Create realistic metallic gradient with specular highlight
+    for (int x = 0; x < (int)width; x++) {
+        float ratio = (float)x / width;
+
+        // Create strong left-to-right gradient simulating curved chrome surface
         rgb_color bandColor;
 
-        if (ratio < 0.15f) {
-            // Top 15%: Bright specular highlight (light reflection)
-            float t = ratio / 0.15f;
+        if (ratio < 0.2f) {
+            // Left 20%: Dark shadow edge
+            float t = ratio / 0.2f;
             bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(250, 250, 255, 255),  // Almost white highlight
-                make_color(210, 215, 220, 255),  // Light silver
+                make_color(70, 75, 80, 255),    // Dark edge
+                make_color(120, 125, 130, 255), // Mid-dark
                 t
             );
-        } else if (ratio < 0.35f) {
-            // 15-35%: Fade to mid-tone
-            float t = (ratio - 0.15f) / 0.2f;
+        } else if (ratio < 0.45f) {
+            // 20-45%: Rise to bright highlight
+            float t = (ratio - 0.2f) / 0.25f;
             bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(210, 215, 220, 255),  // Light silver
-                make_color(160, 165, 170, 255),  // Mid silver
+                make_color(120, 125, 130, 255), // Mid-dark
+                make_color(240, 245, 250, 255), // Almost white
                 t
             );
-        } else if (ratio < 0.65f) {
-            // 35-65%: Main body (darkest part before bottom highlight)
-            float t = (ratio - 0.35f) / 0.3f;
+        } else if (ratio < 0.55f) {
+            // 45-55%: Center bright highlight (peak reflection)
+            bandColor = make_color(240, 245, 250, 255);
+        } else if (ratio < 0.80f) {
+            // 55-80%: Fade back down
+            float t = (ratio - 0.55f) / 0.25f;
             bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(160, 165, 170, 255),  // Mid silver
-                make_color(100, 105, 110, 255),  // Dark silver
-                t
-            );
-        } else if (ratio < 0.85f) {
-            // 65-85%: Subtle bottom highlight
-            float t = (ratio - 0.65f) / 0.2f;
-            bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(100, 105, 110, 255),  // Dark silver
-                make_color(140, 145, 150, 255),  // Light mid silver
+                make_color(240, 245, 250, 255), // Almost white
+                make_color(120, 125, 130, 255), // Mid-dark
                 t
             );
         } else {
-            // 85-100%: Final edge highlight
-            float t = (ratio - 0.85f) / 0.15f;
+            // 80-100%: Dark shadow edge
+            float t = (ratio - 0.80f) / 0.2f;
             bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(140, 145, 150, 255),  // Light mid silver
-                make_color(180, 185, 190, 255),  // Lighter silver
+                make_color(120, 125, 130, 255), // Mid-dark
+                make_color(70, 75, 80, 255),    // Dark edge
                 t
             );
         }
 
         SetHighColor(bandColor);
-        StrokeLine(BPoint(innerRect.left, innerRect.top + y),
-                   BPoint(innerRect.right, innerRect.top + y));
+        StrokeLine(BPoint(innerRect.left + x, innerRect.top),
+                   BPoint(innerRect.left + x, innerRect.bottom));
     }
 
     // BEVELED 3D EDGES: Create depth perception
