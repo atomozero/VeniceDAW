@@ -129,6 +129,104 @@ void ToggleButton::SetToggleColors(rgb_color normal, rgb_color pressed)
 }
 
 // =====================================
+// ProfessionalFader Implementation
+// =====================================
+
+ProfessionalFader::ProfessionalFader(const char* name, const char* label, BMessage* message,
+                                     int32 minValue, int32 maxValue, orientation posture)
+    : BSlider(name, label, message, minValue, maxValue, posture)
+{
+    // Professional fader styling
+    SetBarColor(VeniceDAW::VeniceTheme::FaderGroove());
+}
+
+ProfessionalFader::~ProfessionalFader()
+{
+}
+
+void ProfessionalFader::DrawBar()
+{
+    // Get bar rectangle
+    BRect barRect = BarFrame();
+
+    // Draw dark groove with inset shadow effect
+    SetHighColor(VeniceDAW::VeniceTheme::FaderGroove());
+    FillRect(barRect);
+
+    // Inset shadow on left and top edges (groove depth)
+    SetHighColor(VeniceDAW::VeniceTheme::Dim(VeniceDAW::VeniceTheme::FaderGroove(), 0.5f));
+    StrokeLine(barRect.LeftTop(), barRect.LeftBottom());
+    StrokeLine(barRect.LeftTop(), barRect.RightTop());
+
+    // Subtle highlight on right and bottom edges
+    SetHighColor(VeniceDAW::VeniceTheme::Dim(VeniceDAW::VeniceTheme::FaderGroove(), 1.3f));
+    StrokeLine(barRect.RightTop(), barRect.RightBottom());
+    StrokeLine(barRect.LeftBottom(), barRect.RightBottom());
+}
+
+void ProfessionalFader::DrawThumb()
+{
+    // Get thumb rectangle
+    BRect thumbRect = ThumbFrame();
+
+    // Base metallic color
+    rgb_color thumbBase = VeniceDAW::VeniceTheme::FaderThumb();
+
+    // Fill with gradient effect (simulated with horizontal bands)
+    float height = thumbRect.Height();
+    for (int y = 0; y < height; y++) {
+        float ratio = y / height;
+
+        // Create metallic gradient: bright at top, base in middle, dark at bottom
+        rgb_color bandColor;
+        if (ratio < 0.3f) {
+            // Top 30%: bright highlight
+            bandColor = VeniceDAW::VeniceTheme::Blend(
+                VeniceDAW::VeniceTheme::FaderThumbHighlight(),
+                thumbBase,
+                ratio / 0.3f
+            );
+        } else if (ratio < 0.7f) {
+            // Middle 40%: base metallic color
+            bandColor = thumbBase;
+        } else {
+            // Bottom 30%: shadow
+            bandColor = VeniceDAW::VeniceTheme::Blend(
+                thumbBase,
+                VeniceDAW::VeniceTheme::FaderThumbShadow(),
+                (ratio - 0.7f) / 0.3f
+            );
+        }
+
+        SetHighColor(bandColor);
+        StrokeLine(BPoint(thumbRect.left, thumbRect.top + y),
+                   BPoint(thumbRect.right, thumbRect.top + y));
+    }
+
+    // Draw 3D border for depth
+    // Bright highlight on top and left (light source from top-left)
+    SetHighColor(VeniceDAW::VeniceTheme::FaderThumbHighlight());
+    StrokeLine(thumbRect.LeftTop(), thumbRect.RightTop());
+    StrokeLine(thumbRect.LeftTop(), thumbRect.LeftBottom());
+
+    // Dark shadow on bottom and right (depth)
+    SetHighColor(VeniceDAW::VeniceTheme::FaderThumbShadow());
+    StrokeLine(thumbRect.RightTop(), thumbRect.RightBottom());
+    StrokeLine(thumbRect.LeftBottom(), thumbRect.RightBottom());
+
+    // Draw center grip lines (3 thin vertical lines)
+    SetHighColor(VeniceDAW::VeniceTheme::Dim(thumbBase, 0.7f));
+    float centerX = thumbRect.left + thumbRect.Width() / 2.0f;
+    float gripTop = thumbRect.top + thumbRect.Height() * 0.3f;
+    float gripBottom = thumbRect.bottom - thumbRect.Height() * 0.3f;
+
+    for (int i = -1; i <= 1; i++) {
+        float x = centerX + i * 3.0f;
+        StrokeLine(BPoint(x, gripTop), BPoint(x, gripBottom));
+    }
+}
+
+// =====================================
 // ChannelStrip Implementation
 // =====================================
 
@@ -207,11 +305,11 @@ void ChannelStrip::CreateControls()
     fTrackName->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
     mainLayout->AddView(fTrackName);
 
-    // ONLY volume fader - no VU meter in strip (saves space)
+    // Professional realistic fader with 3D metallic appearance
     float faderHeight = VeniceDAW::VeniceTheme::FADER_HEIGHT;
-    fVolumeSlider = new BSlider("volume", nullptr,  // No label to save space
-                               new BMessage(MSG_VOLUME_CHANGED),
-                               0, 200, B_VERTICAL);
+    fVolumeSlider = new ProfessionalFader("volume", nullptr,  // No label to save space
+                                          new BMessage(MSG_VOLUME_CHANGED),
+                                          0, 200, B_VERTICAL);
     fVolumeSlider->SetValue((int)(fTrack->GetVolume() * 100));
     fVolumeSlider->SetTarget(this);
     fVolumeSlider->SetLimitLabels("0", "");  // Only bottom label
@@ -222,10 +320,10 @@ void ChannelStrip::CreateControls()
     fVolumeSlider->SetExplicitPreferredSize(BSize(54, faderHeight));
     mainLayout->AddView(fVolumeSlider);
 
-    // Compact pan control - minimal height
-    fPanSlider = new BSlider("pan", nullptr,  // No label
-                            new BMessage(MSG_PAN_CHANGED),
-                            -100, 100, B_HORIZONTAL);
+    // Compact pan control with professional appearance
+    fPanSlider = new ProfessionalFader("pan", nullptr,  // No label
+                                       new BMessage(MSG_PAN_CHANGED),
+                                       -100, 100, B_HORIZONTAL);
     fPanSlider->SetValue((int)(fTrack->GetPan() * 100));
     fPanSlider->SetTarget(this);
     fPanSlider->SetLimitLabels("L", "R");

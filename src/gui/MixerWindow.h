@@ -58,6 +58,19 @@ private:
 };
 
 /*
+ * Professional fader with realistic 3D metallic appearance
+ */
+class ProfessionalFader : public BSlider {
+public:
+    ProfessionalFader(const char* name, const char* label, BMessage* message,
+                      int32 minValue, int32 maxValue, orientation posture = B_VERTICAL);
+    virtual ~ProfessionalFader();
+
+    virtual void DrawBar();
+    virtual void DrawThumb();
+};
+
+/*
  * Level meter - custom BView
  */
 class LevelMeter : public BView {
