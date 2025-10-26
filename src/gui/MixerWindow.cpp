@@ -105,7 +105,7 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
     if (!track) {
         // WARNING: Creating empty channel strip
         // Create a disabled/empty strip view
-        SetViewColor(VeniceDAW::VeniceTheme::Tint(VeniceDAW::VeniceTheme::PanelBackground(), B_DARKEN_2_TINT));
+        SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
         // SetEnabled(false); // Not available in BView
         return;
     }
@@ -114,7 +114,8 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
     // printf("ChannelStrip: Creating channel strip for track '%s' (ID: %d)\n",
     //        track->GetName(), track->GetId());
 
-    SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    // Professional dark gray background for channel strips
+    SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
 
     // Enable drag & drop for this channel strip
     SetFlags(Flags() | B_FRAME_EVENTS);

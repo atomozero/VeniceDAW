@@ -42,35 +42,64 @@ public:
         return color;
     }
 
+    // ===== Professional DAW UI Colors =====
+    // Modern, clean colors for professional audio workflow
+
+    static rgb_color ChannelStripBackground() {
+        rgb_color color = {50, 52, 54, 255};  // Dark charcoal gray (not brown!)
+        return color;
+    }
+
+    static rgb_color FaderGroove() {
+        rgb_color color = {35, 37, 39, 255};  // Very dark gray for groove
+        return color;
+    }
+
+    static rgb_color FaderThumb() {
+        rgb_color color = {180, 185, 190, 255};  // Light gray metallic
+        return color;
+    }
+
+    static rgb_color FaderThumbHighlight() {
+        rgb_color color = {220, 225, 230, 255};  // Bright highlight
+        return color;
+    }
+
+    static rgb_color FaderThumbShadow() {
+        rgb_color color = {100, 105, 110, 255};  // Dark shadow
+        return color;
+    }
+
     // ===== Professional DAW Track Colors =====
     // 12 distinct, saturated colors for clear visual distinction
 
     static rgb_color TrackColor(int index) {
+        // Professional, less saturated colors for better visibility
         static const rgb_color palette[] = {
-            {220, 80, 80, 255},    // Red
-            {220, 140, 60, 255},   // Orange
-            {210, 190, 50, 255},   // Yellow
-            {130, 190, 70, 255},   // Lime
-            {60, 180, 100, 255},   // Green
-            {50, 170, 160, 255},   // Teal
-            {60, 150, 220, 255},   // Sky Blue
-            {100, 120, 220, 255},  // Blue
-            {150, 90, 210, 255},   // Purple
-            {200, 80, 170, 255},   // Magenta
-            {210, 90, 120, 255},   // Pink
-            {160, 160, 160, 255}   // Gray
+            {180, 70, 70, 255},    // Red (desaturated)
+            {180, 120, 55, 255},   // Orange (desaturated)
+            {170, 160, 50, 255},   // Yellow (desaturated)
+            {110, 160, 65, 255},   // Lime (desaturated)
+            {55, 150, 90, 255},    // Green (desaturated)
+            {50, 140, 135, 255},   // Teal (desaturated)
+            {60, 130, 180, 255},   // Sky Blue (desaturated)
+            {85, 105, 180, 255},   // Blue (desaturated)
+            {130, 80, 175, 255},   // Purple (desaturated)
+            {165, 70, 145, 255},   // Magenta (desaturated)
+            {175, 80, 105, 255},   // Pink (desaturated)
+            {130, 130, 130, 255}   // Gray
         };
 
         return palette[index % 12];
     }
 
-    // Slightly darker version for track headers
+    // Much darker, subtle version for track headers (professional look)
     static rgb_color TrackHeaderColor(int index) {
         rgb_color base = TrackColor(index);
         return make_color(
-            (uint8)(base.red * 0.8f),
-            (uint8)(base.green * 0.8f),
-            (uint8)(base.blue * 0.8f),
+            (uint8)(base.red * 0.6f),
+            (uint8)(base.green * 0.6f),
+            (uint8)(base.blue * 0.6f),
             255
         );
     }
