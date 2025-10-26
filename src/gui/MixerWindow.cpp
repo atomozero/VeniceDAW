@@ -401,7 +401,7 @@ void ChannelStrip::CreateControls()
     fVolumeSlider->SetExplicitPreferredSize(BSize(54, faderHeight));
     mainLayout->AddView(fVolumeSlider);
 
-    // Compact pan control with professional appearance
+    // Pan control with professional appearance - larger for better usability
     fPanSlider = new ProfessionalFader("pan", nullptr,  // No label
                                        new BMessage(MSG_PAN_CHANGED),
                                        -100, 100, B_HORIZONTAL);
@@ -410,7 +410,9 @@ void ChannelStrip::CreateControls()
     fPanSlider->SetLimitLabels("L", "R");
     fPanSlider->SetModificationMessage(new BMessage(MSG_PAN_CHANGED));
     fPanSlider->SetHashMarks(B_HASH_MARKS_NONE);
-    fPanSlider->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 18));  // Very compact
+    fPanSlider->SetExplicitMinSize(BSize(50, 24));  // Taller for better visibility
+    fPanSlider->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 28));
+    fPanSlider->SetExplicitPreferredSize(BSize(54, 24));
     mainLayout->AddView(fPanSlider);
 
     // Hidden level meter (not displayed, but updated for master calculation)
