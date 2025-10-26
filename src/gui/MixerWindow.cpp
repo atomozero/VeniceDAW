@@ -725,13 +725,15 @@ void MixerWindow::CreateMixerView()
 {
     printf("MixerWindow: CreateMixerView() called\n");
     
-    // Main view with horizontal layout
+    // Main view with horizontal layout using VeniceTheme
     printf("MixerWindow: Creating main view...\n");
     fMainView = new BView("main_view", B_WILL_DRAW);
+    fMainView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     BGroupLayout* mainLayout = new BGroupLayout(B_HORIZONTAL);
     fMainView->SetLayout(mainLayout);
-    mainLayout->SetSpacing(10);
-    mainLayout->SetInsets(10, 10, 10, 10);
+    mainLayout->SetSpacing(VeniceDAW::VeniceTheme::MARGIN);
+    mainLayout->SetInsets(VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::MARGIN,
+                          VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::MARGIN);
     
     printf("MixerWindow: Creating channel strips...\n");
     CreateChannelStrips();
@@ -759,11 +761,12 @@ void MixerWindow::CreateMixerView()
 
 void MixerWindow::CreateChannelStrips()
 {
-    // Channel area (horizontal group of strips)
+    // Channel area (horizontal group of strips) with VeniceTheme spacing
     fChannelArea = new BView("channel_area", B_WILL_DRAW);
+    fChannelArea->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     BGroupLayout* channelLayout = new BGroupLayout(B_HORIZONTAL);
     fChannelArea->SetLayout(channelLayout);
-    channelLayout->SetSpacing(5);
+    channelLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     
     // Get current track count
     int totalTracks = fEngine->GetTrackCount();
@@ -820,30 +823,34 @@ void MixerWindow::CreateChannelStrips()
 
 void MixerWindow::CreateMasterSection()
 {
-    // Master section (right side)
+    // Master section (right side) with VeniceTheme styling
     fMasterSection = new BBox("master_section");
     fMasterSection->SetLabel("Master");
-    
+
     BGroupLayout* masterLayout = new BGroupLayout(B_VERTICAL);
     fMasterSection->SetLayout(masterLayout);
-    masterLayout->SetSpacing(10);
-    masterLayout->SetInsets(10, 15, 10, 10);
-    
-    // Transport controls
+    masterLayout->SetSpacing(VeniceDAW::VeniceTheme::MARGIN);
+    masterLayout->SetInsets(VeniceDAW::VeniceTheme::MARGIN, 15,
+                            VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::MARGIN);
+
+    // Transport controls with VeniceTheme
     BGroupLayout* transportLayout = new BGroupLayout(B_HORIZONTAL);
+    transportLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* transportView = new BView("transport", B_WILL_DRAW);
     transportView->SetLayout(transportLayout);
-    
+
     fPlayButton = new BButton("play", "Play", new BMessage(MSG_PLAY));
+    fPlayButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
     fStopButton = new BButton("stop", "Stop", new BMessage(MSG_STOP));
-    
+    fStopButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+
     transportLayout->AddView(fPlayButton);
     transportLayout->AddView(fStopButton);
     masterLayout->AddView(transportView);
-    
-    // Master VU meters and volume (horizontal layout)
+
+    // Master VU meters and volume with VeniceTheme spacing
     BGroupLayout* metersLayout = new BGroupLayout(B_HORIZONTAL);
-    metersLayout->SetSpacing(5);
+    metersLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* metersContainer = new BView("master_meters", B_WILL_DRAW);
     metersContainer->SetLayout(metersLayout);
     
