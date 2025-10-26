@@ -4,6 +4,7 @@
 
 #include "MixerWindow.h"
 #include "../audio/SimpleHaikuEngine.h"
+#include "../audio/LevelMeterMapper.h"
 #include "AudioPreviewPanel.h"
 #include "3DMixImportDialog.h"
 #include <Alert.h>
@@ -465,32 +466,43 @@ void LevelMeter::GetPreferredSize(float* width, float* height)
 void LevelMeter::Draw(BRect updateRect)
 {
     BRect bounds = Bounds();
-    
+
     // Background
     SetHighColor(50, 50, 50);
     FillRect(bounds);
-    
+
     // Border
     SetHighColor(0, 0, 0);
     StrokeRect(bounds);
-    
+
     if (fRMSLevel > 0 || fPeakLevel > 0) {
         float height = bounds.Height() - 2;
-        
-        // RMS level (average) - green
+
+        // Get color mapper instance
+        const LevelMeterMapper& mapper = LevelMeterMapper::GetInstance();
+
+        // RMS level (average) - smooth gradient based on level
         if (fRMSLevel > 0) {
             float rmsHeight = fRMSLevel * height;
-            SetHighColor(0, 255, 0);  // Green
-            BRect rmsRect(bounds.left + 1, bounds.bottom - 1 - rmsHeight, 
+
+            // Use mapper to get color based on actual level
+            auto color = mapper.GetColor(fRMSLevel);
+            SetHighColor(color.r, color.g, color.b);
+
+            BRect rmsRect(bounds.left + 1, bounds.bottom - 1 - rmsHeight,
                          bounds.right - 1, bounds.bottom - 1);
             FillRect(rmsRect);
         }
-        
-        // Peak level - red line
+
+        // Peak level - colored line based on peak value
         if (fPeakLevel > 0) {
             float peakY = bounds.bottom - 1 - (fPeakLevel * height);
-            SetHighColor(255, 0, 0);  // Red
-            StrokeLine(BPoint(bounds.left + 1, peakY), 
+
+            // Use mapper for peak color (will be red if clipping)
+            auto peakColor = mapper.GetColor(fPeakLevel);
+            SetHighColor(peakColor.r, peakColor.g, peakColor.b);
+
+            StrokeLine(BPoint(bounds.left + 1, peakY),
                       BPoint(bounds.right - 1, peakY));
         }
     }

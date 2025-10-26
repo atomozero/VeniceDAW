@@ -58,7 +58,8 @@ AUDIO_HAIKU_SRCS = \
 	src/audio/AudioBufferPool.cpp \
 	src/audio/AudioLogging.cpp \
 	src/audio/AudioLevelCalculator.cpp \
-	src/audio/AsyncAudioWriter.cpp
+	src/audio/AsyncAudioWriter.cpp \
+	src/audio/LevelMeterMapper.cpp
 
 NATIVE_TEST_SRCS = \
 	src/main_simple_native.cpp
