@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pkgman install:*)",
+      "Bash(make:*)",
+      "Bash(git pull:*)",
+      "Bash(git commit:*)",
+      "Bash(git reset:*)",
+      "Bash(git fetch:*)",
+      "Bash(git add:*)",
+      "Bash(git rebase:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

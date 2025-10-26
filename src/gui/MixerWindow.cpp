@@ -30,8 +30,8 @@ namespace HaikuDAW {
 ToggleButton::ToggleButton(const char* name, const char* label, BMessage* message)
     : BButton(name, label, message)
     , fToggled(false)
-    , fNormalColor({216, 216, 216, 255})  // Light grey
-    , fPressedColor({255, 100, 100, 255})  // Light red
+    , fNormalColor(VeniceDAW::VeniceTheme::ControlBackground())
+    , fPressedColor({255, 100, 100, 255})  // Will be customized per button
 {
 }
 
@@ -105,16 +105,16 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
     if (!track) {
         // WARNING: Creating empty channel strip
         // Create a disabled/empty strip view
-        SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT));
+        SetViewColor(VeniceDAW::VeniceTheme::Tint(VeniceDAW::VeniceTheme::PanelBackground(), B_DARKEN_2_TINT));
         // SetEnabled(false); // Not available in BView
         return;
     }
-    
+
     // Debug logging commented out - uncomment if needed
     // printf("ChannelStrip: Creating channel strip for track '%s' (ID: %d)\n",
     //        track->GetName(), track->GetId());
 
-    SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+    SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
 
     // Enable drag & drop for this channel strip
     SetFlags(Flags() | B_FRAME_EVENTS);
@@ -135,13 +135,15 @@ void ChannelStrip::CreateControls()
     // Create main vertical layout
     BGroupLayout* mainLayout = new BGroupLayout(B_VERTICAL);
     SetLayout(mainLayout);
-    mainLayout->SetSpacing(5);
-    mainLayout->SetInsets(5, 5, 5, 5);
+    mainLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
+    mainLayout->SetInsets(VeniceDAW::VeniceTheme::PADDING, VeniceDAW::VeniceTheme::PADDING,
+                          VeniceDAW::VeniceTheme::PADDING, VeniceDAW::VeniceTheme::PADDING);
 
-    // Set channel strip size - compact but functional
-    SetExplicitMinSize(BSize(120, 350));
-    SetExplicitMaxSize(BSize(150, 450));
-    SetExplicitPreferredSize(BSize(130, 380));
+    // Set channel strip size - professional compact layout
+    float stripWidth = VeniceDAW::VeniceTheme::CHANNEL_STRIP_WIDTH;
+    SetExplicitMinSize(BSize(stripWidth, 350));
+    SetExplicitMaxSize(BSize(stripWidth, 450));
+    SetExplicitPreferredSize(BSize(stripWidth, 380));
 
     // Apply track color if available
     if (fTrack) {
@@ -398,8 +400,13 @@ void ChannelStrip::DragEnter(BMessage* message)
     if (message && (message->what == B_SIMPLE_DATA || message->what == B_REFS_RECEIVED)) {
         entry_ref ref;
         if (message->FindRef("refs", 0, &ref) == B_OK) {
-            // Visual feedback: highlight the channel strip
-            SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_LIGHTEN_MAX_TINT));
+            // Visual feedback: highlight with accent color
+            rgb_color highlight = VeniceDAW::VeniceTheme::Blend(
+                VeniceDAW::VeniceTheme::PanelBackground(),
+                VeniceDAW::VeniceTheme::AccentColor(),
+                0.2f
+            );
+            SetViewColor(highlight);
             Invalidate();
         }
     }
@@ -407,15 +414,25 @@ void ChannelStrip::DragEnter(BMessage* message)
 
 void ChannelStrip::DragLeave()
 {
-    // Remove highlight
-    SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+    // Remove highlight - restore track color if available
+    if (fTrack) {
+        const TrackColor& trackColor = TrackColorManager::GetColorByIndex(fTrack->GetColorIndex());
+        SetViewColor(fTrack->IsMuted() ? trackColor.muted : trackColor.normal);
+    } else {
+        SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    }
     Invalidate();
 }
 
 void ChannelStrip::Drop(BMessage* message, BPoint where)
 {
-    // Remove highlight first
-    SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+    // Remove highlight first - restore track color
+    if (fTrack) {
+        const TrackColor& trackColor = TrackColorManager::GetColorByIndex(fTrack->GetColorIndex());
+        SetViewColor(fTrack->IsMuted() ? trackColor.muted : trackColor.normal);
+    } else {
+        SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+    }
     Invalidate();
 
     if (!message || !fTrack) return;
@@ -520,8 +537,9 @@ void LevelMeter::Draw(BRect updateRect)
 {
     BRect bounds = Bounds();
 
-    // Background
-    SetHighColor(50, 50, 50);
+    // Background - use VeniceTheme meter background
+    rgb_color bgColor = VeniceDAW::VeniceTheme::MeterBackground();
+    SetHighColor(bgColor);
     FillRect(bounds);
 
     // Border
