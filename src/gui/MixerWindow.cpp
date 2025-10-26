@@ -207,60 +207,30 @@ void ProfessionalFader::DrawThumb()
     // Professional DAW-style fader cap inspired by hardware mixing consoles
     // Uses realistic metallic appearance with specular highlights
 
-    // OUTER BORDER: Dark beveled edge (like real metal cap)
-    rgb_color darkEdge = make_color(60, 60, 65, 255);
-    SetHighColor(darkEdge);
+    // STRONG BLACK OUTER BORDER for maximum visibility
+    SetHighColor(make_color(20, 20, 25, 255));
     FillRect(thumbRect);
 
-    // INNER SURFACE: Inset by 2 pixels for beveled edge effect
+    // INNER SURFACE: Inset by 1 pixel
     BRect innerRect = thumbRect;
-    innerRect.InsetBy(2, 2);
+    innerRect.InsetBy(1, 1);
 
-    // HIGH-CONTRAST METALLIC GRADIENT (horizontal for wider thumbs)
-    // More visible gradient from left to right simulating curved metallic surface
+    // SIMPLE HIGH-CONTRAST 3-ZONE GRADIENT (easier to see)
     float width = innerRect.Width();
 
     for (int x = 0; x < (int)width; x++) {
         float ratio = (float)x / width;
-
-        // Create strong left-to-right gradient simulating curved chrome surface
         rgb_color bandColor;
 
-        if (ratio < 0.2f) {
-            // Left 20%: Dark shadow edge
-            float t = ratio / 0.2f;
-            bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(70, 75, 80, 255),    // Dark edge
-                make_color(120, 125, 130, 255), // Mid-dark
-                t
-            );
-        } else if (ratio < 0.45f) {
-            // 20-45%: Rise to bright highlight
-            float t = (ratio - 0.2f) / 0.25f;
-            bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(120, 125, 130, 255), // Mid-dark
-                make_color(240, 245, 250, 255), // Almost white
-                t
-            );
-        } else if (ratio < 0.55f) {
-            // 45-55%: Center bright highlight (peak reflection)
-            bandColor = make_color(240, 245, 250, 255);
-        } else if (ratio < 0.80f) {
-            // 55-80%: Fade back down
-            float t = (ratio - 0.55f) / 0.25f;
-            bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(240, 245, 250, 255), // Almost white
-                make_color(120, 125, 130, 255), // Mid-dark
-                t
-            );
+        if (ratio < 0.33f) {
+            // Left third: Dark
+            bandColor = make_color(80, 85, 90, 255);
+        } else if (ratio < 0.67f) {
+            // Center third: BRIGHT highlight
+            bandColor = make_color(245, 250, 255, 255);
         } else {
-            // 80-100%: Dark shadow edge
-            float t = (ratio - 0.80f) / 0.2f;
-            bandColor = VeniceDAW::VeniceTheme::Blend(
-                make_color(120, 125, 130, 255), // Mid-dark
-                make_color(70, 75, 80, 255),    // Dark edge
-                t
-            );
+            // Right third: Dark
+            bandColor = make_color(80, 85, 90, 255);
         }
 
         SetHighColor(bandColor);
