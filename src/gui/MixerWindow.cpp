@@ -203,25 +203,35 @@ void ProfessionalFader::DrawThumb()
                    BPoint(thumbRect.right, thumbRect.top + y));
     }
 
-    // Draw 3D border for depth
-    // Bright highlight on top and left (light source from top-left)
+    // Draw strong 3D border for depth and visibility
+    // Bright highlight on top and left (light source from top-left) - double line
     SetHighColor(VeniceDAW::VeniceTheme::FaderThumbHighlight());
     StrokeLine(thumbRect.LeftTop(), thumbRect.RightTop());
     StrokeLine(thumbRect.LeftTop(), thumbRect.LeftBottom());
+    // Second highlight line for more prominence
+    thumbRect.InsetBy(1, 1);
+    StrokeLine(thumbRect.LeftTop(), thumbRect.RightTop());
+    StrokeLine(thumbRect.LeftTop(), thumbRect.LeftBottom());
+    thumbRect.InsetBy(-1, -1);
 
-    // Dark shadow on bottom and right (depth)
+    // Dark shadow on bottom and right (depth) - double line
     SetHighColor(VeniceDAW::VeniceTheme::FaderThumbShadow());
     StrokeLine(thumbRect.RightTop(), thumbRect.RightBottom());
     StrokeLine(thumbRect.LeftBottom(), thumbRect.RightBottom());
+    // Second shadow line for more depth
+    thumbRect.InsetBy(1, 1);
+    StrokeLine(thumbRect.RightTop(), thumbRect.RightBottom());
+    StrokeLine(thumbRect.LeftBottom(), thumbRect.RightBottom());
+    thumbRect.InsetBy(-1, -1);
 
-    // Draw center grip lines (3 thin vertical lines)
-    SetHighColor(VeniceDAW::VeniceTheme::Dim(thumbBase, 0.7f));
+    // Draw center grip lines (5 darker vertical lines for better visibility)
+    SetHighColor(VeniceDAW::VeniceTheme::Dim(thumbBase, 0.5f));  // Darker grip lines
     float centerX = thumbRect.left + thumbRect.Width() / 2.0f;
-    float gripTop = thumbRect.top + thumbRect.Height() * 0.3f;
-    float gripBottom = thumbRect.bottom - thumbRect.Height() * 0.3f;
+    float gripTop = thumbRect.top + thumbRect.Height() * 0.25f;
+    float gripBottom = thumbRect.bottom - thumbRect.Height() * 0.25f;
 
-    for (int i = -1; i <= 1; i++) {
-        float x = centerX + i * 3.0f;
+    for (int i = -2; i <= 2; i++) {  // 5 lines instead of 3
+        float x = centerX + i * 2.5f;
         StrokeLine(BPoint(x, gripTop), BPoint(x, gripBottom));
     }
 }
