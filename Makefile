@@ -79,7 +79,8 @@ GUI_SRCS = \
 	src/gui/TrackColors.cpp \
 	src/gui/TimelineWindow.cpp \
 	src/gui/WaveformView.cpp \
-	src/gui/UnifiedWindow.cpp
+	src/gui/UnifiedWindow.cpp \
+	src/gui/VeniceTheme.cpp
 
 # Phase 4 Spatial Audio GUI Components
 SPATIAL_GUI_SRCS = \
