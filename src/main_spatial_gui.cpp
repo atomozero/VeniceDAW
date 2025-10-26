@@ -66,8 +66,14 @@ public:
             trackName << "Track " << (i + 1);
             // Create empty track without audio content
             fEngine->CreateEmptyTrack(trackName.String());
+            // IMPORTANT: Mute tracks by default to avoid test signal noise
+            // Tracks will be unmuted when user loads audio files
+            HaikuDAW::SimpleTrack* track = fEngine->GetTrack(i);
+            if (track) {
+                track->SetMute(true);
+            }
         }
-        printf("✅ %d empty tracks created\n", fEngine->GetTrackCount());
+        printf("✅ %d empty tracks created (muted by default)\n", fEngine->GetTrackCount());
         
         // Initialize advanced audio processor with spatial capabilities
         fAudioProcessor = new VeniceDAW::AdvancedAudioProcessor();
