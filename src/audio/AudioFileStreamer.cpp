@@ -350,8 +350,8 @@ void AudioFileStreamer::_FillRingBuffer()
     if (status != B_OK || framesRead == 0) {
         // End of file - loop back if enabled
         if (fLoopEnabled) {
-            fMediaTrack->SeekToFrame(&fPlaybackFrame);
             int64 newFrame = 0;
+            fMediaTrack->SeekToFrame(&newFrame);
             fPlaybackFrame = newFrame;
 
             // Try reading again from beginning

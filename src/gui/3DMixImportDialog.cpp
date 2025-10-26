@@ -791,7 +791,8 @@ void ImportConfigPanel::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
 		case MSG_CONFIG_CHANGED:
-			UpdatePreview();
+			// TODO: UpdatePreview() needs refactoring - requires parent dialog reference
+			// UpdatePreview();
 			break;
 		default:
 			BView::MessageReceived(message);
@@ -811,6 +812,13 @@ void ImportConfigPanel::AttachedToWindow()
 		fOpen3DMixerCheck->SetTarget(this);
 }
 
+/*
+// TODO: UpdatePreview() needs refactoring - ImportConfigPanel doesn't own fPreviewView/fPreviewStatus
+// These members belong to ThreeDMixImportDialog. Need to either:
+// 1. Pass parent dialog reference to ImportConfigPanel, or
+// 2. Move preview members to ImportConfigPanel, or
+// 3. Send message to parent dialog to trigger preview update
+
 void ImportConfigPanel::UpdatePreview()
 {
 	// Update the preview when configuration changes
@@ -822,26 +830,29 @@ void ImportConfigPanel::UpdatePreview()
 	ImportConfiguration config = GetConfiguration();
 
 	// Update preview view with new coordinate conversion mode
-	fPreviewView->SetConversionMode(config.coordinateConversion);
-	fPreviewView->SetSpatialization(config.spatializationStandard);
+	fPreviewView->SetConversionMode(config.coordMode);
+	fPreviewView->SetSpatialization(config.spatialStd);
 
 	// Update preview status text
 	if (fPreviewStatus) {
 		BString statusText;
 		statusText.SetToFormat("Mode: %s | Standard: %s",
-			config.coordinateConversion == COORD_CONVERSION_NONE ? "Direct" :
-			config.coordinateConversion == COORD_CONVERSION_NORMALIZED ? "Normalized" :
-			config.coordinateConversion == COORD_CONVERSION_SPHERICAL ? "Spherical" : "Haiku Mixer",
-			config.spatializationStandard == SPATIALIZATION_STEREO ? "Stereo" :
-			config.spatializationStandard == SPATIALIZATION_5_1 ? "5.1 Surround" :
-			config.spatializationStandard == SPATIALIZATION_7_1 ? "7.1 Surround" :
-			config.spatializationStandard == SPATIALIZATION_AMBISONIC ? "Ambisonic" : "Binaural");
+			config.coordMode == CONVERSION_DIRECT_SCALE ? "Direct" :
+			config.coordMode == CONVERSION_NORMALIZED_CUBE ? "Normalized" :
+			config.coordMode == CONVERSION_SPHERICAL ? "Spherical" :
+			config.coordMode == CONVERSION_CYLINDRICAL ? "Cylindrical" : "Ambisonics",
+			config.spatialStd == STANDARD_BINAURAL ? "Binaural/Stereo" :
+			config.spatialStd == STANDARD_SURROUND_5_1 ? "5.1 Surround" :
+			config.spatialStd == STANDARD_SURROUND_7_1 ? "7.1 Surround" :
+			config.spatialStd == STANDARD_AMBISONICS_1ST ? "Ambisonic 1st" :
+			config.spatialStd == STANDARD_AMBISONICS_2ND ? "Ambisonic 2nd" : "Generic 3D");
 
 		fPreviewStatus->SetText(statusText.String());
 	}
 
 	AUDIO_LOG_DEBUG("3DMixImportDialog", "Preview updated with new configuration");
 }
+*/
 
 // =====================================
 // ThreeDMixUIUtils Implementation (stub)

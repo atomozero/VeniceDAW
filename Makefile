@@ -59,6 +59,8 @@ AUDIO_HAIKU_SRCS = \
 	src/audio/AudioLogging.cpp \
 	src/audio/AudioLevelCalculator.cpp \
 	src/audio/AsyncAudioWriter.cpp \
+	src/audio/AudioFileStreamer.cpp \
+	src/audio/MemoryMonitor.cpp \
 	src/audio/LevelMeterMapper.cpp \
 	src/audio/BiquadFilter.cpp
 

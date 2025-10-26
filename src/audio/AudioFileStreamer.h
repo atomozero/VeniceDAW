@@ -9,6 +9,7 @@
 #include <media/MediaFile.h>
 #include <media/MediaTrack.h>
 #include <storage/Entry.h>
+#include <support/String.h>
 #include <kernel/OS.h>
 #include <atomic>
 
