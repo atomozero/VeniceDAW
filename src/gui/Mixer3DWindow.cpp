@@ -28,12 +28,17 @@ Mixer3DView::Mixer3DView(BRect frame, SimpleHaikuEngine* engine)
     , fAnimationTime(0.0f)
     , fGLLocker("3D Mixer GL Lock")
     , fCameraDirty(true)  // Initial cache computation needed
+    , fLastUpdateTime(system_time())
 {
     fCameraTarget[0] = 0.0f;
     fCameraTarget[1] = 0.0f;
     fCameraTarget[2] = 0.0f;
 
+    // Particle system starts disabled (can be enabled via menu)
+    fParticleSystem.SetEnabled(false);
+
     printf("Mixer3DView: Created 3D OpenGL view with thread-safe locking\n");
+    printf("Mixer3DView: Particle system initialized (disabled by default)\n");
 }
 
 Mixer3DView::~Mixer3DView()
@@ -220,6 +225,14 @@ void Mixer3DView::RenderScene()
         DrawTrack3D(track);
     }
 
+    // Update and render particle system
+    bigtime_t currentTime = system_time();
+    float deltaTime = (currentTime - fLastUpdateTime) / 1000000.0f;  // Convert to seconds
+    fLastUpdateTime = currentTime;
+
+    fParticleSystem.Update(deltaTime);
+    fParticleSystem.Render();
+
     fAnimationTime += 0.02f;  // Animation speed
 }
 
@@ -339,7 +352,7 @@ void Mixer3DView::AnimateScene()
     // Animate track properties using REAL audio data
     for (size_t i = 0; i < f3DTracks.size(); i++) {
         Track3D& track3d = f3DTracks[i];
-        
+
         if (fEngine && (int)i < fEngine->GetTrackCount()) {
             SimpleTrack* audioTrack = fEngine->GetTrack(i);
             if (audioTrack) {
@@ -353,6 +366,12 @@ void Mixer3DView::AnimateScene()
                     track3d.scale = 0.5f + audioTrack->GetVolume() * 0.5f;
                     track3d.levelHeight = audioTrack->GetPeakLevel() * 2.0f;
                     track3d.rotation += audioTrack->GetRMSLevel() * 50.0f;
+
+                    // Emit particles from active tracks
+                    float audioLevel = audioTrack->GetRMSLevel();
+                    if (audioLevel > 0.05f) {  // Only emit for audible signal
+                        fParticleSystem.EmitFromTrack(i, track3d.x, track3d.y + 1.0f, track3d.z, audioLevel);
+                    }
                 }
             }
         } else {
@@ -788,6 +807,17 @@ void Mixer3DView::UpdateCameraCache()
     fCachedCameraZ = fCameraTarget[2] + fCameraDistance * sinY * cosX;
 
     fCameraDirty = false;  // Mark cache as valid
+}
+
+void Mixer3DView::SetParticlesEnabled(bool enabled)
+{
+    fParticleSystem.SetEnabled(enabled);
+    printf("Mixer3DView: Particle system %s\n", enabled ? "enabled" : "disabled");
+}
+
+bool Mixer3DView::AreParticlesEnabled() const
+{
+    return fParticleSystem.IsEnabled();
 }
 
 } // namespace HaikuDAW

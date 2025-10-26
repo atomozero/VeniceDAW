@@ -19,6 +19,7 @@
 #include <GL/glu.h>
 #include <vector>
 #include <math.h>
+#include "AudioParticleSystem.h"
 
 namespace HaikuDAW {
 
@@ -80,6 +81,10 @@ public:
     void ZoomCamera(float zoom);
     void ResetCamera();
 
+    // Particle system controls
+    void SetParticlesEnabled(bool enabled);
+    bool AreParticlesEnabled() const;
+
 protected:
     // Engine reference (protected for SpatialMixer3DView access)
     SimpleHaikuEngine* fEngine;
@@ -114,6 +119,10 @@ private:
     float fCachedCameraX;
     float fCachedCameraY;
     float fCachedCameraZ;
+
+    // Particle system
+    AudioParticleSystem fParticleSystem;
+    bigtime_t fLastUpdateTime;
 
     // Private OpenGL helpers
     void DrawGrid();

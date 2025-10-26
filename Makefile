@@ -70,7 +70,8 @@ GUI_SRCS = \
 	src/gui/Mixer3DWindow.cpp \
 	src/gui/SuperMasterWindow.cpp \
 	src/gui/BenchmarkWindow.cpp \
-	src/gui/AudioPreviewPanel.cpp
+	src/gui/AudioPreviewPanel.cpp \
+	src/gui/AudioParticleSystem.cpp
 
 # Phase 4 Spatial Audio GUI Components
 SPATIAL_GUI_SRCS = \
