@@ -3,6 +3,7 @@
  */
 
 #include "TimelineWindow.h"
+#include "VeniceTheme.h"
 #include "../audio/SimpleHaikuEngine.h"
 #include "TrackColors.h"
 #include "WaveformView.h"
@@ -29,7 +30,7 @@ TimeRulerView::TimeRulerView(BRect frame)
     , fPlayheadFrame(0)
     , fPixelsPerSecond(100.0f)
 {
-    SetViewColor(40, 40, 40);
+    SetViewColor(VeniceDAW::VeniceTheme::DocumentBackground());
 }
 
 TimeRulerView::~TimeRulerView()

@@ -1,11 +1,12 @@
 /*
  * SpatialMixer3DWindow.cpp - Phase 4 Spatial Audio Integration Implementation
- * 
+ *
  * Professional spatial audio integration for VeniceDAW's 3D mixer interface.
  * Maintains <10ms audio latency while providing real-time visual feedback.
  */
 
 #include "SpatialMixer3DWindow.h"
+#include "VeniceTheme.h"
 #include "../audio/SimpleHaikuEngine.h"
 #include "../benchmark/PerformanceStation.h"
 #include <app/Application.h>

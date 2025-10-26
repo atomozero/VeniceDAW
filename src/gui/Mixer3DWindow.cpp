@@ -4,6 +4,7 @@
  */
 
 #include "Mixer3DWindow.h"
+#include "VeniceTheme.h"
 #include "../audio/SimpleHaikuEngine.h"
 #include "../benchmark/PerformanceStation.h"  // Per i RAII guards
 #include <Application.h>

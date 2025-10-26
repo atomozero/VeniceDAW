@@ -4,6 +4,7 @@
 
 #include "SuperMasterWindow.h"
 #include "MixerWindow.h"  // For LevelMeter class
+#include "VeniceTheme.h"
 #include "../audio/SimpleHaikuEngine.h"
 #include <Alert.h>
 #include <Application.h>
@@ -63,14 +64,15 @@ void SuperMasterWindow::CreateControls()
 {
     // Creating controls
     
-    // Create main view with proper background color
+    // Create main view with VeniceTheme background
     fMainView = new BView("super_main_view", B_WILL_DRAW);
-    fMainView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-    
-    // Create horizontal layout like other masters (VU meter | Volume slider)
+    fMainView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+
+    // Create horizontal layout using VeniceTheme spacing
     BGroupLayout* mainLayout = new BGroupLayout(B_HORIZONTAL);
-    mainLayout->SetSpacing(8);
-    mainLayout->SetInsets(15, 15, 15, 15);
+    mainLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
+    mainLayout->SetInsets(VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::MARGIN,
+                          VeniceDAW::VeniceTheme::MARGIN, VeniceDAW::VeniceTheme::MARGIN);
     fMainView->SetLayout(mainLayout);
     
     AddChild(fMainView);
@@ -79,10 +81,10 @@ void SuperMasterWindow::CreateControls()
     
     // Left VU meter
     BGroupLayout* leftMeterLayout = new BGroupLayout(B_VERTICAL);
-    leftMeterLayout->SetSpacing(3);
+    leftMeterLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* leftMeterView = new BView("left_meter", B_WILL_DRAW);
     leftMeterView->SetLayout(leftMeterLayout);
-    leftMeterView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+    leftMeterView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     
     BStringView* leftLabel = new BStringView("left_label", "L");
     leftLabel->SetAlignment(B_ALIGN_CENTER);
