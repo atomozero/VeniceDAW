@@ -1165,6 +1165,10 @@ void MixerWindow::CreateMasterSection()
     
     BStringView* leftLabel = new BStringView("left_label", "L");
     leftLabel->SetAlignment(B_ALIGN_CENTER);
+    leftLabel->SetHighColor(make_color(255, 255, 255, 255));  // White for visibility
+    BFont labelFont(be_bold_font);
+    labelFont.SetSize(12.0f);
+    leftLabel->SetFont(&labelFont);
     leftMeterLayout->AddView(leftLabel);
     
     fMasterLevelLeft = new LevelMeter();
@@ -1182,6 +1186,10 @@ void MixerWindow::CreateMasterSection()
     
     BStringView* rightLabel = new BStringView("right_label", "R");
     rightLabel->SetAlignment(B_ALIGN_CENTER);
+    rightLabel->SetHighColor(make_color(255, 255, 255, 255));  // White for visibility
+    BFont labelFont2(be_bold_font);
+    labelFont2.SetSize(12.0f);
+    rightLabel->SetFont(&labelFont2);
     rightMeterLayout->AddView(rightLabel);
     
     fMasterLevelRight = new LevelMeter();
