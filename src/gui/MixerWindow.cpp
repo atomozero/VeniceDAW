@@ -1217,10 +1217,10 @@ void MixerWindow::CreateMasterSection()
     statusFont.SetSize(12.0f);
     fStatusDisplay->SetFont(&statusFont);
 
-    // Dark background with green text (LED display style)
-    fStatusDisplay->SetViewColor(make_color(30, 30, 35, 255));
-    fStatusDisplay->SetLowColor(make_color(30, 30, 35, 255));
-    fStatusDisplay->SetHighColor(make_color(80, 255, 80, 255));  // Bright green
+    // Dark background with Akai orange text (LED display style)
+    fStatusDisplay->SetViewColor(make_color(20, 20, 25, 255));   // Darker black for Akai
+    fStatusDisplay->SetLowColor(make_color(20, 20, 25, 255));
+    fStatusDisplay->SetHighColor(make_color(255, 140, 0, 255));  // Akai vibrant orange
 
     // Minimum height for better visibility
     fStatusDisplay->SetExplicitMinSize(BSize(B_SIZE_UNSET, 28));
