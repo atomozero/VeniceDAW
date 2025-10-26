@@ -744,6 +744,22 @@ void LevelMeter::Draw(BRect updateRect)
     SetHighColor(bgColor);
     FillRect(bounds);
 
+    // Draw dB scale marks for professional appearance
+    SetHighColor(make_color(80, 80, 80, 255));
+    float height = bounds.Height() - 2;
+
+    // Major marks every 12dB: 0dB (top), -12dB, -24dB, -36dB, -48dB
+    for (int db = 0; db >= -48; db -= 12) {
+        float ratio = (float)(-db) / 60.0f;  // -60dB = bottom
+        float y = bounds.bottom - 1 - (ratio * height);
+
+        if (y >= bounds.top + 1 && y <= bounds.bottom - 1) {
+            // Short line on right side
+            StrokeLine(BPoint(bounds.right - 4, y),
+                       BPoint(bounds.right - 1, y));
+        }
+    }
+
     // Border
     SetHighColor(0, 0, 0);
     StrokeRect(bounds);
