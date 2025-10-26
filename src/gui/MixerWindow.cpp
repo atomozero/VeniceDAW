@@ -1200,9 +1200,24 @@ void MixerWindow::CreateMasterSection()
     
     masterLayout->AddView(metersContainer);
     
-    // Status display
-    fStatusDisplay = new BStringView("status", "Ready");
+    // Professional status display with LED-style appearance
+    fStatusDisplay = new BStringView("status", "READY");
     fStatusDisplay->SetAlignment(B_ALIGN_CENTER);
+
+    // Bold font for better visibility
+    BFont statusFont(be_bold_font);
+    statusFont.SetSize(12.0f);
+    fStatusDisplay->SetFont(&statusFont);
+
+    // Dark background with green text (LED display style)
+    fStatusDisplay->SetViewColor(make_color(30, 30, 35, 255));
+    fStatusDisplay->SetLowColor(make_color(30, 30, 35, 255));
+    fStatusDisplay->SetHighColor(make_color(80, 255, 80, 255));  // Bright green
+
+    // Minimum height for better visibility
+    fStatusDisplay->SetExplicitMinSize(BSize(B_SIZE_UNSET, 28));
+    fStatusDisplay->SetExplicitPreferredSize(BSize(B_SIZE_UNSET, 30));
+
     masterLayout->AddView(fStatusDisplay);
     
     fMainView->GetLayout()->AddView(fMasterSection);
@@ -1323,10 +1338,10 @@ void MixerWindow::MessageReceived(BMessage* message)
             if (fEngine) {
                 status_t result = fEngine->Start();
                 if (result == B_OK) {
-                    fStatusDisplay->SetText("Playing");
+                    fStatusDisplay->SetText("PLAYING");
                     printf("MixerWindow: Started audio engine\n");
                 } else {
-                    fStatusDisplay->SetText("Error");
+                    fStatusDisplay->SetText("ERROR");
                     printf("MixerWindow: Failed to start engine\n");
                 }
             }
@@ -1335,7 +1350,7 @@ void MixerWindow::MessageReceived(BMessage* message)
         case MSG_STOP:
             if (fEngine) {
                 fEngine->Stop();
-                fStatusDisplay->SetText("Stopped");
+                fStatusDisplay->SetText("STOPPED");
                 printf("MixerWindow: Stopped audio engine\n");
             }
             break;
