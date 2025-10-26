@@ -1067,7 +1067,7 @@ void SimpleHaikuEngine::_SyncAudioTracks()
 // Cortex Media Kit integration
 status_t SimpleHaikuEngine::RegisterCortexInputNodes()
 {
-    printf("SimpleHaikuEngine: Registering Cortex input nodes for %d tracks...\n", (int)fTracks.size());
+    printf("SimpleHaikuEngine: Registering Cortex multi-input node for %d tracks...\n", (int)fTracks.size());
 
     BMediaRoster* roster = BMediaRoster::Roster();
     if (!roster) {
@@ -1075,31 +1075,31 @@ status_t SimpleHaikuEngine::RegisterCortexInputNodes()
         return B_ERROR;
     }
 
-    // Create one input node per track
-    for (size_t i = 0; i < fTracks.size(); i++) {
-        SimpleTrack* track = fTracks[i];
-        if (!track) continue;
-
-        // Create input node for this track
-        BString nodeName;
-        nodeName << "VeniceDAW " << track->GetName();
-
-        VeniceAudioInputNode* node = new VeniceAudioInputNode(track, nodeName.String());
-
-        // Register with Media Roster
-        status_t result = roster->RegisterNode(node);
-        if (result != B_OK) {
-            printf("ERROR: Failed to register node '%s': %s\n",
-                   nodeName.String(), strerror(result));
-            delete node;
-            continue;
-        }
-
-        fCortexInputNodes.push_back(node);
-        printf("✅ Registered Cortex input: %s\n", nodeName.String());
+    // Create array of track pointers for the multi-input node
+    int32 trackCount = fTracks.size();
+    SimpleTrack** trackArray = new SimpleTrack*[trackCount];
+    for (int32 i = 0; i < trackCount; i++) {
+        trackArray[i] = fTracks[i];
     }
 
-    printf("SimpleHaikuEngine: %d Cortex input nodes registered\n", (int)fCortexInputNodes.size());
+    // Create ONE multi-input node with all tracks
+    VeniceAudioInputNode* node = new VeniceAudioInputNode(trackArray, trackCount, "VeniceDAW");
+
+    // Register with Media Roster
+    status_t result = roster->RegisterNode(node);
+    if (result != B_OK) {
+        printf("ERROR: Failed to register VeniceDAW input node: %s\n", strerror(result));
+        delete[] trackArray;
+        delete node;
+        return result;
+    }
+
+    fCortexInputNodes.push_back(node);
+    printf("✅ Registered Cortex multi-input node: VeniceDAW (%d inputs)\n", (int)trackCount);
+
+    // Note: trackArray is intentionally NOT deleted - it's owned by the node now
+    // The node will use it for the lifetime of the application
+
     return B_OK;
 }
 

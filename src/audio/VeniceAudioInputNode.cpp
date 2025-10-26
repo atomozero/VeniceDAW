@@ -19,13 +19,13 @@ namespace HaikuDAW {
 // Constructor / Destructor
 // ====================================
 
-VeniceAudioInputNode::VeniceAudioInputNode(SimpleTrack* track, const char* name)
+VeniceAudioInputNode::VeniceAudioInputNode(SimpleTrack** tracks, int32 trackCount, const char* name)
     : BMediaNode(name)
     , BBufferConsumer(B_MEDIA_RAW_AUDIO)
     , BMediaEventLooper()
-    , fTrack(track)
+    , fTracks(tracks)
+    , fTrackCount(trackCount)
     , fLock("VeniceInput Lock")
-    , fConnected(false)
     , fMonitoring(true)
     , fBuffersReceived(0)
     , fDroppedBuffers(0)
@@ -34,17 +34,27 @@ VeniceAudioInputNode::VeniceAudioInputNode(SimpleTrack* track, const char* name)
     , fConversionBuffer(nullptr)
     , fConversionBufferSize(0)
 {
-    printf("VeniceAudioInputNode: Created for track '%s'\n",
-           track ? track->GetName() : "NULL");
+    printf("VeniceAudioInputNode: Created with %d inputs\n", (int)trackCount);
 
-    // Initialize input descriptor
-    fInput.destination.port = ControlPort();
-    fInput.destination.id = 0;
-    fInput.node = Node();
-    fInput.source = media_source::null;
-    fInput.format.type = B_MEDIA_RAW_AUDIO;
-    fInput.name[0] = '\0';
-    strcpy(fInput.name, name);
+    // Initialize all inputs (up to MAX_INPUTS)
+    int32 numInputs = (trackCount < MAX_INPUTS) ? trackCount : MAX_INPUTS;
+
+    for (int32 i = 0; i < numInputs; i++) {
+        fInputs[i].destination.port = ControlPort();
+        fInputs[i].destination.id = i;
+        fInputs[i].node = Node();
+        fInputs[i].source = media_source::null;
+        fInputs[i].format.type = B_MEDIA_RAW_AUDIO;
+
+        // Name each input after its track
+        if (fTracks && fTracks[i]) {
+            snprintf(fInputs[i].name, B_MEDIA_NAME_LENGTH, "%s", fTracks[i]->GetName());
+        } else {
+            snprintf(fInputs[i].name, B_MEDIA_NAME_LENGTH, "Input %d", (int)(i + 1));
+        }
+
+        fInputConnected[i] = false;
+    }
 
     // Default format (will be negotiated with producer)
     fFormat.type = B_MEDIA_RAW_AUDIO;
@@ -60,13 +70,13 @@ VeniceAudioInputNode::~VeniceAudioInputNode()
 {
     printf("VeniceAudioInputNode: Destroying node\n");
 
-    // Ensure we're stopped
-    if (fConnected) {
-        BMediaRoster* roster = BMediaRoster::Roster();
-        if (roster && fInput.source != media_source::null) {
+    // Disconnect all connected inputs
+    BMediaRoster* roster = BMediaRoster::Roster();
+    for (int32 i = 0; i < MAX_INPUTS; i++) {
+        if (fInputConnected[i] && roster && fInputs[i].source != media_source::null) {
             media_output output;
-            output.source = fInput.source;
-            roster->Disconnect(output, fInput);
+            output.source = fInputs[i].source;
+            roster->Disconnect(output, fInputs[i]);
         }
     }
 
@@ -153,13 +163,15 @@ status_t VeniceAudioInputNode::AcceptFormat(const media_destination& dest,
 status_t VeniceAudioInputNode::GetNextInput(int32* cookie,
                                              media_input* out_input)
 {
-    if (*cookie != 0) {
-        // We only have one input
+    int32 numInputs = (fTrackCount < MAX_INPUTS) ? fTrackCount : MAX_INPUTS;
+
+    if (*cookie >= numInputs) {
+        // No more inputs
         return B_BAD_INDEX;
     }
 
-    *out_input = fInput;
-    *cookie = 1;
+    *out_input = fInputs[*cookie];
+    (*cookie)++;
 
     return B_OK;
 }
@@ -176,14 +188,22 @@ status_t VeniceAudioInputNode::Connected(const media_source& producer,
 {
     BAutolock lock(fLock);
 
-    printf("VeniceAudioInputNode: Connected to producer\n");
+    // Find which input is being connected
+    int32 inputIndex = FindInputIndex(where);
+    if (inputIndex < 0) {
+        printf("VeniceAudioInputNode: ERROR - Unknown destination in Connected()\n");
+        return B_MEDIA_BAD_DESTINATION;
+    }
 
-    fInput.source = producer;
-    fInput.format = with_format;
-    fFormat = with_format;
-    fConnected = true;
+    printf("VeniceAudioInputNode: Connected input %d (%s) to producer\n",
+           (int)inputIndex, fInputs[inputIndex].name);
 
-    *out_input = fInput;
+    fInputs[inputIndex].source = producer;
+    fInputs[inputIndex].format = with_format;
+    fInputConnected[inputIndex] = true;
+    fFormat = with_format;  // Store format globally
+
+    *out_input = fInputs[inputIndex];
 
     // Allocate conversion buffer if needed
     AllocateBuffers();
@@ -196,12 +216,31 @@ void VeniceAudioInputNode::Disconnected(const media_source& producer,
 {
     BAutolock lock(fLock);
 
-    printf("VeniceAudioInputNode: Disconnected from producer\n");
+    // Find which input is being disconnected
+    int32 inputIndex = FindInputIndex(where);
+    if (inputIndex < 0) {
+        printf("VeniceAudioInputNode: ERROR - Unknown destination in Disconnected()\n");
+        return;
+    }
 
-    fInput.source = media_source::null;
-    fConnected = false;
+    printf("VeniceAudioInputNode: Disconnected input %d (%s) from producer\n",
+           (int)inputIndex, fInputs[inputIndex].name);
 
-    FreeBuffers();
+    fInputs[inputIndex].source = media_source::null;
+    fInputConnected[inputIndex] = false;
+
+    // Only free buffers if ALL inputs are disconnected
+    bool anyConnected = false;
+    for (int32 i = 0; i < MAX_INPUTS; i++) {
+        if (fInputConnected[i]) {
+            anyConnected = true;
+            break;
+        }
+    }
+
+    if (!anyConnected) {
+        FreeBuffers();
+    }
 }
 
 status_t VeniceAudioInputNode::FormatChanged(const media_source& producer,
@@ -211,10 +250,17 @@ status_t VeniceAudioInputNode::FormatChanged(const media_source& producer,
 {
     BAutolock lock(fLock);
 
-    printf("VeniceAudioInputNode: Format changed\n");
+    // Find which input is changing format
+    int32 inputIndex = FindInputIndex(consumer);
+    if (inputIndex < 0) {
+        printf("VeniceAudioInputNode: ERROR - Unknown destination in FormatChanged()\n");
+        return B_MEDIA_BAD_DESTINATION;
+    }
+
+    printf("VeniceAudioInputNode: Format changed for input %d\n", (int)inputIndex);
 
     fFormat = format;
-    fInput.format = format;
+    fInputs[inputIndex].format = format;
 
     // Reallocate buffers for new format
     FreeBuffers();
@@ -235,8 +281,28 @@ void VeniceAudioInputNode::BufferReceived(BBuffer* buffer)
 
     fBuffersReceived++;
 
-    if (!fTrack || !fMonitoring) {
-        // Track not available or monitoring disabled - drop buffer
+    if (!fMonitoring) {
+        // Monitoring disabled - drop buffer
+        buffer->Recycle();
+        fDroppedBuffers++;
+        return;
+    }
+
+    // Find which input this buffer is for
+    // Buffer header contains destination ID (int32)
+    int32 destId = buffer->Header()->destination;
+
+    // Find input by matching destination ID
+    int32 inputIndex = -1;
+    for (int32 i = 0; i < MAX_INPUTS; i++) {
+        if (fInputs[i].destination.id == destId) {
+            inputIndex = i;
+            break;
+        }
+    }
+
+    if (inputIndex < 0 || inputIndex >= fTrackCount || !fTracks[inputIndex]) {
+        // Unknown input or track not available - drop buffer
         buffer->Recycle();
         fDroppedBuffers++;
         return;
@@ -252,12 +318,12 @@ void VeniceAudioInputNode::BufferReceived(BBuffer* buffer)
     bigtime_t latency = now - performance_time;
     fAverageLatency = (fAverageLatency + latency) / 2;
 
-    // Process the buffer
-    status_t result = ProcessBuffer(data, size, performance_time);
+    // Process the buffer for the specific track
+    status_t result = ProcessBuffer(inputIndex, data, size, performance_time);
 
     if (result != B_OK) {
         fDroppedBuffers++;
-        printf("VeniceAudioInputNode: Dropped buffer (processing failed)\n");
+        printf("VeniceAudioInputNode: Dropped buffer on input %d (processing failed)\n", (int)inputIndex);
     }
 
     // Recycle buffer back to producer
@@ -348,10 +414,14 @@ void VeniceAudioInputNode::FreeBuffers()
     }
 }
 
-status_t VeniceAudioInputNode::ProcessBuffer(const void* data, size_t size,
+status_t VeniceAudioInputNode::ProcessBuffer(int32 inputIndex, const void* data, size_t size,
                                               bigtime_t performance_time)
 {
-    if (!data || !fTrack) return B_ERROR;
+    if (!data || inputIndex < 0 || inputIndex >= fTrackCount || !fTracks[inputIndex]) {
+        return B_ERROR;
+    }
+
+    SimpleTrack* track = fTracks[inputIndex];
 
     // Extract format info
     uint32 channels = fFormat.u.raw_audio.channel_count;
@@ -360,15 +430,46 @@ status_t VeniceAudioInputNode::ProcessBuffer(const void* data, size_t size,
 
     // Route audio to track's live input buffer
     const float* audioData = (const float*)data;
-    fTrack->ProcessLiveInput(audioData, frameCount, channels);
+    track->ProcessLiveInput(audioData, frameCount, channels);
 
     // Log every 100 buffers
     if (fBuffersReceived % 100 == 0) {
-        printf("VeniceAudioInputNode: Routed buffer #%u to track (%u frames, %u channels, %.0f Hz)\n",
-               fBuffersReceived, frameCount, channels, sampleRate);
+        printf("VeniceAudioInputNode: Routed buffer #%u to %s (%u frames, %u channels, %.0f Hz)\n",
+               fBuffersReceived, track->GetName(), frameCount, channels, sampleRate);
     }
 
     return B_OK;
+}
+
+int32 VeniceAudioInputNode::FindInputIndex(const media_destination& dest)
+{
+    // Find input by matching destination ID
+    for (int32 i = 0; i < MAX_INPUTS; i++) {
+        if (fInputs[i].destination.port == dest.port &&
+            fInputs[i].destination.id == dest.id) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool VeniceAudioInputNode::IsConnected(int32 inputIndex) const
+{
+    if (inputIndex < 0 || inputIndex >= MAX_INPUTS) {
+        return false;
+    }
+    return fInputConnected[inputIndex];
+}
+
+bool VeniceAudioInputNode::IsConnected() const
+{
+    // Return true if ANY input is connected
+    for (int32 i = 0; i < MAX_INPUTS; i++) {
+        if (fInputConnected[i]) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace HaikuDAW

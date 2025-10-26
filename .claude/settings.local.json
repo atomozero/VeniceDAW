@@ -11,7 +11,8 @@
       "Bash(git rebase:*)",
       "Bash(git push:*)",
       "Read(//boot/home/Desktop/3D_Mixes/she-loves-it/she-loves-it-3dmix/**)",
-      "Read(//boot/home/Desktop/3D_Mixes/**)"
+      "Read(//boot/home/Desktop/3D_Mixes/**)",
+      "Read(//boot/home/Telegram Desktop/R6 Source/src/apps/3d_mixer/**)"
     ],
     "deny": [],
     "ask": []

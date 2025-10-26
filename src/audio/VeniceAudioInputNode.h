@@ -22,20 +22,22 @@ namespace HaikuDAW {
 class SimpleTrack;
 
 /*
- * VeniceAudioInputNode - Cortex Consumer for Live Audio Input
+ * VeniceAudioInputNode - Multi-Input Cortex Consumer for VeniceDAW
  *
- * This node receives audio buffers from Cortex and routes them to a
- * VeniceDAW track for real-time mixing and processing.
+ * This node provides 8 independent audio inputs that route to 8 VeniceDAW tracks.
+ * Appears in Cortex as a single "VeniceDAW" node with 8 input channels.
  *
  * Architecture:
- *   [Cortex Producer] → [VeniceAudioInputNode] → [SimpleTrack] → [Mix]
- *   (Mic, Synth, etc.)   (BBufferConsumer)       (Volume, FX)    (Output)
+ *   [Mic/Synth 1] → Input 1 → Track 1 →
+ *   [Mic/Synth 2] → Input 2 → Track 2 →
+ *   [...]                              → [Mix] → [Output]
+ *   [Mic/Synth 8] → Input 8 → Track 8 →
  */
 class VeniceAudioInputNode : public BBufferConsumer,
                               public BMediaEventLooper {
 public:
-    // Constructor: Associates node with a specific track
-    VeniceAudioInputNode(SimpleTrack* track, const char* name = "VeniceDAW Input");
+    // Constructor: Associates node with 8 tracks (one per input)
+    VeniceAudioInputNode(SimpleTrack** tracks, int32 trackCount, const char* name = "VeniceDAW");
     virtual ~VeniceAudioInputNode();
 
     // ====================================
@@ -105,8 +107,11 @@ public:
     // Get current input format info
     const media_format& Format() const { return fFormat; }
 
-    // Get connection status
-    bool IsConnected() const { return fConnected; }
+    // Get connection status for specific input
+    bool IsConnected(int32 inputIndex) const;
+
+    // Get overall connection status (any input connected)
+    bool IsConnected() const;
 
     // Get input statistics
     uint32 GetBuffersReceived() const { return fBuffersReceived; }
@@ -117,19 +122,22 @@ protected:
     // Internal helpers
     void AllocateBuffers();
     void FreeBuffers();
-    status_t ProcessBuffer(const void* data, size_t size, bigtime_t performance_time);
+    status_t ProcessBuffer(int32 inputIndex, const void* data, size_t size, bigtime_t performance_time);
+    int32 FindInputIndex(const media_destination& dest);
 
 private:
-    // Associated track
-    SimpleTrack* fTrack;
+    // Associated tracks (8 tracks for 8 inputs)
+    SimpleTrack** fTracks;
+    int32 fTrackCount;
 
     // Node state
     BLocker fLock;
-    bool fConnected;
     bool fMonitoring;
 
-    // Input configuration
-    media_input fInput;
+    // Input configuration (8 separate inputs)
+    static const int32 MAX_INPUTS = 8;
+    media_input fInputs[MAX_INPUTS];
+    bool fInputConnected[MAX_INPUTS];
     media_format fFormat;
 
     // Statistics
