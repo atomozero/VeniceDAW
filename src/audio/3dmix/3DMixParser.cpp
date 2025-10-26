@@ -4,6 +4,7 @@
 
 #include "3DMixParser.h"
 #include "../AudioLogging.h"
+#include <math.h>
 #ifdef __HAIKU__
 	#include <storage/Directory.h>
 	#include <storage/Path.h>
@@ -565,7 +566,33 @@ status_t Legacy3DMixLoader::ProcessTrackData(const std::vector<uint8>& data, Tra
 		return B_OK; // Empty data is acceptable
 	}
 
-	return fBMessageParser.ParseBMessageData(data.data(), data.size(), track);
+	// WORKAROUND: The 3dmix format doesn't use standard BMessage serialization
+	// Instead it uses raw binary data. Search for triplets of floats that could be X,Y,Z coordinates
+	if (data.size() >= 12) {
+		for (size_t i = 0; i <= data.size() - 12; i++) {
+			// Read 3 consecutive floats (little-endian)
+			union { uint32_t u; float f; } x, y, z;
+			x.u = data[i] | (data[i+1] << 8) | (data[i+2] << 16) | (data[i+3] << 24);
+			y.u = data[i+4] | (data[i+5] << 8) | (data[i+6] << 16) | (data[i+7] << 24);
+			z.u = data[i+8] | (data[i+9] << 8) | (data[i+10] << 16) | (data[i+11] << 24);
+
+			// Check if these look like valid 3D coordinates (-13 to +13 range)
+			if (!isnan(x.f) && !isinf(x.f) && x.f >= -13.0f && x.f <= 13.0f &&
+			    !isnan(y.f) && !isinf(y.f) && y.f >= -13.0f && y.f <= 13.0f &&
+			    !isnan(z.f) && !isinf(z.f) && z.f >= -13.0f && z.f <= 13.0f) {
+
+				// Found valid-looking coordinates
+				track->SetPosition(x.f, y.f, z.f);
+				AUDIO_LOG_DEBUG("3DMixLoader", "Found 3D position: (%.2f, %.2f, %.2f) at offset %zu",
+				                x.f, y.f, z.f, i);
+				break; // Use first valid triplet found
+			}
+		}
+	}
+
+	// Try BMessage parsing as fallback (though it usually fails with this format)
+	fBMessageParser.ParseBMessageData(data.data(), data.size(), track);
+	return B_OK;
 }
 
 void Legacy3DMixLoader::ReportError(const char* error)

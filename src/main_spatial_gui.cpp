@@ -14,7 +14,7 @@
 #endif
 #include <stdio.h>
 
-#include "gui/SpatialMixer3DWindow.h"
+#include "gui/Mixer3DWindow.h"  // Unified 3D mixer (replaces SpatialMixer3DWindow)
 #include "gui/MixerWindow.h"
 #include "gui/SuperMasterWindow.h"
 #include "gui/TimelineWindow.h"
@@ -74,7 +74,11 @@ public:
             }
         }
         printf("✅ %d empty tracks created (muted by default)\n", fEngine->GetTrackCount());
-        
+
+        // Register tracks as Cortex input nodes
+        fEngine->RegisterCortexInputNodes();
+        printf("✅ Cortex input nodes registered\n");
+
         // Initialize advanced audio processor with spatial capabilities
         fAudioProcessor = new VeniceDAW::AdvancedAudioProcessor();
         fAudioProcessor->Initialize(44100.0f, 1024, VeniceDAW::kStereo);
@@ -95,8 +99,9 @@ public:
         SetupSpatialScene(spatialProcessor);
         printf("✅ 3D scene configured\n");
         
-        // Create main spatial mixer window
-        fMainWindow = new HaikuDAW::SpatialMixer3DWindow(fEngine, fAudioProcessor);
+        // Create unified 3D mixer window (replaces old SpatialMixer3DWindow)
+        // Automatically starts in Spatial mode since we have an audio processor
+        fMainWindow = new HaikuDAW::Mixer3DWindow(fEngine, fAudioProcessor);
         fMainWindow->Show();
 
         // Create traditional mixer window for track controls
@@ -133,7 +138,7 @@ public:
 
             case 'sh3d':  // Show 3D mixer (from MixerWindow menu)
             {
-                printf("SpatialAudioApp: Request to show 3D mixer\n");
+                printf("SpatialAudioApp: Request to show unified 3D mixer\n");
                 if (fMainWindow) {
                     // Window exists but might be hidden
                     if (fMainWindow->IsHidden()) {
@@ -143,9 +148,9 @@ public:
                         fMainWindow->Activate();  // Bring to front
                     }
                 } else {
-                    // Recreate the window
-                    printf("SpatialAudioApp: Recreating 3D mixer window\n");
-                    fMainWindow = new HaikuDAW::SpatialMixer3DWindow(fEngine, fAudioProcessor);
+                    // Recreate the unified window
+                    printf("SpatialAudioApp: Recreating unified 3D mixer window\n");
+                    fMainWindow = new HaikuDAW::Mixer3DWindow(fEngine, fAudioProcessor);
                     fMainWindow->Show();
                 }
                 break;
@@ -187,6 +192,11 @@ public:
 
         // Only quit if all windows are closed or user really wants to quit
         if (windowCount <= 1) {
+            // Unregister Cortex nodes
+            if (fEngine) {
+                fEngine->UnregisterCortexInputNodes();
+            }
+
             // Shutdown audio system
             if (fAudioProcessor) {
                 fAudioProcessor->Shutdown();
@@ -279,7 +289,7 @@ private:
         error->Go();
     }
     
-    HaikuDAW::SpatialMixer3DWindow* fMainWindow;
+    HaikuDAW::Mixer3DWindow* fMainWindow;  // UNIFIED 3D mixer window
     HaikuDAW::MixerWindow* fMixerWindow;
     HaikuDAW::SuperMasterWindow* fSuperMasterWindow;
     HaikuDAW::TimelineWindow* fTimelineWindow;

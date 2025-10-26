@@ -9,7 +9,9 @@
       "Bash(git fetch:*)",
       "Bash(git add:*)",
       "Bash(git rebase:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Read(//boot/home/Desktop/3D_Mixes/she-loves-it/she-loves-it-3dmix/**)",
+      "Read(//boot/home/Desktop/3D_Mixes/**)"
     ],
     "deny": [],
     "ask": []

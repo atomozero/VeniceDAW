@@ -74,6 +74,11 @@ public:
     // Buffer handling (THE IMPORTANT ONE!)
     virtual void BufferReceived(BBuffer* buffer);
 
+    // Producer data status
+    virtual void ProducerDataStatus(const media_destination& for_whom,
+                                     int32 status,
+                                     bigtime_t at_performance_time);
+
     // Latency
     virtual status_t GetLatencyFor(const media_destination& for_whom,
                                     bigtime_t* out_latency,

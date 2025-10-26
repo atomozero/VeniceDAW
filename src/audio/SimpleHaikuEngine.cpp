@@ -4,6 +4,7 @@
 
 #include "SimpleHaikuEngine.h"
 #include "AudioFileStreamer.h"
+#include "VeniceAudioInputNode.h"  // Cortex integration
 // #include "AudioRecorder.h"  // Temporarily disabled
 #include "AudioConfig.h"
 #include <stdio.h>
@@ -12,6 +13,7 @@
 #include <stdlib.h>  // For rand()
 #include <storage/File.h>
 #include <media/MediaFormats.h>
+#include <media/MediaRoster.h>
 
 namespace HaikuDAW {
 
@@ -1060,6 +1062,63 @@ void SimpleHaikuEngine::_SyncAudioTracks()
     // Atomically swap to make new buffer visible to audio thread
     // This is the ONLY point where audio thread sees the change
     fAudioTracks.store(nextBuffer);
+}
+
+// Cortex Media Kit integration
+status_t SimpleHaikuEngine::RegisterCortexInputNodes()
+{
+    printf("SimpleHaikuEngine: Registering Cortex input nodes for %d tracks...\n", (int)fTracks.size());
+
+    BMediaRoster* roster = BMediaRoster::Roster();
+    if (!roster) {
+        printf("ERROR: Cannot get Media Roster!\n");
+        return B_ERROR;
+    }
+
+    // Create one input node per track
+    for (size_t i = 0; i < fTracks.size(); i++) {
+        SimpleTrack* track = fTracks[i];
+        if (!track) continue;
+
+        // Create input node for this track
+        BString nodeName;
+        nodeName << "VeniceDAW " << track->GetName();
+
+        VeniceAudioInputNode* node = new VeniceAudioInputNode(track, nodeName.String());
+
+        // Register with Media Roster
+        status_t result = roster->RegisterNode(node);
+        if (result != B_OK) {
+            printf("ERROR: Failed to register node '%s': %s\n",
+                   nodeName.String(), strerror(result));
+            delete node;
+            continue;
+        }
+
+        fCortexInputNodes.push_back(node);
+        printf("✅ Registered Cortex input: %s\n", nodeName.String());
+    }
+
+    printf("SimpleHaikuEngine: %d Cortex input nodes registered\n", (int)fCortexInputNodes.size());
+    return B_OK;
+}
+
+status_t SimpleHaikuEngine::UnregisterCortexInputNodes()
+{
+    printf("SimpleHaikuEngine: Unregistering %d Cortex input nodes...\n", (int)fCortexInputNodes.size());
+
+    BMediaRoster* roster = BMediaRoster::Roster();
+
+    for (VeniceAudioInputNode* node : fCortexInputNodes) {
+        if (node && roster) {
+            roster->UnregisterNode(node);
+        }
+        delete node;
+    }
+
+    fCortexInputNodes.clear();
+    printf("SimpleHaikuEngine: All Cortex nodes unregistered\n");
+    return B_OK;
 }
 
 } // namespace HaikuDAW

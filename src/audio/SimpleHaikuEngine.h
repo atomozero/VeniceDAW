@@ -206,6 +206,10 @@ public:
     status_t FeedMonitoringAudio(const void* data, size_t size, const media_raw_audio_format& format);
     int32 GetMonitoringTrackIndex() const { return fMonitoringTrackIndex; }
 
+    // Cortex Media Kit integration
+    status_t RegisterCortexInputNodes();
+    status_t UnregisterCortexInputNodes();
+
 private:
     static void _AudioCallback(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format);
     void _ProcessAudio(float* buffer, size_t frameCount);
@@ -233,6 +237,9 @@ private:
     // Live monitoring support
     int32 fMonitoringTrackIndex;  // Index of monitoring track, -1 if none
     std::vector<float> fMonitoringBuffer;  // Temporary buffer for incoming audio
+
+    // Cortex Media Kit nodes
+    std::vector<class VeniceAudioInputNode*> fCortexInputNodes;  // One node per track
 
     // RT-safe buffer pool (pre-allocated to avoid allocations in audio callback)
     static constexpr size_t MAX_BUFFER_FRAMES = 4096;

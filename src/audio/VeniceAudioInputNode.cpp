@@ -266,6 +266,14 @@ void VeniceAudioInputNode::BufferReceived(BBuffer* buffer)
     fLastBufferTime = now;
 }
 
+void VeniceAudioInputNode::ProducerDataStatus(const media_destination& for_whom,
+                                               int32 status,
+                                               bigtime_t at_performance_time)
+{
+    // Producer is telling us about data status (running/stopped/etc)
+    // Nothing to do here for now
+}
+
 status_t VeniceAudioInputNode::GetLatencyFor(const media_destination& for_whom,
                                               bigtime_t* out_latency,
                                               media_node_id* out_timesource)

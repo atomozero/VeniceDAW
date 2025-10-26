@@ -94,27 +94,36 @@ SpatialMixer3DView::~SpatialMixer3DView()
     }
 }
 
-void SpatialMixer3DView::Draw(BRect updateRect) 
+void SpatialMixer3DView::Draw(BRect updateRect)
 {
+    // DEBUG: Log first draw call
+    static bool firstDraw = true;
+    if (firstDraw) {
+        printf("SpatialMixer3DView: Draw() called for first time\n");
+        printf("  UpdateRect: (%.0f, %.0f, %.0f, %.0f)\n",
+               updateRect.left, updateRect.top, updateRect.right, updateRect.bottom);
+        firstDraw = false;
+    }
+
     bigtime_t startTime = system_time();
-    
+
     // Process any pending parameter updates from audio thread
     if (fHasParameterUpdates.load()) {
         ProcessParameterUpdates();
     }
-    
+
     // Update spatial parameters for all tracks
     UpdateSpatialTracks();
-    
+
     // Do NOT call parent Draw() - we handle everything ourselves
     // Mixer3DView::Draw(updateRect);  // REMOVED - was causing double rendering
-    
+
     // Render our complete spatial scene
     LockGL();
     RenderSpatialScene();  // This renders everything we need
     SwapBuffers();
     UnlockGL();
-    
+
     // Update performance monitoring
     bigtime_t endTime = system_time();
     fRenderTime.store((endTime - startTime) / 1000.0f); // Convert to milliseconds
@@ -123,79 +132,95 @@ void SpatialMixer3DView::Draw(BRect updateRect)
 
 void SpatialMixer3DView::RenderSpatialScene()
 {
-    // Clear and setup 3D scene (parent class handles basic setup)
+    // Clear and setup 3D scene
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    // Set up camera (enhanced for spatial visualization)
-    glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    
-    // Position camera for optimal spatial visualization
-    gluLookAt(fCameraDistance * cos(fCameraAngleX) * cos(fCameraAngleY),
-              fCameraDistance * sin(fCameraAngleX),
-              fCameraDistance * sin(fCameraAngleY),
-              fCameraTarget[0], fCameraTarget[1], fCameraTarget[2],
-              0.0f, 0.0f, 1.0f);
-    
+
+    // Update camera cache if needed (performance optimization from base class)
+    if (fCameraDirty) {
+        UpdateCameraCache();
+    }
+
+    // Set up camera using cached values (like base Mixer3DView)
+    gluLookAt(
+        fCachedCameraX, fCachedCameraY, fCachedCameraZ,
+        fCameraTarget[0], fCameraTarget[1], fCameraTarget[2],
+        0.0f, 1.0f, 0.0f
+    );
+
+    // DEBUG: Log first render
+    static bool firstRender = true;
+    if (firstRender) {
+        printf("SpatialMixer3DView: First RenderSpatialScene() call\n");
+        printf("  Camera: (%.1f, %.1f, %.1f)\n", fCachedCameraX, fCachedCameraY, fCachedCameraZ);
+        printf("  Tracks: %zu spatial tracks\n", fSpatialTracks.size());
+        firstRender = false;
+    }
+
+    // **CRITICAL**: Draw the beautiful 3dmix-inspired grid from base class!
+    DrawGrid();
+
+    // **CRITICAL**: Animate tracks using base class animation system
+    AnimateScene();
+
     // Draw room boundaries if enabled
     if (fShowRoomBounds) {
         DrawRoomBoundaries();
     }
-    
+
     // Draw speaker layout for surround modes
     if (fShowSpeakerLayout) {
         DrawSurroundSpeakerLayout();
     }
-    
+
     // Draw listener visualization
     if (fShowListener) {
         DrawListenerVisualization();
     }
-    
-    // Draw spatial tracks with enhanced visualization
+
+    // Draw spatial tracks with enhanced 3dmix visualization
     for (const auto& track : fSpatialTracks) {
         DrawSpatialTrack(track);
     }
-    
+
     // Draw spatial parameter indicators
     if (fShowSpatialIndicators) {
         DrawSpatialIndicators();
     }
-    
+
     // Draw HRTF processing indicator if enabled
     if (fAudioProcessor && fAudioProcessor->GetSurroundProcessor().IsHRTFEnabled()) {
         DrawHRTFVisualization();
     }
+
+    // Update animation time (like base class)
+    fAnimationTime += 0.02f;
 }
 
 void SpatialMixer3DView::DrawSpatialTrack(const SpatialTrack3D& track)
 {
     if (!track.spatialEnabled) {
-        // Draw as regular track if spatial processing disabled
+        // Draw as regular 3dmix-style track if spatial processing disabled
         DrawTrack3D(track);
         return;
     }
-    
+
+    // Use base class 3dmix-inspired rendering for spatial tracks too!
+    // This gives us the beautiful spheres with glow effects
+    DrawTrack3D(track);
+
+    // Add spatial-specific visual indicators
     glPushMatrix();
-    
-    // Position in 3D space - debug print to verify
-    // printf("Drawing track at (%.2f, %.2f, %.2f)\n", track.x, track.y, track.z);
     glTranslatef(track.x, track.y, track.z);
-    glScalef(track.scale, track.scale, track.scale);
-    glRotatef(track.rotation, 0.0f, 0.0f, 1.0f);
-    
-    // Enhanced color coding for spatial tracks
-    float alpha = track.selected ? 1.0f : 0.8f;
-    glColor4f(track.color[0], track.color[1], track.color[2], alpha);
-    
-    // Draw main track representation as sphere for better 3D positioning
-    GLUquadric* quadric = gluNewQuadric();
-    gluSphere(quadric, 0.5, 16, 16);
-    gluDeleteQuadric(quadric);
-    
-    // Draw spatial indicator rings showing effective range
+
+    // Draw spatial indicator rings showing effective range (if selected)
     if (track.showParameters || track.selected) {
-        glColor4f(1.0f, 1.0f, 1.0f, 0.3f);
+        glDisable(GL_LIGHTING);
+        glEnable(GL_BLEND);
+        glLineWidth(2.0f);
+
+        // Distance indicator ring (cyan)
+        glColor4f(0.2f, 0.95f, 0.85f, 0.5f);
         glPushMatrix();
         glScalef(track.distance * 0.5f, track.distance * 0.5f, track.distance * 0.5f);
         GLUquadric* wireQuadric = gluNewQuadric();
@@ -506,7 +531,10 @@ void SpatialMixer3DView::UpdateSpatialTracks()
 {
     // Update spatial tracks from current engine state
     if (!fEngine) return;
-    
+
+    // **CRITICAL**: First update base class tracks from engine
+    UpdateTracks();  // This populates f3DTracks from engine
+
     // Resize spatial tracks vector if needed
     size_t trackCount = f3DTracks.size();  // From parent class
 
@@ -532,8 +560,13 @@ void SpatialMixer3DView::UpdateSpatialTracks()
             fSpatialTracks[i].spatialPosition.y = f3DTracks[i].z;  // OpenGL Y->Z mapping
             fSpatialTracks[i].spatialPosition.z = f3DTracks[i].y;  // OpenGL Z->Y mapping
         }
+    } else {
+        // Update existing spatial tracks from base tracks (positions may have changed)
+        for (size_t i = 0; i < std::min(fSpatialTracks.size(), f3DTracks.size()); i++) {
+            fSpatialTracks[i].Track3D::operator=(f3DTracks[i]);  // Sync base data
+        }
     }
-    
+
     // Update spatial parameters for each track
     for (size_t i = 0; i < fSpatialTracks.size(); i++) {
         UpdateTrackSpatialParameters(fSpatialTracks[i]);
