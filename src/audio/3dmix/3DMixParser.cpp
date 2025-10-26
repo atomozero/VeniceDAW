@@ -332,24 +332,11 @@ status_t Legacy3DMixLoader::ParseFileHeader(BDataIO* stream)
 
 	AUDIO_LOG_DEBUG("3DMixLoader", "Expected track count: %d", trackCount);
 
-	// Read base path
-	BString basePath;
-	status = ReadBasePath(stream, &basePath);
-	if (status != B_OK) {
-		return status;
-	}
+	// Store expected track count for parsing
+	fExpectedTrackCount = trackCount;
 
-	AUDIO_LOG_DEBUG("3DMixLoader", "Base path: %s", basePath.String());
-
-	// Extract project name from base path
-	BString projectName = Format3DMixUtils::ExtractFileName(basePath);
-	if (projectName.Length() == 0) {
-		projectName = "Unnamed Project";
-	}
-
-	// Set project information
-	fProject.SetProjectName(projectName.String());
-	fProject.SetBasePath(basePath.String());
+	// Set default project name (will be updated from file path if available)
+	fProject.SetProjectName("3DMix Project");
 
 	return B_OK;
 }
@@ -423,22 +410,17 @@ status_t Legacy3DMixLoader::ReadBasePath(BDataIO* stream, BString* basePath)
 
 status_t Legacy3DMixLoader::ParseTrackRecords(BDataIO* stream)
 {
-	AUDIO_LOG_DEBUG("3DMixLoader", "Parsing track records...");
+	AUDIO_LOG_DEBUG("3DMixLoader", "Parsing %d track records...", fExpectedTrackCount);
 
-	// Continue reading until end of file
-	while (true) {
+	// Read exactly fExpectedTrackCount tracks
+	for (int32 i = 0; i < fExpectedTrackCount; i++) {
 		Track3DMix* track = new Track3DMix();
 
 		status_t status = ParseSingleTrackRecord(stream, track);
-		if (status == B_END_OF_DATA) {
-			delete track;
-			break; // Normal end of file
-		}
-
 		if (status == B_OK) {
 			if (fProject.AddTrack(track)) {
 				fLoadedTrackCount++;
-				AUDIO_LOG_DEBUG("3DMixLoader", "Successfully loaded track %d", fLoadedTrackCount);
+				AUDIO_LOG_DEBUG("3DMixLoader", "Successfully loaded track %d/%d", fLoadedTrackCount, fExpectedTrackCount);
 			} else {
 				delete track;
 				fFailedTrackCount++;
@@ -448,6 +430,7 @@ status_t Legacy3DMixLoader::ParseTrackRecords(BDataIO* stream)
 			delete track;
 			fFailedTrackCount++;
 			ReportWarning("Failed to parse track record");
+			// Continue parsing other tracks even if one fails
 		}
 	}
 

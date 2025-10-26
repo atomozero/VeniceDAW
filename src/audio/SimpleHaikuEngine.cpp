@@ -436,9 +436,12 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
         // Process audio based on track type
         float peakLevel = 0.0f;
         float rmsSum = 0.0f;
-        
-        if (track->HasFile()) {
-            // FILE PLAYBACK: Read actual audio data from loaded file
+
+        bool hasFileAudio = track->HasFile();
+        bool hasLiveInput = track->HasLiveInput();
+
+        if (hasFileAudio || hasLiveInput) {
+            // FILE PLAYBACK AND/OR LIVE INPUT
             // Use pre-allocated RT-safe buffer (no dynamic allocation!)
             size_t requiredSize = frameCount * 2;
             if (requiredSize > fMixBuffer.size()) {
@@ -450,34 +453,57 @@ void SimpleHaikuEngine::_ProcessAudio(float* buffer, size_t frameCount)
             // Clear buffer using memset (faster than std::fill)
             memset(fMixBuffer.data(), 0, requiredSize * sizeof(float));
 
-            // Read audio data from file into pre-allocated buffer
-            status_t status = track->ReadFileData(fMixBuffer.data(), frameCount, sampleRate);
-
-            if (status == B_OK) {
-                // Mix file audio into main buffer
-                for (size_t i = 0; i < frameCount; i++) {
-                    float leftSample = fMixBuffer[i * 2];
-                    float rightSample = fMixBuffer[i * 2 + 1];
-
-                    buffer[i * 2] += leftSample * leftGain;      // Left
-                    buffer[i * 2 + 1] += rightSample * rightGain; // Right
-
-                    // Calculate levels for VU meter using mixed samples
-                    float mixedSample = (leftSample + rightSample) * 0.5f;
-                    float displayLevel = fabsf(mixedSample) * track->GetVolume();
-                    peakLevel = fmaxf(peakLevel, displayLevel);
-                    rmsSum += displayLevel * displayLevel;
+            // Read file audio if available
+            if (hasFileAudio) {
+                status_t status = track->ReadFileData(fMixBuffer.data(), frameCount, sampleRate);
+                if (status != B_OK) {
+                    // File read failed, buffer remains cleared
+                    hasFileAudio = false;
                 }
             }
-            // No delete needed - using pre-allocated buffer!
+
+            // Mix in live input if available (professional monitoring behavior)
+            if (hasLiveInput) {
+                // Get live input data from track's buffer
+                size_t liveFrames = track->GetLiveInputFrameCount();
+                const float* liveData = track->GetLiveInputData();
+
+                if (liveData && liveFrames > 0) {
+                    // Mix live input with file audio (or use alone if no file)
+                    size_t framesToMix = (liveFrames < frameCount) ? liveFrames : frameCount;
+
+                    for (size_t i = 0; i < framesToMix; i++) {
+                        fMixBuffer[i * 2] += liveData[i * 2];       // Left
+                        fMixBuffer[i * 2 + 1] += liveData[i * 2 + 1]; // Right
+                    }
+                }
+
+                // Clear the live input flag (consumed)
+                track->ClearLiveInput();
+            }
+
+            // Mix final audio into main buffer
+            for (size_t i = 0; i < frameCount; i++) {
+                float leftSample = fMixBuffer[i * 2];
+                float rightSample = fMixBuffer[i * 2 + 1];
+
+                buffer[i * 2] += leftSample * leftGain;      // Left
+                buffer[i * 2 + 1] += rightSample * rightGain; // Right
+
+                // Calculate levels for VU meter using mixed samples
+                float mixedSample = (leftSample + rightSample) * 0.5f;
+                float displayLevel = fabsf(mixedSample) * track->GetVolume();
+                peakLevel = fmaxf(peakLevel, displayLevel);
+                rmsSum += displayLevel * displayLevel;
+            }
         } else {
-            // TEST SIGNAL GENERATION: For tracks without files
+            // TEST SIGNAL GENERATION: For tracks without files or live input
             for (size_t i = 0; i < frameCount; i++) {
                 float sample = _GenerateTestSignal(track, sampleRate);
-                
+
                 buffer[i * 2] += sample * leftGain;      // Left
                 buffer[i * 2 + 1] += sample * rightGain; // Right
-                
+
                 // Calculate levels for VU meter display
                 float displayLevel = fabsf(sample) * track->GetVolume();
                 peakLevel = fmaxf(peakLevel, displayLevel);

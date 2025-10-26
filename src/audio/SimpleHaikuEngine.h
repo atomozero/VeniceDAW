@@ -118,6 +118,8 @@ public:
     void ProcessLiveInput(const float* inputData, size_t frameCount, uint32 channels);
     bool HasLiveInput() const { return fLiveInputAvailable; }
     void ClearLiveInput() { fLiveInputAvailable = false; }
+    const float* GetLiveInputData() const { return fLiveInputBuffer; }
+    size_t GetLiveInputFrameCount() const { return fLiveInputFrameCount; }
 
 private:
     int fId;

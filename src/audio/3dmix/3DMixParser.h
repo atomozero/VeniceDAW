@@ -161,6 +161,7 @@ private:
 	bigtime_t fLoadingTime;
 	int32 fLoadedTrackCount;
 	int32 fFailedTrackCount;
+	int32 fExpectedTrackCount;
 
 	// Configuration
 	bool fStrictValidation;
