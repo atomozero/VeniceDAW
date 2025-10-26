@@ -18,6 +18,7 @@
 #include "gui/MixerWindow.h"
 #include "gui/SuperMasterWindow.h"
 #include "gui/TimelineWindow.h"
+#include "gui/UnifiedWindow.h"
 #include "audio/SimpleHaikuEngine.h"
 #include "audio/AdvancedAudioProcessor.h"
 
@@ -29,6 +30,7 @@ public:
         , fMixerWindow(nullptr)
         , fSuperMasterWindow(nullptr)
         , fTimelineWindow(nullptr)
+        , fUnifiedWindow(nullptr)
         , fEngine(nullptr)
         , fAudioProcessor(nullptr)
     {
@@ -101,9 +103,14 @@ public:
         fSuperMasterWindow = new HaikuDAW::SuperMasterWindow(fEngine);
         fSuperMasterWindow->MoveTo(400, 50);  // Position to the right
         fSuperMasterWindow->Show();
-        
+
+        // OPTIONAL: Create unified window (tabbed interface)
+        // Uncomment to use unified window instead of separate windows
+        // fUnifiedWindow = new HaikuDAW::UnifiedWindow(fEngine);
+        // fUnifiedWindow->Show();
+
         printf("🎛️ VeniceDAW ready! 8 tracks available for audio loading.\n");
-        
+
         ShowWelcomeDialog();
     }
     
@@ -270,6 +277,7 @@ private:
     HaikuDAW::MixerWindow* fMixerWindow;
     HaikuDAW::SuperMasterWindow* fSuperMasterWindow;
     HaikuDAW::TimelineWindow* fTimelineWindow;
+    HaikuDAW::UnifiedWindow* fUnifiedWindow;
     HaikuDAW::SimpleHaikuEngine* fEngine;
     VeniceDAW::AdvancedAudioProcessor* fAudioProcessor;
 };
