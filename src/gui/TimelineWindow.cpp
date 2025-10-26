@@ -5,6 +5,7 @@
 #include "TimelineWindow.h"
 #include "../audio/SimpleHaikuEngine.h"
 #include "TrackColors.h"
+#include "WaveformView.h"
 #include <GroupLayout.h>
 #include <LayoutBuilder.h>
 #include <Menu.h>
@@ -176,23 +177,43 @@ void TrackLaneView::Draw(BRect updateRect)
 void TrackLaneView::DrawClip(const AudioClip& clip, BRect clipRect)
 {
     // Clip background
-    if (clip.selected) {
-        SetHighColor(tint_color(clip.color, B_LIGHTEN_1_TINT));
-    } else {
-        SetHighColor(clip.color);
-    }
+    rgb_color bgColor = clip.selected ?
+                        tint_color(clip.color, B_LIGHTEN_1_TINT) : clip.color;
+    SetHighColor(bgColor);
     FillRect(clipRect);
+
+    // Draw simplified waveform representation
+    // (In a full implementation, this would use actual audio data)
+    PushState();
+    BRegion clipRegion(clipRect);
+    ConstrainClippingRegion(&clipRegion);
+
+    // Draw waveform-like pattern
+    SetHighColor(tint_color(bgColor, B_DARKEN_2_TINT));
+    float centerY = clipRect.top + (clipRect.Height() / 2.0f);
+    float amplitude = clipRect.Height() * 0.3f;
+
+    // Simple sine wave visualization
+    for (float x = clipRect.left; x < clipRect.right; x += 2.0f) {
+        float t = (x - clipRect.left) / clipRect.Width();
+        float wave = sinf(t * 20.0f * M_PI) * amplitude;
+        float y1 = centerY - wave;
+        float y2 = centerY + wave;
+        StrokeLine(BPoint(x, y1), BPoint(x, y2));
+    }
+
+    PopState();
 
     // Clip border
     SetHighColor(0, 0, 0);
     StrokeRect(clipRect);
 
     // Clip name
-    SetHighColor(0, 0, 0);
+    SetHighColor(255, 255, 255);  // White text
     SetFont(be_plain_font);
     font_height fh;
     GetFontHeight(&fh);
-    float textY = clipRect.top + (clipRect.Height() / 2) + (fh.ascent / 2);
+    float textY = clipRect.top + 12 + fh.ascent;
     DrawString(clip.name.String(), BPoint(clipRect.left + 5, textY));
 }
 
