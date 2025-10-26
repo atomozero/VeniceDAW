@@ -4,6 +4,7 @@
 
 #include "AudioFileStreamer.h"
 #include "AudioBufferPool.h"
+#include "MemoryMonitor.h"
 #include <stdio.h>
 #include <string.h>
 #include <Path.h>
@@ -37,15 +38,23 @@ AudioFileStreamer::AudioFileStreamer()
     // Get shared buffer pool instance
     fBufferPool = &::VeniceDAW::AudioBufferPool::GetGlobalPool();
 
+    // Register ring buffer with memory monitor
+    size_t ringBufferBytes = RING_BUFFER_SAMPLES * sizeof(float);
+    MemoryMonitor::GetInstance().RegisterComponent("AudioFileStreamer RingBuffer", ringBufferBytes);
+
     printf("AudioFileStreamer: Created with %d second ring buffer (~%zu KB)\n",
            (int)RING_BUFFER_SECONDS,
-           (RING_BUFFER_SAMPLES * sizeof(float)) / 1024);
+           ringBufferBytes / 1024);
     printf("AudioFileStreamer: Using shared AudioBufferPool for I/O operations\n");
 }
 
 AudioFileStreamer::~AudioFileStreamer()
 {
     CloseFile();
+
+    // Unregister from memory monitor
+    size_t ringBufferBytes = RING_BUFFER_SAMPLES * sizeof(float);
+    MemoryMonitor::GetInstance().UnregisterComponent("AudioFileStreamer RingBuffer", ringBufferBytes);
 
     // Cleanup semaphore
     if (fWakeupSemaphore >= 0) {
