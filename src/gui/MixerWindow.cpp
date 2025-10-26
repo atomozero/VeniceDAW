@@ -1338,8 +1338,17 @@ void MixerWindow::DispatchMessage(BMessage* message, BHandler* handler)
                 }
             }
 
-            // Navigation shortcuts (arrow keys)
+            // Track selection shortcuts (number keys 1-8)
             if (KeyboardShortcuts::HasExactModifiers(modifiers, MOD_NONE)) {
+                // Number keys 1-8 select corresponding tracks
+                if (key >= '1' && key <= '8') {
+                    int trackIndex = key - '1';  // Convert '1'-'8' to 0-7
+                    BMessage selectMsg('slct');
+                    selectMsg.AddInt32("track_index", trackIndex);
+                    PostMessage(&selectMsg);
+                    return;
+                }
+
                 switch (key) {
                     case KEY_SELECT_NEXT_TRACK:  // Down arrow
                     case KEY_SELECT_PREV_TRACK:  // Up arrow
