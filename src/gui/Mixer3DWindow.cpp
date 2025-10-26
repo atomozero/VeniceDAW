@@ -555,6 +555,11 @@ void Mixer3DWindow::CreateMenuBar()
     viewMenu->AddItem(new BMenuItem("Zoom Out", new BMessage(MSG_ZOOM_OUT), '-'));
     viewMenu->AddSeparatorItem();
     viewMenu->AddItem(new BMenuItem("Reset Camera", new BMessage(MSG_RESET_CAMERA), 'R'));
+    viewMenu->AddSeparatorItem();
+    BMenuItem* particleToggle = new BMenuItem("Enable Particles", new BMessage(MSG_TOGGLE_PARTICLES), 'P');
+    particleToggle->SetMarked(false);  // Start disabled
+    viewMenu->AddItem(particleToggle);
+    viewMenu->AddSeparatorItem();
     viewMenu->AddItem(new BMenuItem("Fullscreen 3D", new BMessage('full')));
     fMenuBar->AddItem(viewMenu);
     
@@ -701,7 +706,22 @@ void Mixer3DWindow::MessageReceived(BMessage* message)
                 fInfoDisplay->SetText("📷 Camera reset to see all spheres");
             }
             break;
-            
+
+        case MSG_TOGGLE_PARTICLES:
+            if (f3DView) {
+                bool currentState = f3DView->AreParticlesEnabled();
+                f3DView->SetParticlesEnabled(!currentState);
+
+                // Update menu item checkmark
+                BMenuItem* item = nullptr;
+                if (message->FindPointer("source", (void**)&item) == B_OK && item) {
+                    item->SetMarked(!currentState);
+                }
+
+                fInfoDisplay->SetText(!currentState ? "✨ Particles enabled!" : "Particles disabled");
+            }
+            break;
+
         case MSG_UPDATE_3D:
             if (f3DView && f3DView->LockLooper()) {
                 f3DView->Invalidate();
