@@ -79,81 +79,86 @@ void SuperMasterWindow::CreateControls()
     
     printf("SuperMasterWindow: Creating master-style controls...\n");
     
-    // Left VU meter
+    // Left VU meter - LARGE professional meter
     BGroupLayout* leftMeterLayout = new BGroupLayout(B_VERTICAL);
     leftMeterLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* leftMeterView = new BView("left_meter", B_WILL_DRAW);
     leftMeterView->SetLayout(leftMeterLayout);
     leftMeterView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
-    
+
     BStringView* leftLabel = new BStringView("left_label", "L");
     leftLabel->SetAlignment(B_ALIGN_CENTER);
     leftLabel->SetFont(be_bold_font);
     leftMeterLayout->AddView(leftLabel);
-    
+
     fGlobalLevelLeft = new LevelMeter();
-    fGlobalLevelLeft->SetExplicitMinSize(BSize(25, 120));
-    fGlobalLevelLeft->SetExplicitMaxSize(BSize(30, 150));
-    fGlobalLevelLeft->SetExplicitPreferredSize(BSize(28, 140));
+    // Large professional VU meters for SuperMaster (Phase 4.2)
+    float largeMeterWidth = VeniceDAW::VeniceTheme::METER_WIDTH * 2.5f;  // 20px
+    float largeMeterHeight = 180.0f;
+    fGlobalLevelLeft->SetExplicitMinSize(BSize(largeMeterWidth, largeMeterHeight));
+    fGlobalLevelLeft->SetExplicitMaxSize(BSize(largeMeterWidth + 5, largeMeterHeight + 20));
+    fGlobalLevelLeft->SetExplicitPreferredSize(BSize(largeMeterWidth, largeMeterHeight));
     leftMeterLayout->AddView(fGlobalLevelLeft);
     mainLayout->AddView(leftMeterView);
-    
-    // Right VU meter  
+
+    // Right VU meter - LARGE professional meter
     BGroupLayout* rightMeterLayout = new BGroupLayout(B_VERTICAL);
-    rightMeterLayout->SetSpacing(3);
+    rightMeterLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* rightMeterView = new BView("right_meter", B_WILL_DRAW);
     rightMeterView->SetLayout(rightMeterLayout);
-    rightMeterView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-    
+    rightMeterView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+
     BStringView* rightLabel = new BStringView("right_label", "R");
     rightLabel->SetAlignment(B_ALIGN_CENTER);
     rightLabel->SetFont(be_bold_font);
     rightMeterLayout->AddView(rightLabel);
-    
+
     fGlobalLevelRight = new LevelMeter();
-    fGlobalLevelRight->SetExplicitMinSize(BSize(25, 120));
-    fGlobalLevelRight->SetExplicitMaxSize(BSize(30, 150));
-    fGlobalLevelRight->SetExplicitPreferredSize(BSize(28, 140));
+    fGlobalLevelRight->SetExplicitMinSize(BSize(largeMeterWidth, largeMeterHeight));
+    fGlobalLevelRight->SetExplicitMaxSize(BSize(largeMeterWidth + 5, largeMeterHeight + 20));
+    fGlobalLevelRight->SetExplicitPreferredSize(BSize(largeMeterWidth, largeMeterHeight));
     rightMeterLayout->AddView(fGlobalLevelRight);
     mainLayout->AddView(rightMeterView);
     
-    // Master volume slider (vertical)
+    // Master volume slider (vertical) - larger for SuperMaster
     fGlobalVolume = new BSlider("master_vol", "SUPER",
                               new BMessage(MSG_GLOBAL_VOLUME),
                               0, 100, B_VERTICAL);
     fGlobalVolume->SetValue(100);  // 100%
     fGlobalVolume->SetTarget(this);
     fGlobalVolume->SetLimitLabels("0", "100%");
-    fGlobalVolume->SetModificationMessage(new BMessage(MSG_GLOBAL_VOLUME));  // Real-time
+    fGlobalVolume->SetModificationMessage(new BMessage(MSG_GLOBAL_VOLUME));
     fGlobalVolume->SetHashMarks(B_HASH_MARKS_BOTH);
     fGlobalVolume->SetHashMarkCount(5);
-    fGlobalVolume->SetExplicitMinSize(BSize(50, 120));
-    fGlobalVolume->SetExplicitMaxSize(BSize(60, 150));
-    fGlobalVolume->SetExplicitPreferredSize(BSize(55, 140));
+    fGlobalVolume->SetExplicitMinSize(BSize(60, largeMeterHeight));
+    fGlobalVolume->SetExplicitMaxSize(BSize(70, largeMeterHeight + 20));
+    fGlobalVolume->SetExplicitPreferredSize(BSize(65, largeMeterHeight));
     mainLayout->AddView(fGlobalVolume);
-    
-    // Transport controls in a vertical group on the right
+
+    // Transport controls in a vertical group with VeniceTheme
     BGroupLayout* controlLayout = new BGroupLayout(B_VERTICAL);
+    controlLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* controlView = new BView("controls", B_WILL_DRAW);
     controlView->SetLayout(controlLayout);
-    controlView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-    controlLayout->SetSpacing(5);
-    
+    controlView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
+
     fGlobalPlayButton = new BButton("play", "▶", new BMessage(MSG_GLOBAL_PLAY));
+    fGlobalPlayButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
     fGlobalStopButton = new BButton("stop", "⏹", new BMessage(MSG_GLOBAL_STOP));
-    
+    fGlobalStopButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
+
     fGlobalPlayButton->SetTarget(this);
     fGlobalStopButton->SetTarget(this);
-    
+
     controlLayout->AddView(fGlobalPlayButton);
     controlLayout->AddView(fGlobalStopButton);
-    
+
     // Status display
     fStatusDisplay = new BStringView("status", "SUPER");
     fStatusDisplay->SetAlignment(B_ALIGN_CENTER);
     fStatusDisplay->SetFont(be_plain_font);
     controlLayout->AddView(fStatusDisplay);
-    
+
     mainLayout->AddView(controlView);
     
     // Window count display (not used in this layout)
