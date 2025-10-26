@@ -62,6 +62,10 @@ public:
     void SetSolo(bool solo) { fSolo = solo; }
     bool IsSolo() const { return fSolo; }
 
+    // Track color coding
+    void SetColorIndex(int colorIndex) { fColorIndex = colorIndex; }
+    int GetColorIndex() const { return fColorIndex; }
+
     // Audio levels (updated in real-time)
     float GetPeakLevel() const { return fPeakLevel; }
     float GetRMSLevel() const { return fRMSLevel; }
@@ -128,6 +132,9 @@ private:
     // Audio file streaming (lock-free asynchronous I/O)
     AudioFileStreamer* fStreamer;
     bool fFileLoaded;
+
+    // Visual organization
+    int fColorIndex;  // Index into TrackColors palette
 };
 
 class SimpleHaikuEngine {

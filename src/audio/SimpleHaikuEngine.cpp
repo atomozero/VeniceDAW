@@ -20,7 +20,7 @@ namespace HaikuDAW {
 SimpleTrack::SimpleTrack(int id, const char* name)
     : fId(id), fName(name), fVolume(1.0f), fPan(0.0f), fX(0), fY(0), fZ(0), fMuted(false), fSolo(false),
       fPeakLevel(0.0f), fRMSLevel(0.0f), fPhase(0.0f), fSignalType(kSignalSine), fFrequency(440.0f),
-      fStreamer(nullptr), fFileLoaded(false), fPinkNoiseMax(1.0f)
+      fStreamer(nullptr), fFileLoaded(false), fPinkNoiseMax(1.0f), fColorIndex(0)
 {
     // Track created
     // Initialize pink noise state

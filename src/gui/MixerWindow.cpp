@@ -9,6 +9,7 @@
 #include "3DMixImportDialog.h"
 #include "TrackInspectorPanel.h"
 #include "KeyboardShortcuts.h"
+#include "TrackColors.h"
 #include <Alert.h>
 #include <Application.h>
 #include <SpaceLayoutItem.h>
@@ -134,11 +135,17 @@ void ChannelStrip::CreateControls()
     SetLayout(mainLayout);
     mainLayout->SetSpacing(5);
     mainLayout->SetInsets(5, 5, 5, 5);
-    
+
     // Set channel strip size - compact but functional
     SetExplicitMinSize(BSize(120, 350));
     SetExplicitMaxSize(BSize(150, 450));
     SetExplicitPreferredSize(BSize(130, 380));
+
+    // Apply track color if available
+    if (fTrack) {
+        const TrackColor& trackColor = TrackColorManager::GetColorByIndex(fTrack->GetColorIndex());
+        SetViewColor(fTrack->IsMuted() ? trackColor.muted : trackColor.normal);
+    }
     
     // Check if track exists before creating controls
     if (!fTrack) {
@@ -256,11 +263,16 @@ void ChannelStrip::MessageReceived(BMessage* message)
             message->FindBool("toggled", &buttonToggled);
             bool trackWasMuted = fTrack->IsMuted();
             fTrack->SetMute(buttonToggled);
-            printf("Track '%s': button=%s, was_muted=%s → now %s\n", 
-                   fTrack->GetName(), 
+            printf("Track '%s': button=%s, was_muted=%s → now %s\n",
+                   fTrack->GetName(),
                    buttonToggled ? "PRESSED" : "RELEASED",
                    trackWasMuted ? "YES" : "NO",
                    buttonToggled ? "MUTED" : "UNMUTED");
+
+            // Update visual appearance based on mute state
+            const TrackColor& trackColor = TrackColorManager::GetColorByIndex(fTrack->GetColorIndex());
+            SetViewColor(buttonToggled ? trackColor.muted : trackColor.normal);
+            Invalidate();
             break;
         }
         
@@ -309,11 +321,24 @@ void ChannelStrip::SetSelected(bool selected)
     if (fSelected != selected) {
         fSelected = selected;
 
-        // Visual feedback for selection
-        if (fSelected) {
-            SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_LIGHTEN_1_TINT));
+        // Visual feedback for selection using track color
+        if (fTrack) {
+            const TrackColor& trackColor = TrackColorManager::GetColorByIndex(fTrack->GetColorIndex());
+
+            if (fSelected) {
+                SetViewColor(trackColor.selected);
+            } else if (fTrack->IsMuted()) {
+                SetViewColor(trackColor.muted);
+            } else {
+                SetViewColor(trackColor.normal);
+            }
         } else {
-            SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+            // Fallback for tracks without color
+            if (fSelected) {
+                SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_LIGHTEN_1_TINT));
+            } else {
+                SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+            }
         }
         Invalidate();
     }
@@ -722,9 +747,9 @@ void MixerWindow::CreateChannelStrips()
         for (int i = 0; i < 4; i++) {
             BString trackName;
             trackName.SetToFormat("Track %d", i + 1);
-            
+
             SimpleTrack* track = new SimpleTrack(i, trackName.String());
-            
+
             // Set some initial positions for demo
             switch (i) {
                 case 0: track->SetPosition(-2, 0, 1); break;  // Left
@@ -732,7 +757,10 @@ void MixerWindow::CreateChannelStrips()
                 case 2: track->SetPosition(2, 1, 0); break;   // Right-high
                 case 3: track->SetPosition(0, -1, 0); break;  // Center-low
             }
-            
+
+            // Assign automatic color based on track index
+            track->SetColorIndex((int)TrackColorManager::GetAutomaticColor(i));
+
             // Add to audio engine
             fEngine->AddTrack(track);
         }
@@ -1320,10 +1348,14 @@ void MixerWindow::AddTrack()
     
     BString trackName;
     trackName << "Track " << displayNumber;
-    
+
     printf("MixerWindow: Creating track with ID %d, display name '%s'\n", trackId, trackName.String());
-    
+
     SimpleTrack* newTrack = new SimpleTrack(trackId, trackName.String());
+
+    // Assign automatic color to new track
+    newTrack->SetColorIndex((int)TrackColorManager::GetAutomaticColor(trackId));
+
     status_t result = fEngine->AddTrack(newTrack);
     
     if (result == B_OK) {
