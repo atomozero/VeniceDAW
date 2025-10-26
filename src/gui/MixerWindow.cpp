@@ -687,17 +687,23 @@ void LevelMeter::Draw(BRect updateRect)
         // Get color mapper instance
         const LevelMeterMapper& mapper = LevelMeterMapper::GetInstance();
 
-        // RMS level (average) - smooth gradient based on level
+        // RMS level (average) - professional gradient rendering
         if (fRMSLevel > 0) {
             float rmsHeight = fRMSLevel * height;
 
-            // Use mapper to get color based on actual level
-            auto color = mapper.GetColor(fRMSLevel);
-            SetHighColor(color.r, color.g, color.b);
+            // Draw with vertical gradient for professional appearance
+            for (int y = 0; y < (int)rmsHeight; y++) {
+                float levelAtY = ((float)y / height);
 
-            BRect rmsRect(bounds.left + 1, bounds.bottom - 1 - rmsHeight,
-                         bounds.right - 1, bounds.bottom - 1);
-            FillRect(rmsRect);
+                // Get color for this level from mapper
+                auto color = mapper.GetColor(levelAtY);
+                SetHighColor(color.r, color.g, color.b);
+
+                // Draw horizontal line at this height
+                float drawY = bounds.bottom - 1 - y;
+                StrokeLine(BPoint(bounds.left + 1, drawY),
+                          BPoint(bounds.right - 1, drawY));
+            }
         }
 
         // Peak level - colored line based on peak value
