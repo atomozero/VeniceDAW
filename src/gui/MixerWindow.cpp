@@ -379,11 +379,22 @@ void ChannelStrip::CreateControls()
         return;
     }
     
-    // Track name at the top - very compact
+    // Track name at the top with colored background for easy identification
     fTrackName = new BStringView("name", fTrack->GetName());
     fTrackName->SetAlignment(B_ALIGN_CENTER);
     fTrackName->SetFont(be_plain_font);
-    fTrackName->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+
+    // Use darkened track color for header background
+    rgb_color headerColor = VeniceDAW::VeniceTheme::TrackHeaderColor(fTrack->GetColorIndex());
+    fTrackName->SetViewColor(headerColor);
+    fTrackName->SetLowColor(headerColor);
+
+    // White text for good contrast against colored background
+    fTrackName->SetHighColor(make_color(255, 255, 255, 255));
+
+    fTrackName->SetExplicitMinSize(BSize(50, 18));  // Taller for better readability
+    fTrackName->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 20));
+    fTrackName->SetExplicitPreferredSize(BSize(54, 18));
     mainLayout->AddView(fTrackName);
 
     // Professional realistic fader with 3D metallic appearance
