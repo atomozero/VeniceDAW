@@ -7,6 +7,7 @@
 #include "../audio/LevelMeterMapper.h"
 #include "AudioPreviewPanel.h"
 #include "3DMixImportDialog.h"
+#include "TrackInspectorPanel.h"
 #include <Alert.h>
 #include <Application.h>
 #include <SpaceLayoutItem.h>
@@ -90,6 +91,7 @@ void ToggleButton::SetToggleColors(rgb_color normal, rgb_color pressed)
 ChannelStrip::ChannelStrip(SimpleTrack* track)
     : BView(BRect(0, 0, 130, 380), track ? track->GetName() : "EmptyStrip", B_FOLLOW_TOP_BOTTOM, B_WILL_DRAW)
     , fTrack(track)
+    , fSelected(false)
     , fTrackName(nullptr)
     , fVolumeSlider(nullptr)
     , fPanSlider(nullptr)
@@ -301,6 +303,21 @@ void ChannelStrip::MessageReceived(BMessage* message)
     }
 }
 
+void ChannelStrip::SetSelected(bool selected)
+{
+    if (fSelected != selected) {
+        fSelected = selected;
+
+        // Visual feedback for selection
+        if (fSelected) {
+            SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_LIGHTEN_1_TINT));
+        } else {
+            SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+        }
+        Invalidate();
+    }
+}
+
 void ChannelStrip::MouseDown(BPoint where)
 {
     uint32 buttons = 0;
@@ -335,7 +352,14 @@ void ChannelStrip::MouseDown(BPoint where)
         BPoint screenWhere = ConvertToScreen(where);
         contextMenu->Go(screenWhere, true, true, true);
     } else {
-        // Left-click: normal behavior (maybe select track in future)
+        // Left-click: select this track for inspector
+        MixerWindow* mixerWindow = dynamic_cast<MixerWindow*>(Window());
+        if (mixerWindow && fTrack) {
+            // Send selection message to mixer window
+            BMessage selectMsg('slct');
+            selectMsg.AddInt32("track_index", fTrack->GetId() - 1);  // 0-based
+            mixerWindow->PostMessage(&selectMsg);
+        }
         BView::MouseDown(where);
     }
 }
@@ -543,6 +567,7 @@ MixerWindow::MixerWindow(SimpleHaikuEngine* engine, int startTrack, int maxTrack
     , fMasterLevelRight(nullptr)
     , fUpdateRunner(nullptr)
     , f3DMixImporter(nullptr)
+    , fInspectorPanel(nullptr)
 {
     // Constructor called
     
@@ -655,7 +680,13 @@ void MixerWindow::CreateMixerView()
     
     printf("MixerWindow: Creating channel strips...\n");
     CreateChannelStrips();
-    
+
+    // Create track inspector panel (right sidebar)
+    printf("MixerWindow: Creating track inspector panel...\n");
+    BRect inspectorRect(0, 0, 280, 500);
+    fInspectorPanel = new TrackInspectorPanel(inspectorRect);
+    mainLayout->AddView(fInspectorPanel);
+
     printf("MixerWindow: Creating master section...\n");
     CreateMasterSection();
     
@@ -859,7 +890,32 @@ void MixerWindow::MessageReceived(BMessage* message)
             
         case MSG_UPDATE_METERS:
             UpdateMeter();
+            // Also update inspector panel levels
+            if (fInspectorPanel) {
+                fInspectorPanel->UpdateLevels();
+            }
             break;
+
+        case 'slct':  // Track selection
+        {
+            int32 trackIndex = -1;
+            if (message->FindInt32("track_index", &trackIndex) == B_OK) {
+                // Update all channel strips' selection state
+                for (ChannelStrip* strip : fChannelStrips) {
+                    if (strip && strip->GetTrack()) {
+                        bool isSelected = (strip->GetTrack()->GetId() - 1 == trackIndex);
+                        strip->SetSelected(isSelected);
+                    }
+                }
+
+                // Update inspector panel to show selected track
+                SimpleTrack* selectedTrack = fEngine->GetTrack(trackIndex);
+                if (fInspectorPanel && selectedTrack) {
+                    fInspectorPanel->SetTrack(selectedTrack);
+                }
+            }
+            break;
+        }
             
         case MSG_SHOW_3D_MIXER:
         {

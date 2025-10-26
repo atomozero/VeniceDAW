@@ -33,6 +33,7 @@ namespace HaikuDAW {
 // Forward declarations
 class SimpleHaikuEngine;
 class SimpleTrack;
+class TrackInspectorPanel;
 
 /*
  * Custom toggle button - looks like BButton but acts like BCheckBox
@@ -97,14 +98,19 @@ public:
     
     // Track access
     SimpleTrack* GetTrack() const { return fTrack; }
-    
+
+    // Selection state
+    void SetSelected(bool selected);
+    bool IsSelected() const { return fSelected; }
+
     // Friend access for solo button updates
     friend class MixerWindow;
 
 private:
     void CreateControls();
-    
+
     SimpleTrack* fTrack;
+    bool fSelected;
     
     // GUI controls
     BStringView* fTrackName;
@@ -218,6 +224,9 @@ private:
     std::vector<ChannelStrip*> fChannelStrips;
     static const int kMinTracks = 1;
     static const int kMaxTracksPerWindow = 8;
+
+    // Track inspector panel (right sidebar)
+    TrackInspectorPanel* fInspectorPanel;
     
     // Master controls
     BSlider* fMasterVolume;

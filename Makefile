@@ -71,7 +71,8 @@ GUI_SRCS = \
 	src/gui/SuperMasterWindow.cpp \
 	src/gui/BenchmarkWindow.cpp \
 	src/gui/AudioPreviewPanel.cpp \
-	src/gui/AudioParticleSystem.cpp
+	src/gui/AudioParticleSystem.cpp \
+	src/gui/TrackInspectorPanel.cpp
 
 # Phase 4 Spatial Audio GUI Components
 SPATIAL_GUI_SRCS = \
