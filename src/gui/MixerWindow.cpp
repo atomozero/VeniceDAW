@@ -1113,9 +1113,16 @@ void MixerWindow::CreateChannelStrips()
 
 void MixerWindow::CreateMasterSection()
 {
-    // Master section (right side) with VeniceTheme styling
+    // Master section (right side) with Akai styling
     fMasterSection = new BBox("master_section");
-    fMasterSection->SetLabel("Master");
+
+    // Create custom white label for visibility on black background
+    BStringView* masterLabel = new BStringView("master_label", "MASTER");
+    masterLabel->SetHighColor(make_color(255, 140, 0, 255));  // Akai orange
+    BFont masterFont(be_bold_font);
+    masterFont.SetSize(11.0f);
+    masterLabel->SetFont(&masterFont);
+    fMasterSection->SetLabel(masterLabel);
 
     // Akai-style deep black background for Master section
     fMasterSection->SetViewColor(make_color(20, 20, 25, 255));
