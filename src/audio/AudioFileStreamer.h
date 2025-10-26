@@ -12,6 +12,11 @@
 #include <kernel/OS.h>
 #include <atomic>
 
+// Forward declarations to avoid circular includes
+namespace VeniceDAW {
+    class AudioBufferPool;
+}
+
 namespace HaikuDAW {
 
 /*
@@ -86,6 +91,9 @@ private:
     // Status tracking
     std::atomic<bool> fUnderrunOccurred;
     std::atomic<bool> fLoopEnabled;
+
+    // Shared buffer pool (eliminates per-thread allocations)
+    ::VeniceDAW::AudioBufferPool* fBufferPool;
 
     // Private methods
     static int32 _IOThreadEntry(void* data);

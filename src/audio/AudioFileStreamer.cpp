@@ -3,6 +3,7 @@
  */
 
 #include "AudioFileStreamer.h"
+#include "AudioBufferPool.h"
 #include <stdio.h>
 #include <string.h>
 #include <Path.h>
@@ -24,6 +25,7 @@ AudioFileStreamer::AudioFileStreamer()
     , fWakeupSemaphore(-1)
     , fUnderrunOccurred(false)
     , fLoopEnabled(true)
+    , fBufferPool(nullptr)
 {
     // Allocate ring buffer (4 seconds @ 44.1kHz stereo = ~353KB)
     fRingBuffer = new float[RING_BUFFER_SAMPLES];
@@ -32,9 +34,13 @@ AudioFileStreamer::AudioFileStreamer()
     // Create semaphore for I/O thread wakeup
     fWakeupSemaphore = create_sem(0, "AudioFileStreamer wakeup");
 
+    // Get shared buffer pool instance
+    fBufferPool = &::VeniceDAW::AudioBufferPool::GetGlobalPool();
+
     printf("AudioFileStreamer: Created with %d second ring buffer (~%zu KB)\n",
            (int)RING_BUFFER_SECONDS,
            (RING_BUFFER_SAMPLES * sizeof(float)) / 1024);
+    printf("AudioFileStreamer: Using shared AudioBufferPool for I/O operations\n");
 }
 
 AudioFileStreamer::~AudioFileStreamer()
@@ -273,8 +279,6 @@ void AudioFileStreamer::_IOThreadFunc()
 {
     printf("AudioFileStreamer: I/O thread started\n");
 
-    float* tempBuffer = new float[READ_CHUNK_FRAMES * RING_BUFFER_CHANNELS];
-
     while (fIOThreadRunning) {
         // Check if buffer needs filling
         int64 freeFrames = _GetFreeFrames();
@@ -288,7 +292,6 @@ void AudioFileStreamer::_IOThreadFunc()
         }
     }
 
-    delete[] tempBuffer;
     printf("AudioFileStreamer: I/O thread stopped\n");
 }
 
@@ -312,7 +315,7 @@ int64 AudioFileStreamer::_GetFreeFrames() const
 
 void AudioFileStreamer::_FillRingBuffer()
 {
-    if (!fMediaTrack) return;
+    if (!fMediaTrack || !fBufferPool) return;
 
     // Calculate how many frames to read
     int64 freeFrames = _GetFreeFrames();
@@ -321,8 +324,14 @@ void AudioFileStreamer::_FillRingBuffer()
     int32 framesToRead = READ_CHUNK_FRAMES;
     int64 writePos = fWritePos.load();
 
-    // Allocate temporary buffer for reading
-    float* tempBuffer = new float[framesToRead * RING_BUFFER_CHANNELS];
+    // Get buffer from shared pool (eliminates allocation)
+    ::VeniceDAW::AudioBuffer buffer = fBufferPool->GetBuffer(framesToRead, RING_BUFFER_CHANNELS);
+    if (!buffer.IsValid()) {
+        printf("AudioFileStreamer: WARNING - Failed to acquire buffer from pool\n");
+        return;
+    }
+
+    float* tempBuffer = buffer.Data();
 
     // Read from BMediaTrack
     int64 framesRead = 0;
@@ -341,8 +350,7 @@ void AudioFileStreamer::_FillRingBuffer()
         }
 
         if (status != B_OK || framesRead == 0) {
-            // Fill with silence
-            delete[] tempBuffer;
+            // Buffer automatically returned to pool via RAII
             return;
         }
     }
@@ -360,7 +368,7 @@ void AudioFileStreamer::_FillRingBuffer()
     fWritePos = (writePos + framesRead) % RING_BUFFER_FRAMES;
     fPlaybackFrame = fPlaybackFrame + framesRead;
 
-    delete[] tempBuffer;
+    // Buffer automatically returned to pool when 'buffer' goes out of scope (RAII)
 }
 
 } // namespace HaikuDAW
