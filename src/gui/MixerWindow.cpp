@@ -244,7 +244,7 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
     if (!track) {
         // WARNING: Creating empty channel strip
         // Create a disabled/empty strip view
-        SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
+        SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
         // SetEnabled(false); // Not available in BView
         return;
     }
@@ -253,8 +253,8 @@ ChannelStrip::ChannelStrip(SimpleTrack* track)
     // printf("ChannelStrip: Creating channel strip for track '%s' (ID: %d)\n",
     //        track->GetName(), track->GetId());
 
-    // Professional dark gray background for channel strips
-    SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
+    // Use standard Haiku panel background for clean appearance
+    SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
 
     // Enable drag & drop for this channel strip
     SetFlags(Flags() | B_FRAME_EVENTS);
@@ -967,8 +967,8 @@ void MixerWindow::CreateMasterSection()
     fMasterSection = new BBox("master_section");
     fMasterSection->SetLabel("Master");
 
-    // Professional dark gray background matching channel strips
-    fMasterSection->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
+    // Use standard panel background for clean appearance
+    fMasterSection->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
 
     BGroupLayout* masterLayout = new BGroupLayout(B_VERTICAL);
     fMasterSection->SetLayout(masterLayout);
@@ -980,7 +980,7 @@ void MixerWindow::CreateMasterSection()
     BGroupLayout* transportLayout = new BGroupLayout(B_HORIZONTAL);
     transportLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* transportView = new BView("transport", B_WILL_DRAW);
-    transportView->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
+    transportView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     transportView->SetLayout(transportLayout);
 
     fPlayButton = new BButton("play", "Play", new BMessage(MSG_PLAY));
@@ -996,13 +996,13 @@ void MixerWindow::CreateMasterSection()
     BGroupLayout* metersLayout = new BGroupLayout(B_HORIZONTAL);
     metersLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* metersContainer = new BView("master_meters", B_WILL_DRAW);
-    metersContainer->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
+    metersContainer->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     metersContainer->SetLayout(metersLayout);
     
     // Left channel VU meter
     BGroupLayout* leftMeterLayout = new BGroupLayout(B_VERTICAL);
     BView* leftMeterView = new BView("left_meter_view", B_WILL_DRAW);
-    leftMeterView->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
+    leftMeterView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     leftMeterView->SetLayout(leftMeterLayout);
     
     BStringView* leftLabel = new BStringView("left_label", "L");
@@ -1019,7 +1019,7 @@ void MixerWindow::CreateMasterSection()
     // Right channel VU meter
     BGroupLayout* rightMeterLayout = new BGroupLayout(B_VERTICAL);
     BView* rightMeterView = new BView("right_meter_view", B_WILL_DRAW);
-    rightMeterView->SetViewColor(VeniceDAW::VeniceTheme::ChannelStripBackground());
+    rightMeterView->SetViewColor(VeniceDAW::VeniceTheme::PanelBackground());
     rightMeterView->SetLayout(rightMeterLayout);
     
     BStringView* rightLabel = new BStringView("right_label", "R");
