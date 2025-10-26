@@ -36,6 +36,8 @@ public:
                   BGL_RGB | BGL_DOUBLE | BGL_DEPTH)
         , fRotationY(0.0f)
         , fZoom(-15.0f)
+        , fProjectName("")
+        , fTrackCount(0)
     {
     }
 
@@ -112,6 +114,9 @@ public:
             DrawAudioSource(source);
         }
 
+        // Draw project info overlay (2D text)
+        DrawProjectInfo();
+
         SwapBuffers();
         UnlockGL();
     }
@@ -183,10 +188,23 @@ public:
     void ZoomIn() { fZoom += 1.0f; if (fZoom > -2.0f) fZoom = -2.0f; }
     void ZoomOut() { fZoom -= 1.0f; if (fZoom < -30.0f) fZoom = -30.0f; }
 
+    void SetProjectInfo(const char* name, int trackCount) {
+        fProjectName = name;
+        fTrackCount = trackCount;
+    }
+
+    void DrawProjectInfo() {
+        // Project info is shown in window title
+        // This function could draw a HUD overlay in the future
+        // For now, we keep it simple and clean
+    }
+
 private:
     std::vector<AudioSource> fSources;
     float fRotationY;
     float fZoom;
+    BString fProjectName;
+    int fTrackCount;
 };
 
 class DemoWindow : public BWindow {
@@ -228,6 +246,16 @@ public:
 
         printf("Project: %s\n", project.ProjectName().String());
         printf("Tracks: %d\n", (int)project.CountTracks());
+
+        // Set project info for display in 3D view
+        fGLView->SetProjectInfo(project.ProjectName().String(), project.CountTracks());
+
+        // Update window title
+        char windowTitle[512];
+        snprintf(windowTitle, sizeof(windowTitle), "3DMix Viewer - %s (%d tracks)",
+                 project.ProjectName().String(), project.CountTracks());
+        SetTitle(windowTitle);
+
         printf("\n3D Audio Sources:\n");
         printf("%-20s X      Y      Z\n", "Track Name");
         printf("----------------------------------------\n");
