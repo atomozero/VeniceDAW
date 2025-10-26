@@ -20,31 +20,19 @@ TrackInspectorPanel::TrackInspectorPanel(BRect frame)
 {
     SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
 
-    // Layout sections vertically
-    float yOffset = 10.0f;
-    float sectionHeight = 120.0f;
-    float width = frame.Width() - 20.0f;
+    // Use BGroupLayout for proper vertical stacking (no overlaps!)
+    BGroupLayout* mainLayout = new BGroupLayout(B_VERTICAL);
+    SetLayout(mainLayout);
+    mainLayout->SetSpacing(5);
+    mainLayout->SetInsets(5, 5, 5, 5);
 
-    // File Info section
-    BRect fileRect(10, yOffset, 10 + width, yOffset + sectionHeight);
-    _CreateFileInfoSection(fileRect);
-    yOffset += sectionHeight + 10;
+    // Create sections with layout managers
+    _CreateFileInfoSection(BRect());
+    _CreateAudioControlsSection(BRect());
+    _CreatePositionSection(BRect());
+    _CreateLevelsSection(BRect());
 
-    // Audio Controls section
-    BRect audioRect(10, yOffset, 10 + width, yOffset + sectionHeight + 20);
-    _CreateAudioControlsSection(audioRect);
-    yOffset += sectionHeight + 30;
-
-    // 3D Position section
-    BRect posRect(10, yOffset, 10 + width, yOffset + sectionHeight);
-    _CreatePositionSection(posRect);
-    yOffset += sectionHeight + 10;
-
-    // Levels section
-    BRect levelsRect(10, yOffset, 10 + width, yOffset + 100);
-    _CreateLevelsSection(levelsRect);
-
-    printf("TrackInspectorPanel: Created\n");
+    printf("TrackInspectorPanel: Created with proper layout\n");
 }
 
 TrackInspectorPanel::~TrackInspectorPanel()
@@ -165,159 +153,201 @@ void TrackInspectorPanel::MessageReceived(BMessage* message)
 
 void TrackInspectorPanel::_CreateFileInfoSection(BRect frame)
 {
-    fFileInfoBox = new BBox(frame, "file_info_box");
+    fFileInfoBox = new BBox("file_info_box");
     fFileInfoBox->SetLabel("File Information");
-    AddChild(fFileInfoBox);
 
-    BRect interior = fFileInfoBox->Bounds().InsetByCopy(10, 20);
+    // Use BGroupLayout for proper vertical stacking
+    BGroupLayout* sectionLayout = new BGroupLayout(B_VERTICAL);
+    fFileInfoBox->SetLayout(sectionLayout);
+    sectionLayout->SetSpacing(3);
+    sectionLayout->SetInsets(8, 18, 8, 8);
 
-    fFilePathLabel = new BStringView(BRect(0, 0, interior.Width(), 15),
+    // Create labels with layout manager (no MoveTo!)
+    fFilePathLabel = new BStringView(BRect(0, 0, 150, 15),
                                      "file_path", "(No track selected)");
-    fFilePathLabel->MoveTo(interior.left, interior.top);
-    fFileInfoBox->AddChild(fFilePathLabel);
+    fFilePathLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+    sectionLayout->AddView(fFilePathLabel);
 
-    fDurationLabel = new BStringView(BRect(0, 0, interior.Width(), 15),
+    fDurationLabel = new BStringView(BRect(0, 0, 150, 15),
                                      "duration", "");
-    fDurationLabel->MoveTo(interior.left, interior.top + 20);
-    fFileInfoBox->AddChild(fDurationLabel);
+    fDurationLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+    sectionLayout->AddView(fDurationLabel);
 
-    fSampleRateLabel = new BStringView(BRect(0, 0, interior.Width(), 15),
+    fSampleRateLabel = new BStringView(BRect(0, 0, 150, 15),
                                        "sample_rate", "");
-    fSampleRateLabel->MoveTo(interior.left, interior.top + 40);
-    fFileInfoBox->AddChild(fSampleRateLabel);
+    fSampleRateLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+    sectionLayout->AddView(fSampleRateLabel);
 
-    fChannelsLabel = new BStringView(BRect(0, 0, interior.Width(), 15),
+    fChannelsLabel = new BStringView(BRect(0, 0, 150, 15),
                                      "channels", "");
-    fChannelsLabel->MoveTo(interior.left, interior.top + 60);
-    fFileInfoBox->AddChild(fChannelsLabel);
+    fChannelsLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+    sectionLayout->AddView(fChannelsLabel);
+
+    // Add to main layout
+    GetLayout()->AddView(fFileInfoBox);
 }
 
 void TrackInspectorPanel::_CreateAudioControlsSection(BRect frame)
 {
-    fAudioControlsBox = new BBox(frame, "audio_controls_box");
+    fAudioControlsBox = new BBox("audio_controls_box");
     fAudioControlsBox->SetLabel("Audio Controls");
-    AddChild(fAudioControlsBox);
 
-    BRect interior = fAudioControlsBox->Bounds().InsetByCopy(10, 20);
+    // Use BGroupLayout for proper vertical stacking
+    BGroupLayout* sectionLayout = new BGroupLayout(B_VERTICAL);
+    fAudioControlsBox->SetLayout(sectionLayout);
+    sectionLayout->SetSpacing(3);
+    sectionLayout->SetInsets(8, 18, 8, 8);
 
-    // Volume slider
-    fVolumeSlider = new BSlider(BRect(0, 0, interior.Width(), 30),
+    // Volume slider - compact
+    fVolumeSlider = new BSlider(BRect(0, 0, 150, 30),
                                 "volume_slider", "Volume:",
                                 new BMessage(MSG_VOLUME_CHANGED),
-                                0, 200);  // 0-200%
-    fVolumeSlider->SetHashMarks(B_HASH_MARKS_BOTTOM);
-    fVolumeSlider->SetHashMarkCount(11);
+                                0, 200, B_HORIZONTAL);  // 0-200%
+    fVolumeSlider->SetHashMarks(B_HASH_MARKS_NONE);  // Clean look
     fVolumeSlider->SetLimitLabels("0%", "200%");
     fVolumeSlider->SetValue(100);
-    fVolumeSlider->MoveTo(interior.left, interior.top);
-    fAudioControlsBox->AddChild(fVolumeSlider);
+    fVolumeSlider->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 30));
+    sectionLayout->AddView(fVolumeSlider);
 
-    // Pan slider
-    fPanSlider = new BSlider(BRect(0, 0, interior.Width(), 30),
+    // Pan slider - compact
+    fPanSlider = new BSlider(BRect(0, 0, 150, 30),
                              "pan_slider", "Pan:",
                              new BMessage(MSG_PAN_CHANGED),
-                             0, 100);  // 0=Left, 50=Center, 100=Right
-    fPanSlider->SetHashMarks(B_HASH_MARKS_BOTTOM);
-    fPanSlider->SetHashMarkCount(5);
+                             0, 100, B_HORIZONTAL);  // 0=Left, 50=Center, 100=Right
+    fPanSlider->SetHashMarks(B_HASH_MARKS_NONE);
     fPanSlider->SetLimitLabels("L", "R");
     fPanSlider->SetValue(50);
-    fPanSlider->MoveTo(interior.left, interior.top + 40);
-    fAudioControlsBox->AddChild(fPanSlider);
+    fPanSlider->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 30));
+    sectionLayout->AddView(fPanSlider);
 
-    // Mute/Solo checkboxes
-    fMuteCheckbox = new BCheckBox(BRect(0, 0, 80, 20),
+    // Mute/Solo checkboxes in horizontal group
+    BGroupView* checkboxGroup = new BGroupView(B_HORIZONTAL);
+    checkboxGroup->GroupLayout()->SetSpacing(5);
+
+    fMuteCheckbox = new BCheckBox(BRect(0, 0, 70, 20),
                                   "mute_check", "Mute",
                                   new BMessage(MSG_MUTE_CHANGED));
-    fMuteCheckbox->MoveTo(interior.left, interior.top + 80);
-    fAudioControlsBox->AddChild(fMuteCheckbox);
+    checkboxGroup->AddChild(fMuteCheckbox);
 
-    fSoloCheckbox = new BCheckBox(BRect(0, 0, 80, 20),
+    fSoloCheckbox = new BCheckBox(BRect(0, 0, 70, 20),
                                   "solo_check", "Solo",
                                   new BMessage(MSG_SOLO_CHANGED));
-    fSoloCheckbox->MoveTo(interior.left + 90, interior.top + 80);
-    fAudioControlsBox->AddChild(fSoloCheckbox);
+    checkboxGroup->AddChild(fSoloCheckbox);
+
+    sectionLayout->AddView(checkboxGroup);
+
+    // Add to main layout
+    GetLayout()->AddView(fAudioControlsBox);
 }
 
 void TrackInspectorPanel::_CreatePositionSection(BRect frame)
 {
-    fPositionBox = new BBox(frame, "position_box");
+    fPositionBox = new BBox("position_box");
     fPositionBox->SetLabel("3D Position");
-    AddChild(fPositionBox);
 
-    BRect interior = fPositionBox->Bounds().InsetByCopy(10, 20);
+    // Use BGroupLayout for proper vertical stacking
+    BGroupLayout* sectionLayout = new BGroupLayout(B_VERTICAL);
+    fPositionBox->SetLayout(sectionLayout);
+    sectionLayout->SetSpacing(3);
+    sectionLayout->SetInsets(8, 18, 8, 8);
 
-    // Position controls
-    fPositionXControl = new BTextControl(BRect(0, 0, interior.Width(), 25),
+    // Position controls - compact
+    fPositionXControl = new BTextControl(BRect(0, 0, 150, 25),
                                          "pos_x", "X:", "0.0", nullptr);
-    fPositionXControl->MoveTo(interior.left, interior.top);
-    fPositionBox->AddChild(fPositionXControl);
+    fPositionXControl->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 25));
+    sectionLayout->AddView(fPositionXControl);
 
-    fPositionYControl = new BTextControl(BRect(0, 0, interior.Width(), 25),
+    fPositionYControl = new BTextControl(BRect(0, 0, 150, 25),
                                          "pos_y", "Y:", "0.0", nullptr);
-    fPositionYControl->MoveTo(interior.left, interior.top + 30);
-    fPositionBox->AddChild(fPositionYControl);
+    fPositionYControl->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 25));
+    sectionLayout->AddView(fPositionYControl);
 
-    fPositionZControl = new BTextControl(BRect(0, 0, interior.Width(), 25),
+    fPositionZControl = new BTextControl(BRect(0, 0, 150, 25),
                                          "pos_z", "Z:", "0.0", nullptr);
-    fPositionZControl->MoveTo(interior.left, interior.top + 60);
-    fPositionBox->AddChild(fPositionZControl);
+    fPositionZControl->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 25));
+    sectionLayout->AddView(fPositionZControl);
 
-    // Reset button
-    fResetPositionButton = new BButton(BRect(0, 0, 120, 25),
-                                       "reset_pos", "Reset Position",
+    // Reset button and distance in horizontal group
+    BGroupView* resetGroup = new BGroupView(B_HORIZONTAL);
+    resetGroup->GroupLayout()->SetSpacing(5);
+
+    fResetPositionButton = new BButton(BRect(0, 0, 80, 25),
+                                       "reset_pos", "Reset",
                                        new BMessage(MSG_RESET_POSITION));
-    fResetPositionButton->MoveTo(interior.left, interior.top + 90);
-    fPositionBox->AddChild(fResetPositionButton);
+    fResetPositionButton->SetExplicitMaxSize(BSize(80, 25));
+    resetGroup->AddChild(fResetPositionButton);
 
-    // Distance label
-    fDistanceLabel = new BStringView(BRect(0, 0, interior.Width(), 15),
+    fDistanceLabel = new BStringView(BRect(0, 0, 80, 25),
                                      "distance", "Distance: 0.0");
-    fDistanceLabel->MoveTo(interior.left + 130, interior.top + 95);
-    fPositionBox->AddChild(fDistanceLabel);
+    fDistanceLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 25));
+    resetGroup->AddChild(fDistanceLabel);
+
+    sectionLayout->AddView(resetGroup);
+
+    // Add to main layout
+    GetLayout()->AddView(fPositionBox);
 }
 
 void TrackInspectorPanel::_CreateLevelsSection(BRect frame)
 {
-    fLevelsBox = new BBox(frame, "levels_box");
+    fLevelsBox = new BBox("levels_box");
     fLevelsBox->SetLabel("Real-time Levels");
-    AddChild(fLevelsBox);
 
-    BRect interior = fLevelsBox->Bounds().InsetByCopy(10, 20);
+    // Use BGroupLayout for proper vertical stacking
+    BGroupLayout* sectionLayout = new BGroupLayout(B_VERTICAL);
+    fLevelsBox->SetLayout(sectionLayout);
+    sectionLayout->SetSpacing(5);
+    sectionLayout->SetInsets(8, 18, 8, 8);
 
-    // Peak meter
-    fPeakMeterView = new BView(BRect(0, 0, interior.Width() - 80, 15),
-                               "peak_meter", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW);
+    // Peak meter row (horizontal: meter + value)
+    BGroupView* peakRow = new BGroupView(B_HORIZONTAL);
+    peakRow->GroupLayout()->SetSpacing(5);
+
+    fPeakMeterView = new BView(BRect(0, 0, 100, 15), "peak_meter", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW);
     fPeakMeterView->SetViewColor(50, 50, 50);
-    fPeakMeterView->MoveTo(interior.left, interior.top);
-    fLevelsBox->AddChild(fPeakMeterView);
+    fPeakMeterView->SetExplicitMinSize(BSize(80, 15));
+    fPeakMeterView->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+    peakRow->AddChild(fPeakMeterView);
 
-    fPeakValueLabel = new BStringView(BRect(0, 0, 75, 15),
+    fPeakValueLabel = new BStringView(BRect(0, 0, 55, 15),
                                       "peak_value", "-inf dB");
-    fPeakValueLabel->MoveTo(interior.right - 75, interior.top);
-    fLevelsBox->AddChild(fPeakValueLabel);
+    fPeakValueLabel->SetExplicitMinSize(BSize(55, 15));
+    fPeakValueLabel->SetExplicitMaxSize(BSize(55, 15));
+    peakRow->AddChild(fPeakValueLabel);
 
-    // RMS meter
-    fRMSMeterView = new BView(BRect(0, 0, interior.Width() - 80, 15),
-                              "rms_meter", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW);
+    sectionLayout->AddView(peakRow);
+
+    // RMS meter row (horizontal: meter + value)
+    BGroupView* rmsRow = new BGroupView(B_HORIZONTAL);
+    rmsRow->GroupLayout()->SetSpacing(5);
+
+    fRMSMeterView = new BView(BRect(0, 0, 100, 15), "rms_meter", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW);
     fRMSMeterView->SetViewColor(50, 50, 50);
-    fRMSMeterView->MoveTo(interior.left, interior.top + 25);
-    fLevelsBox->AddChild(fRMSMeterView);
+    fRMSMeterView->SetExplicitMinSize(BSize(80, 15));
+    fRMSMeterView->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+    rmsRow->AddChild(fRMSMeterView);
 
-    fRMSValueLabel = new BStringView(BRect(0, 0, 75, 15),
+    fRMSValueLabel = new BStringView(BRect(0, 0, 55, 15),
                                      "rms_value", "-inf dB");
-    fRMSValueLabel->MoveTo(interior.right - 75, interior.top + 25);
-    fLevelsBox->AddChild(fRMSValueLabel);
+    fRMSValueLabel->SetExplicitMinSize(BSize(55, 15));
+    fRMSValueLabel->SetExplicitMaxSize(BSize(55, 15));
+    rmsRow->AddChild(fRMSValueLabel);
 
-    // Labels
-    BStringView* peakLabel = new BStringView(BRect(0, 0, 40, 15),
+    sectionLayout->AddView(rmsRow);
+
+    // Labels (Peak/RMS labels)
+    BStringView* peakLabel = new BStringView(BRect(0, 0, 150, 15),
                                              "peak_label", "Peak:");
-    peakLabel->MoveTo(interior.left, interior.top + 45);
-    fLevelsBox->AddChild(peakLabel);
+    peakLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+    sectionLayout->AddView(peakLabel);
 
-    BStringView* rmsLabel = new BStringView(BRect(0, 0, 40, 15),
+    BStringView* rmsLabel = new BStringView(BRect(0, 0, 150, 15),
                                             "rms_label", "RMS:");
-    rmsLabel->MoveTo(interior.left, interior.top + 60);
-    fLevelsBox->AddChild(rmsLabel);
+    rmsLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 15));
+    sectionLayout->AddView(rmsLabel);
+
+    // Add to main layout
+    GetLayout()->AddView(fLevelsBox);
 }
 
 void TrackInspectorPanel::_UpdateFileInfo()
