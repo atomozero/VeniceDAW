@@ -1116,10 +1116,10 @@ void MixerWindow::CreateMasterSection()
     rightMeterLayout->AddView(fMasterLevelRight);
     metersLayout->AddView(rightMeterView);
     
-    // Master volume
-    fMasterVolume = new BSlider("master_vol", "Master Volume",
-                               new BMessage(MSG_MASTER_VOLUME),
-                               0, 100, B_VERTICAL);
+    // Master volume with professional fader appearance
+    fMasterVolume = new ProfessionalFader("master_vol", "Master Volume",
+                                          new BMessage(MSG_MASTER_VOLUME),
+                                          0, 100, B_VERTICAL);
     fMasterVolume->SetValue(100);  // 100%
     fMasterVolume->SetTarget(this);
     fMasterVolume->SetLimitLabels("0", "100%");
