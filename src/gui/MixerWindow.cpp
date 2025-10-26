@@ -10,6 +10,7 @@
 #include "TrackInspectorPanel.h"
 #include "KeyboardShortcuts.h"
 #include "TrackColors.h"
+#include "VeniceTheme.h"
 #include <Alert.h>
 #include <Application.h>
 #include <SpaceLayoutItem.h>
