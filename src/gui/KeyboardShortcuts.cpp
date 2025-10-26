@@ -3,6 +3,7 @@
  */
 
 #include "KeyboardShortcuts.h"
+#include <InterfaceDefs.h>
 #include <String.h>
 
 namespace HaikuDAW {

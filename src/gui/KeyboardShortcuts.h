@@ -7,6 +7,7 @@
 #define KEYBOARD_SHORTCUTS_H
 
 #include <SupportDefs.h>
+#include <InterfaceDefs.h>
 
 namespace HaikuDAW {
 

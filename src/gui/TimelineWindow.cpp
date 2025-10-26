@@ -11,6 +11,7 @@
 #include <Menu.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
+#include <Region.h>
 #include <stdio.h>
 #include <algorithm>
 

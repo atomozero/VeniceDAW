@@ -905,7 +905,7 @@ void MixerWindow::DispatchMessage(BMessage* message, BHandler* handler)
             if (KeyboardShortcuts::HasExactModifiers(modifiers, MOD_NONE)) {
                 switch (key) {
                     case KEY_PLAY_PAUSE:  // Spacebar - toggle play/pause
-                        if (fEngine && fEngine->IsPlaying()) {
+                        if (fEngine && fEngine->IsRunning()) {
                             PostMessage(MSG_STOP);
                         } else {
                             PostMessage(MSG_PLAY);

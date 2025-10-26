@@ -4,11 +4,13 @@
 
 #include "UnifiedWindow.h"
 #include "../audio/SimpleHaikuEngine.h"
+#include <Alert.h>
+#include <Application.h>
 #include <GroupLayout.h>
 #include <LayoutBuilder.h>
 #include <Menu.h>
 #include <MenuItem.h>
-#include <Tab.h>
+#include <TabView.h>
 #include <StringView.h>
 #include <stdio.h>
 
