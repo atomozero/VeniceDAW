@@ -59,17 +59,58 @@ void ToggleButton::MouseDown(BPoint where)
 
 void ToggleButton::Draw(BRect updateRect)
 {
-    // Set background color based on toggle state
+    // Professional 3D button rendering with realistic lighting
+    BRect bounds = Bounds();
+
+    // Choose base color based on toggle state
+    rgb_color baseColor = fToggled ? fPressedColor : fNormalColor;
+
+    // Create 3D effect with gradients
     if (fToggled) {
-        SetViewColor(fPressedColor);
-        SetLowColor(fPressedColor);
+        // Pressed state: darker with inset shadow
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.6f));
+        FillRect(bounds);
+
+        // Top-left dark edge (inset shadow)
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.4f));
+        StrokeLine(bounds.LeftTop(), bounds.RightTop());
+        StrokeLine(bounds.LeftTop(), bounds.LeftBottom());
+
+        // Bottom-right subtle highlight
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.7f));
+        StrokeLine(bounds.RightTop(), bounds.RightBottom());
+        StrokeLine(bounds.LeftBottom(), bounds.RightBottom());
     } else {
-        SetViewColor(fNormalColor);
-        SetLowColor(fNormalColor);
+        // Unpressed state: lighter with raised appearance
+        SetHighColor(baseColor);
+        FillRect(bounds);
+
+        // Top-left bright highlight (light source from top-left)
+        SetHighColor(VeniceDAW::VeniceTheme::Tint(baseColor, B_LIGHTEN_MAX_TINT));
+        StrokeLine(bounds.LeftTop(), bounds.RightTop());
+        StrokeLine(bounds.LeftTop(), bounds.LeftBottom());
+
+        // Bottom-right shadow (depth)
+        SetHighColor(VeniceDAW::VeniceTheme::Dim(baseColor, 0.5f));
+        StrokeLine(bounds.RightTop(), bounds.RightBottom());
+        StrokeLine(bounds.LeftBottom(), bounds.RightBottom());
     }
-    
-    // Draw as normal button
-    BButton::Draw(updateRect);
+
+    // Draw label text centered
+    SetHighColor(VeniceDAW::VeniceTheme::TextColor());
+    SetLowColor(baseColor);
+
+    font_height fh;
+    GetFontHeight(&fh);
+    float textHeight = fh.ascent + fh.descent;
+    float textY = bounds.top + (bounds.Height() - textHeight) / 2.0f + fh.ascent;
+
+    const char* label = Label();
+    if (label) {
+        float textWidth = StringWidth(label);
+        float textX = bounds.left + (bounds.Width() - textWidth) / 2.0f;
+        DrawString(label, BPoint(textX, textY));
+    }
 }
 
 void ToggleButton::SetToggled(bool toggled)
