@@ -17,13 +17,34 @@ BUILD_DIR = build
 # Core audio sources
 AUDIO_SOURCES = $(AUDIO_SRC)/SimpleHaikuEngine.cpp \
                 $(AUDIO_SRC)/AdvancedAudioProcessor.cpp \
-                $(AUDIO_SRC)/DSPAlgorithms.cpp
+                $(AUDIO_SRC)/DSPAlgorithms.cpp \
+                $(AUDIO_SRC)/AudioFileStreamer.cpp \
+                $(AUDIO_SRC)/LevelMeterMapper.cpp \
+                $(AUDIO_SRC)/AudioLogging.cpp \
+                $(AUDIO_SRC)/MemoryMonitor.cpp \
+                $(AUDIO_SRC)/AudioBufferPool.cpp \
+                $(AUDIO_SRC)/VeniceAudioInputNode.cpp \
+                $(AUDIO_SRC)/3dmix/3DMixProjectImporter.cpp \
+                $(AUDIO_SRC)/3dmix/3DMixParser.cpp \
+                $(AUDIO_SRC)/3dmix/3DMixFormat.cpp \
+                $(AUDIO_SRC)/3dmix/AudioPathResolver.cpp \
+                $(AUDIO_SRC)/3dmix/CoordinateSystemMapper.cpp
 
-# GUI sources  
+# GUI sources
 GUI_SOURCES = $(GUI_SRC)/Mixer3DWindow.cpp \
               $(GUI_SRC)/SpatialMixer3DWindow.cpp \
               $(GUI_SRC)/SpatialControlPanels.cpp \
-              $(GUI_SRC)/TransportWindow.cpp
+              $(GUI_SRC)/TransportWindow.cpp \
+              $(GUI_SRC)/AudioParticleSystem.cpp \
+              $(GUI_SRC)/MixerWindow.cpp \
+              $(GUI_SRC)/SuperMasterWindow.cpp \
+              $(GUI_SRC)/TimelineWindow.cpp \
+              $(GUI_SRC)/TrackInspectorPanel.cpp \
+              $(GUI_SRC)/TrackColors.cpp \
+              $(GUI_SRC)/KeyboardShortcuts.cpp \
+              $(GUI_SRC)/3DMixImportDialog.cpp \
+              $(GUI_SRC)/AudioPreviewPanel.cpp \
+              $(GUI_SRC)/VeniceTheme.cpp
 
 # Test sources
 TEST_SOURCES = $(TEST_SRC)/SpatialAudioTest.cpp
