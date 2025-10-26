@@ -168,32 +168,35 @@ void ChannelStrip::CreateControls()
     
     // Create horizontal group for VU meter and volume slider side by side
     BGroupLayout* metersLayout = new BGroupLayout(B_HORIZONTAL);
-    metersLayout->SetSpacing(3);
+    metersLayout->SetSpacing(VeniceDAW::VeniceTheme::SPACING);
     BView* metersContainer = new BView("meters", B_WILL_DRAW);
     metersContainer->SetLayout(metersLayout);
-    
-    // Level meter (VU meter) on the left
+
+    // Level meter (VU meter) - compact professional width
     fLevelMeter = new LevelMeter();
-    fLevelMeter->SetExplicitMinSize(BSize(25, 150));
-    fLevelMeter->SetExplicitMaxSize(BSize(30, 200));
-    fLevelMeter->SetExplicitPreferredSize(BSize(28, 180));
+    float meterWidth = VeniceDAW::VeniceTheme::METER_WIDTH;
+    float faderHeight = VeniceDAW::VeniceTheme::FADER_HEIGHT;
+    fLevelMeter->SetExplicitMinSize(BSize(meterWidth, faderHeight));
+    fLevelMeter->SetExplicitMaxSize(BSize(meterWidth + 2, faderHeight + 50));
+    fLevelMeter->SetExplicitPreferredSize(BSize(meterWidth, faderHeight + 30));
     metersLayout->AddView(fLevelMeter);
-    
-    // Volume slider on the right, parallel to VU meter
-    fVolumeSlider = new BSlider("volume", "Vol", 
+
+    // Volume slider - compact professional layout
+    fVolumeSlider = new BSlider("volume", "Vol",
                                new BMessage(MSG_VOLUME_CHANGED),
                                0, 200, B_VERTICAL);
     fVolumeSlider->SetValue((int)(fTrack->GetVolume() * 100));
     fVolumeSlider->SetTarget(this);
     fVolumeSlider->SetLimitLabels("0", "200%");
-    fVolumeSlider->SetModificationMessage(new BMessage(MSG_VOLUME_CHANGED));  // Real-time updates
-    fVolumeSlider->SetHashMarks(B_HASH_MARKS_BOTH);  // Mostra le tacche
-    fVolumeSlider->SetHashMarkCount(5);  // 0, 50, 100, 150, 200
-    fVolumeSlider->SetExplicitMinSize(BSize(60, 150));
-    fVolumeSlider->SetExplicitMaxSize(BSize(70, 200));
-    fVolumeSlider->SetExplicitPreferredSize(BSize(65, 180));
+    fVolumeSlider->SetModificationMessage(new BMessage(MSG_VOLUME_CHANGED));
+    fVolumeSlider->SetHashMarks(B_HASH_MARKS_BOTH);
+    fVolumeSlider->SetHashMarkCount(5);
+    // Make slider more compact to fit 80px strip
+    fVolumeSlider->SetExplicitMinSize(BSize(55, faderHeight));
+    fVolumeSlider->SetExplicitMaxSize(BSize(65, faderHeight + 50));
+    fVolumeSlider->SetExplicitPreferredSize(BSize(60, faderHeight + 30));
     metersLayout->AddView(fVolumeSlider);
-    
+
     // Add the meters container to main layout
     mainLayout->AddView(metersContainer);
     
@@ -207,23 +210,25 @@ void ChannelStrip::CreateControls()
     fPanSlider->SetModificationMessage(new BMessage(MSG_PAN_CHANGED));  // Real-time pan
     mainLayout->AddView(fPanSlider);
     
-    // Mute toggle button (looks like button, acts like checkbox)
-    fMuteButton = new ToggleButton("mute", "Mute", new BMessage(MSG_MUTE_TOGGLED));
+    // Mute toggle button - compact professional style
+    fMuteButton = new ToggleButton("mute", "M", new BMessage(MSG_MUTE_TOGGLED));
     fMuteButton->SetTarget(this);
     fMuteButton->SetToggled(fTrack->IsMuted());
     fMuteButton->SetToggleColors(
-        {200, 200, 200, 255},  // Normal grey
-        {255, 120, 120, 255}   // Muted red
+        VeniceDAW::VeniceTheme::ControlBackground(),
+        VeniceDAW::VeniceTheme::MeterRed()  // Muted = red
     );
+    fMuteButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
     mainLayout->AddView(fMuteButton);
-    
-    // Solo toggle button
-    fSoloButton = new ToggleButton("solo", "Solo", new BMessage(MSG_SOLO_TOGGLED));
+
+    // Solo toggle button - compact professional style
+    fSoloButton = new ToggleButton("solo", "S", new BMessage(MSG_SOLO_TOGGLED));
     fSoloButton->SetTarget(this);
     fSoloButton->SetToggleColors(
-        {200, 200, 200, 255},  // Normal grey  
-        {120, 255, 120, 255}   // Solo green
+        VeniceDAW::VeniceTheme::ControlBackground(),
+        VeniceDAW::VeniceTheme::MeterGreen()  // Solo = green
     );
+    fSoloButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, VeniceDAW::VeniceTheme::BUTTON_HEIGHT));
     mainLayout->AddView(fSoloButton);
 }
 
