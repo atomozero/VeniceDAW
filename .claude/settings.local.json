@@ -12,7 +12,11 @@
       "Bash(git push:*)",
       "Read(//boot/home/Desktop/3D_Mixes/she-loves-it/she-loves-it-3dmix/**)",
       "Read(//boot/home/Desktop/3D_Mixes/**)",
-      "Read(//boot/home/Telegram Desktop/R6 Source/src/apps/3d_mixer/**)"
+      "Read(//boot/home/Telegram Desktop/R6 Source/src/apps/3d_mixer/**)",
+      "Bash(./demo_3dmix_viewer:*)",
+      "Bash(./analyze_3dmix_bmessage:*)",
+      "Bash(python3:*)",
+      "Bash(./test_3dmix_parser:*)"
     ],
     "deny": [],
     "ask": []

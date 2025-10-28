@@ -284,6 +284,26 @@ public:
 	int32 ProjectLength() const { return fProjectLength; }
 	void SetProjectLength(int32 length) { fProjectLength = length; }
 
+	// TimeView parameters (from original 3dmix format)
+	float TimelineSelectStart() const { return fTimelineSelectStart; }
+	void SetTimelineSelectStart(float start) { fTimelineSelectStart = start; }
+
+	float TimelineSelectEnd() const { return fTimelineSelectEnd; }
+	void SetTimelineSelectEnd(float end) { fTimelineSelectEnd = end; }
+
+	int32 TimelineVSize() const { return fTimelineVSize; }
+	void SetTimelineVSize(int32 size) { fTimelineVSize = size; }
+
+	float TimelineBeatPM() const { return fTimelineBeatPM; }
+	void SetTimelineBeatPM(float bpm) { fTimelineBeatPM = bpm; }
+
+	int32 TimelineBeatPerMeasure() const { return fTimelineBeatPerMeasure; }
+	void SetTimelineBeatPerMeasure(int32 beats) { fTimelineBeatPerMeasure = beats; }
+
+	// TCtrlView parameters (from original 3dmix format)
+	const BString& BeatText() const { return fBeatText; }
+	void SetBeatText(const char* text) { fBeatText.SetTo(text); }
+
 	// Version and compatibility
 	uint32 FormatVersion() const { return fFormatVersion; }
 	void SetFormatVersion(uint32 version) { fFormatVersion = version; }
@@ -321,6 +341,16 @@ private:
 	// Timing and sync
 	int32 fProjectSampleRate;
 	int32 fProjectLength;
+
+	// TimeView parameters (from original 3dmix format)
+	float fTimelineSelectStart;
+	float fTimelineSelectEnd;
+	int32 fTimelineVSize;
+	float fTimelineBeatPM;
+	int32 fTimelineBeatPerMeasure;
+
+	// TCtrlView parameters (from original 3dmix format)
+	BString fBeatText;
 
 	// Version and compatibility
 	uint32 fFormatVersion;

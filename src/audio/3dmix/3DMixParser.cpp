@@ -243,6 +243,75 @@ Legacy3DMixLoader::~Legacy3DMixLoader()
 {
 }
 
+Project3DMix* Legacy3DMixLoader::DetachProject()
+{
+	// Create a deep copy of the project to transfer ownership
+	Project3DMix* copy = new Project3DMix();
+
+	copy->SetProjectName(fProject.ProjectName());
+	copy->SetBasePath(fProject.BasePath());
+	copy->SetMasterVolume(fProject.MasterVolume());
+	copy->SetMasterEnabled(fProject.IsMasterEnabled());
+	copy->SetListenerPosition(fProject.ListenerPosition());
+	copy->SetListenerOrientation(fProject.ListenerOrientationYaw(), fProject.ListenerOrientationPitch());
+	copy->SetProjectSampleRate(fProject.ProjectSampleRate());
+	copy->SetProjectLength(fProject.ProjectLength());
+
+	// Copy all tracks
+	for (int32 i = 0; i < fProject.CountTracks(); i++) {
+		Track3DMix* origTrack = fProject.TrackAt(i);
+		if (!origTrack) continue;
+
+		Track3DMix* newTrack = new Track3DMix();
+		newTrack->SetAudioFilePath(origTrack->AudioFilePath());
+		newTrack->SetTrackName(origTrack->TrackName());
+		newTrack->SetVolume(origTrack->Volume());
+		newTrack->SetBalance(origTrack->Balance());
+		newTrack->SetEnabled(origTrack->IsEnabled());
+		newTrack->SetPosition(origTrack->Position());
+		newTrack->SetStartPosition(origTrack->StartPosition());
+		newTrack->SetEndPosition(origTrack->EndPosition());
+		newTrack->SetLoopStart(origTrack->LoopStart());
+		newTrack->SetLoopEnd(origTrack->LoopEnd());
+		newTrack->SetLoopEnabled(origTrack->IsLoopEnabled());
+		newTrack->SetAudioFormat(origTrack->GetAudioFormat());
+
+		copy->AddTrack(newTrack);
+	}
+
+	return copy;
+}
+
+int32 Legacy3DMixLoader::GetLoadedTrackCount() const
+{
+	return fLoadedTrackCount;
+}
+
+int32 Legacy3DMixLoader::GetFailedTrackCount() const
+{
+	return fFailedTrackCount;
+}
+
+bool Legacy3DMixLoader::HasErrors() const
+{
+	for (const auto& result : fValidationResults) {
+		if (result.level == VALIDATION_ERROR || result.level == VALIDATION_CRITICAL) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Legacy3DMixLoader::HasWarnings() const
+{
+	for (const auto& result : fValidationResults) {
+		if (result.level == VALIDATION_WARNING) {
+			return true;
+		}
+	}
+	return false;
+}
+
 status_t Legacy3DMixLoader::LoadProject(const char* filePath)
 {
 	if (!filePath) {
@@ -257,7 +326,25 @@ status_t Legacy3DMixLoader::LoadProject(const char* filePath)
 		return status;
 	}
 
-	return LoadProject(&file);
+	// Extract directory path for loading individual track files
+	BPath path(filePath);
+	BPath dirPath;
+	path.GetParent(&dirPath);
+
+	// Load master file
+	status = LoadProject(&file);
+	if (status != B_OK) {
+		return status;
+	}
+
+	// Load individual track files from same directory
+	status = ParseIndividualTrackFiles(dirPath.Path());
+	if (status != B_OK) {
+		ReportWarning("Failed to load some track files (timeline positions may be missing)");
+		// Don't fail - continue with partial data
+	}
+
+	return B_OK;
 }
 
 status_t Legacy3DMixLoader::LoadProject(BFile* file)
@@ -475,11 +562,19 @@ status_t Legacy3DMixLoader::ParseSingleTrackRecord(BDataIO* stream, Track3DMix* 
 	yRaw = B_BENDIAN_TO_HOST_INT32(yRaw);
 	float y = *((float*)&yRaw);
 
-	// Set 3D position (Z=0 since original format is 2D)
-	track->SetPosition(x, y, 0.0f);
+	// Normalize GUI pixel coordinates to 3D coordinate space (-12.0 to +12.0)
+	// BeOS 3D Mixer GUI used a ~250x250 pixel coordinate system
+	const float kPixelRange = 250.0f;
+	const float k3DRange = 10.0f;  // Use ±10 instead of ±12 for safety margin
 
-	AUDIO_LOG_DEBUG("3DMixLoader", "Track path: %s, position: (%.2f, %.2f, 0.0)",
-	                pathBuffer, x, y);
+	float normalizedX = (x / kPixelRange) * k3DRange;
+	float normalizedY = (y / kPixelRange) * k3DRange;
+
+	// Set 3D position (Z=0 since original format is 2D)
+	track->SetPosition(normalizedX, normalizedY, 0.0f);
+
+	AUDIO_LOG_DEBUG("3DMixLoader", "Track path: %s, GUI pos: (%.2f, %.2f) -> 3D pos: (%.2f, %.2f, 0.0)",
+	                pathBuffer, x, y, normalizedX, normalizedY);
 
 	// Translate BeOS path to Haiku path
 	BString haikuPath;
@@ -502,6 +597,214 @@ status_t Legacy3DMixLoader::ParseSingleTrackRecord(BDataIO* stream, Track3DMix* 
 			track->SetAudioFormat(format);
 		}
 	}
+
+	return B_OK;
+}
+
+// =====================================
+// Individual Track File Parsing
+// =====================================
+
+status_t Legacy3DMixLoader::ParseIndividualTrackFiles(const char* projectDir)
+{
+	// Load timeline data from individual track files
+	// Each track has a separate file (no extension) with timeline positions
+
+	AUDIO_LOG_INFO("3DMixLoader", "Loading individual track files from: %s", projectDir);
+
+	int32 successCount = 0;
+	int32 failCount = 0;
+
+	for (int32 i = 0; i < fProject.CountTracks(); i++) {
+		Track3DMix* track = fProject.TrackAt(i);
+		if (!track) continue;
+
+		// Build path to track file: projectDir/trackName
+		BPath trackPath(projectDir);
+		trackPath.Append(track->TrackName().String());
+
+		status_t status = ParseSingleTrackFile(trackPath.Path(), track);
+		if (status == B_OK) {
+			successCount++;
+		} else {
+			failCount++;
+			AUDIO_LOG_WARNING("3DMixLoader", "Failed to load track file: %s", trackPath.Path());
+		}
+	}
+
+	AUDIO_LOG_INFO("3DMixLoader", "Loaded %d track files (%d failed)", successCount, failCount);
+	return B_OK; // Don't fail if some tracks don't have files
+}
+
+status_t Legacy3DMixLoader::ParseSingleTrackFile(const char* trackFilePath, Track3DMix* track)
+{
+	BFile file(trackFilePath, B_READ_ONLY);
+	if (file.InitCheck() != B_OK) {
+		return B_ENTRY_NOT_FOUND;
+	}
+
+	// Read !TRK signature
+	uint32 signature;
+	ssize_t bytesRead = file.Read(&signature, sizeof(signature));
+	if (bytesRead != sizeof(signature)) {
+		ReportError("Failed to read track file signature");
+		return B_IO_ERROR;
+	}
+
+	signature = B_BENDIAN_TO_HOST_INT32(signature);
+	// '!TRK' bytes: 21 54 52 4B
+	// Read as big-endian uint32 and converted to host = 0x2154524B
+	if (signature != 0x2154524B) { // '!TRK'
+		AUDIO_LOG_ERROR("3DMixLoader", "Got signature: 0x%08X, expected: 0x2154524B ('!TRK')", signature);
+		ReportError("Invalid track file signature");
+		return B_BAD_VALUE;
+	}
+
+	// Read track name size
+	uint32 nameSize;
+	bytesRead = file.Read(&nameSize, sizeof(nameSize));
+	if (bytesRead != sizeof(nameSize)) {
+		ReportError("Failed to read track name size");
+		return B_IO_ERROR;
+	}
+	nameSize = B_BENDIAN_TO_HOST_INT32(nameSize);
+
+	// Read track name (skip it, we already have it)
+	if (nameSize > 0 && nameSize < 1024) {
+		char* nameBuf = new char[nameSize];
+		bytesRead = file.Read(nameBuf, nameSize);
+		delete[] nameBuf;
+		if (bytesRead != (ssize_t)nameSize) {
+			ReportError("Failed to read track name");
+			return B_IO_ERROR;
+		}
+	}
+
+	// Read object count
+	uint32 objectCount;
+	bytesRead = file.Read(&objectCount, sizeof(objectCount));
+	if (bytesRead != sizeof(objectCount)) {
+		ReportError("Failed to read object count");
+		return B_IO_ERROR;
+	}
+	objectCount = B_BENDIAN_TO_HOST_INT32(objectCount);
+
+	AUDIO_LOG_INFO("3DMixLoader", "Track file '%s' has %d objects",
+	               trackFilePath, objectCount);
+
+	// Parse each object (typically just one SimpleObject per track)
+	for (uint32 i = 0; i < objectCount && i < 32; i++) {
+		status_t status = ParseTrackObjectRecord(&file, track);
+		if (status != B_OK) {
+			AUDIO_LOG_WARNING("3DMixLoader", "Failed to parse object %d in track file", i);
+			// Continue with other objects
+		}
+	}
+
+	return B_OK;
+}
+
+status_t Legacy3DMixLoader::ParseTrackObjectRecord(BDataIO* stream, Track3DMix* track)
+{
+	// Read SimpleObject format:
+	// - type (4 bytes): 'SIMP'
+	// - subtype (4 bytes): 'RAW_'
+	// - size (4 bytes): audio filename length
+	// - name (size bytes): audio filename
+	// - v_from (4 bytes float): timeline start (seconds)
+	// - v_to (4 bytes float): timeline end (seconds)
+	// - st_skip (4 bytes float): skip from start
+	// - loop_point (4 bytes float): loop position
+
+	// Read type
+	uint32 type;
+	ssize_t bytesRead = stream->Read(&type, sizeof(type));
+	if (bytesRead != sizeof(type)) {
+		return B_IO_ERROR;
+	}
+	type = B_BENDIAN_TO_HOST_INT32(type);
+
+	if (type != 0x53494D50) { // 'SIMP'
+		AUDIO_LOG_WARNING("3DMixLoader", "Unexpected object type: 0x%08X", type);
+		return B_BAD_VALUE;
+	}
+
+	// Read subtype
+	uint32 subtype;
+	bytesRead = stream->Read(&subtype, sizeof(subtype));
+	if (bytesRead != sizeof(subtype)) {
+		return B_IO_ERROR;
+	}
+	subtype = B_BENDIAN_TO_HOST_INT32(subtype);
+
+	// Read audio filename size
+	uint32 filenameSize;
+	bytesRead = stream->Read(&filenameSize, sizeof(filenameSize));
+	if (bytesRead != sizeof(filenameSize)) {
+		return B_IO_ERROR;
+	}
+	filenameSize = B_BENDIAN_TO_HOST_INT32(filenameSize);
+
+	// Read audio filename (skip it, we already have the path)
+	if (filenameSize > 0 && filenameSize < 2048) {
+		char* filenameBuf = new char[filenameSize];
+		bytesRead = stream->Read(filenameBuf, filenameSize);
+		delete[] filenameBuf;
+		if (bytesRead != (ssize_t)filenameSize) {
+			return B_IO_ERROR;
+		}
+	}
+
+	// Read v_from (timeline start position in seconds)
+	uint32 vFromRaw;
+	bytesRead = stream->Read(&vFromRaw, sizeof(vFromRaw));
+	if (bytesRead != sizeof(vFromRaw)) {
+		return B_IO_ERROR;
+	}
+	vFromRaw = B_BENDIAN_TO_HOST_INT32(vFromRaw);
+	float vFrom = *((float*)&vFromRaw);
+
+	// Read v_to (timeline end position in seconds)
+	uint32 vToRaw;
+	bytesRead = stream->Read(&vToRaw, sizeof(vToRaw));
+	if (bytesRead != sizeof(vToRaw)) {
+		return B_IO_ERROR;
+	}
+	vToRaw = B_BENDIAN_TO_HOST_INT32(vToRaw);
+	float vTo = *((float*)&vToRaw);
+
+	// Read st_skip
+	uint32 stSkipRaw;
+	bytesRead = stream->Read(&stSkipRaw, sizeof(stSkipRaw));
+	if (bytesRead != sizeof(stSkipRaw)) {
+		return B_IO_ERROR;
+	}
+	stSkipRaw = B_BENDIAN_TO_HOST_INT32(stSkipRaw);
+	float stSkip = *((float*)&stSkipRaw);
+
+	// Read loop_point
+	uint32 loopPointRaw;
+	bytesRead = stream->Read(&loopPointRaw, sizeof(loopPointRaw));
+	if (bytesRead != sizeof(loopPointRaw)) {
+		return B_IO_ERROR;
+	}
+	loopPointRaw = B_BENDIAN_TO_HOST_INT32(loopPointRaw);
+	float loopPoint = *((float*)&loopPointRaw);
+
+	// Apply timeline positions to track
+	const AudioFormat3DMix& format = track->GetAudioFormat();
+	float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+
+	int32 startSample = (int32)(vFrom * sampleRate);
+	int32 endSample = (int32)(vTo * sampleRate);
+
+	track->SetStartPosition(startSample);
+	track->SetEndPosition(endSample);
+	track->SetLoopStart((int32)(stSkip * sampleRate));
+	track->SetLoopEnd((int32)(loopPoint * sampleRate));
+
+	AUDIO_LOG_INFO("3DMixLoader", "Track '%s': timeline %.2fs-%.2fs, loop %.2f-%.2f",
+	               track->TrackName().String(), vFrom, vTo, stSkip, loopPoint);
 
 	return B_OK;
 }

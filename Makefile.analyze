@@ -1,0 +1,29 @@
+# Makefile for 3DMix BMessage Analyzer
+# Analyzes BMessage structure in BeOS 3dmix files
+
+CXX = g++
+CXXFLAGS = -Wall -Wno-multichar -std=c++17 -pthread -g -O2 -march=native -fPIC
+INCLUDES = -I. -Isrc -I/boot/system/develop/headers -I/boot/system/develop/headers/cpp
+LIBS = -lbe -lroot
+
+TARGET = analyze_3dmix_bmessage
+SOURCE = analyze_3dmix_bmessage.cpp
+
+all: $(TARGET)
+	@echo "✅ Analyzer built successfully!"
+	@echo ""
+	@echo "Run with:"
+	@echo "  ./$(TARGET) /path/to/file.3dmix"
+
+$(TARGET): $(SOURCE)
+	@echo "Compiling BMessage analyzer..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SOURCE) $(LIBS) -o $(TARGET)
+
+clean:
+	rm -f $(TARGET)
+
+test: $(TARGET)
+	@echo "Running analyzer on test file..."
+	./$(TARGET) "/boot/home/Desktop/3D_Mixes/she-loves-it/she-loves-it-3dmix/she-loves-it.3dmix"
+
+.PHONY: all clean test

@@ -120,6 +120,10 @@ private:
 	status_t ParseFileHeader(BDataIO* stream);
 	status_t ParseTrackRecords(BDataIO* stream);
 	status_t ParseSingleTrackRecord(BDataIO* stream, Track3DMix* track);
+	status_t ParseTimelineData(BDataIO* stream);
+	status_t ParseIndividualTrackFiles(const char* projectDir);
+	status_t ParseSingleTrackFile(const char* trackFilePath, Track3DMix* track);
+	status_t ParseTrackObjectRecord(BDataIO* stream, Track3DMix* track);
 
 	// File format validation
 	status_t ValidateMagicNumber(BDataIO* stream);

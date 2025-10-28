@@ -219,6 +219,12 @@ Project3DMix::Project3DMix()
 	, fListenerOrientationPitch(0.0f)
 	, fProjectSampleRate(Format3DMix::kDefaultSampleRate)
 	, fProjectLength(0)
+	, fTimelineSelectStart(0.0f)
+	, fTimelineSelectEnd(0.0f)
+	, fTimelineVSize(40)
+	, fTimelineBeatPM(120.0f)
+	, fTimelineBeatPerMeasure(4)
+	, fBeatText()
 	, fFormatVersion(1)
 	, fCreatedWithVersion("")
 {
@@ -305,7 +311,19 @@ float Project3DMix::CalculateTotalDuration() const
 	if (fProjectSampleRate <= 0)
 		return 0.0f;
 
-	return (float)CalculateTotalSamples() / fProjectSampleRate;
+	// Try calculating from audio file sizes
+	float fileDuration = (float)CalculateTotalSamples() / fProjectSampleRate;
+
+	// If no files found (duration = 0), use timeline selection range as fallback
+	// The selection range comes from the original BeOS 3dmix TimeView data
+	if (fileDuration == 0.0f && fTimelineSelectEnd > fTimelineSelectStart) {
+		// TimelineSelectEnd is already in seconds (not samples)
+		AUDIO_LOG_INFO("3DMix", "Using timeline selection range for duration: %.2f - %.2f = %.2f seconds",
+		               fTimelineSelectEnd, fTimelineSelectStart, fTimelineSelectEnd - fTimelineSelectStart);
+		return fTimelineSelectEnd - fTimelineSelectStart;
+	}
+
+	return fileDuration;
 }
 
 void Project3DMix::PrintToStream() const
