@@ -18,6 +18,7 @@
 #include <math.h>
 #include <String.h>
 #include <vector>
+#include <map>
 #include <Bitmap.h>
 #include <View.h>
 #include <Font.h>
@@ -25,11 +26,273 @@
 // Include our 3dmix parser
 #include "audio/3dmix/3DMixFormat.h"
 #include "audio/3dmix/3DMixParser.h"
+#include "audio/3dmix/AudioPathResolver.h"
+#include <MediaFile.h>
+#include <MediaTrack.h>
+#include <Path.h>
+#include <Entry.h>
 
 struct AudioSource {
     BString name;
     float x, y, z;  // 3D position
     rgb_color color;
+};
+
+// Simple waveform data structure
+struct WaveformData {
+    std::vector<float> minPeaks;
+    std::vector<float> maxPeaks;
+    int samplesPerPixel;
+    bool isValid;
+
+    WaveformData() : samplesPerPixel(0), isValid(false) {}
+};
+
+// Waveform cache - stores generated waveforms to avoid reloading
+class WaveformCache {
+public:
+    static WaveformCache& Instance() {
+        static WaveformCache instance;
+        return instance;
+    }
+
+    WaveformData* GetWaveform(const char* filePath, int widthPixels, const VeniceDAW::AudioFormat3DMix* rawFormat = nullptr) {
+        BString key;
+        key << filePath << "_" << widthPixels;
+
+        auto it = fCache.find(key.String());
+        if (it != fCache.end()) {
+            return &it->second;
+        }
+
+        // Try with BMediaFile first
+        WaveformData waveform = GenerateWaveform(filePath, widthPixels);
+
+        // If that failed and we have raw format info, try reading as raw PCM
+        if (!waveform.isValid && rawFormat && rawFormat->isRawFormat) {
+            waveform = GenerateRawWaveform(filePath, widthPixels, *rawFormat);
+        }
+
+        fCache[key.String()] = waveform;
+        return &fCache[key.String()];
+    }
+
+private:
+    WaveformCache() {}
+
+    WaveformData GenerateWaveform(const char* filePath, int widthPixels) {
+        WaveformData data;
+
+        printf("[WaveformCache] Attempting to load: '%s'\n", filePath);
+
+        // Try to open audio file
+        entry_ref ref;
+        if (get_ref_for_path(filePath, &ref) != B_OK) {
+            printf("[WaveformCache] Failed: get_ref_for_path() failed\n");
+            return data;  // Invalid
+        }
+
+        BMediaFile mediaFile(&ref);
+        if (mediaFile.InitCheck() != B_OK) {
+            printf("[WaveformCache] Failed: BMediaFile::InitCheck() failed\n");
+            return data;  // Can't open file
+        }
+
+        // Get first audio track
+        BMediaTrack* track = nullptr;
+        for (int32 i = 0; i < mediaFile.CountTracks(); i++) {
+            BMediaTrack* t = mediaFile.TrackAt(i);
+            media_format format;
+            if (t && t->EncodedFormat(&format) == B_OK) {
+                if (format.type == B_MEDIA_RAW_AUDIO || format.type == B_MEDIA_ENCODED_AUDIO) {
+                    track = t;
+                    break;
+                }
+            }
+            if (t && !track) {
+                mediaFile.ReleaseTrack(t);
+            }
+        }
+
+        if (!track) {
+            return data;  // No audio track
+        }
+
+        // Decode to raw audio
+        media_format format;
+        format.type = B_MEDIA_RAW_AUDIO;
+        format.u.raw_audio = media_raw_audio_format::wildcard;
+        format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_FLOAT;
+        format.u.raw_audio.channel_count = 2;
+
+        if (track->DecodedFormat(&format) != B_OK) {
+            mediaFile.ReleaseTrack(track);
+            return data;  // Can't decode
+        }
+
+        int64 frameCount = track->CountFrames();
+        if (frameCount <= 0) {
+            mediaFile.ReleaseTrack(track);
+            return data;
+        }
+
+        // Calculate samples per pixel
+        int samplesPerPixel = (int)(frameCount / widthPixels);
+        if (samplesPerPixel < 1) samplesPerPixel = 1;
+
+        data.samplesPerPixel = samplesPerPixel;
+        data.minPeaks.resize(widthPixels, 0.0f);
+        data.maxPeaks.resize(widthPixels, 0.0f);
+
+        // Read and generate peaks
+        const int bufferSize = 4096;
+        float buffer[bufferSize * 2];  // Stereo
+        int64 framesRead = 0;
+        int currentPixel = 0;
+        float currentMin = 0.0f;
+        float currentMax = 0.0f;
+        int samplesInPixel = 0;
+
+        while (framesRead < frameCount && currentPixel < widthPixels) {
+            int64 framesToRead = bufferSize;
+            if (framesRead + framesToRead > frameCount) {
+                framesToRead = frameCount - framesRead;
+            }
+
+            int64 frames = 0;
+            if (track->ReadFrames(buffer, &frames) != B_OK || frames == 0) {
+                break;
+            }
+
+            // Process frames
+            for (int64 i = 0; i < frames && currentPixel < widthPixels; i++) {
+                // Mix stereo to mono
+                float sample = (buffer[i * 2] + buffer[i * 2 + 1]) * 0.5f;
+
+                if (sample < currentMin) currentMin = sample;
+                if (sample > currentMax) currentMax = sample;
+
+                samplesInPixel++;
+
+                if (samplesInPixel >= samplesPerPixel) {
+                    data.minPeaks[currentPixel] = currentMin;
+                    data.maxPeaks[currentPixel] = currentMax;
+                    currentPixel++;
+                    currentMin = 0.0f;
+                    currentMax = 0.0f;
+                    samplesInPixel = 0;
+                }
+            }
+
+            framesRead += frames;
+        }
+
+        mediaFile.ReleaseTrack(track);
+        data.isValid = true;
+
+        printf("[WaveformCache] Generated waveform for '%s': %d pixels, %d samples/pixel\n",
+               filePath, widthPixels, samplesPerPixel);
+
+        return data;
+    }
+
+    WaveformData GenerateRawWaveform(const char* filePath, int widthPixels, const VeniceDAW::AudioFormat3DMix& format) {
+        WaveformData data;
+
+        printf("[WaveformCache] Loading RAW PCM: '%s'\n", filePath);
+
+        BFile file(filePath, B_READ_ONLY);
+        if (file.InitCheck() != B_OK) {
+            return data;
+        }
+
+        off_t fileSize;
+        if (file.GetSize(&fileSize) != B_OK || fileSize == 0) {
+            return data;
+        }
+
+        // Calculate total frames
+        int32 bytesPerSample = (format.bitDepth + 7) / 8;
+        int32 bytesPerFrame = bytesPerSample * format.channels;
+        int64 totalFrames = fileSize / bytesPerFrame;
+
+        if (totalFrames <= 0) {
+            return data;
+        }
+
+        data.samplesPerPixel = (int)(totalFrames / widthPixels);
+        if (data.samplesPerPixel < 1) data.samplesPerPixel = 1;
+
+        data.minPeaks.resize(widthPixels, 0.0f);
+        data.maxPeaks.resize(widthPixels, 0.0f);
+
+        // ULTRA-FAST: Read large sequential chunks with in-memory skipping
+        // This avoids slow disk seeks - read 1MB chunks at a time
+        const int chunkFrames = 262144;  // 256K frames per chunk
+        const int chunkSize = chunkFrames * bytesPerFrame;
+        uint8* chunkBuffer = new uint8[chunkSize];
+
+        int currentPixel = 0;
+        int64 framesRead = 0;
+        float currentMin = 0.0f, currentMax = 0.0f;
+        int samplesInPixel = 0;
+
+        // Decimation factor - skip frames for speed
+        int decimation = data.samplesPerPixel / 32;  // Max 32 samples per pixel
+        if (decimation < 1) decimation = 1;
+
+        while (framesRead < totalFrames && currentPixel < widthPixels) {
+            ssize_t bytesRead = file.Read(chunkBuffer, chunkSize);
+            if (bytesRead <= 0) break;
+
+            int framesInChunk = bytesRead / bytesPerFrame;
+
+            // Process frames in chunk with decimation
+            for (int i = 0; i < framesInChunk; i += decimation) {
+                if (currentPixel >= widthPixels) break;
+
+                uint8* frameData = chunkBuffer + (i * bytesPerFrame);
+
+                // Quick mono mix
+                float sample = 0.0f;
+                if (format.bitDepth == 16) {
+                    int16* samples = (int16*)frameData;
+                    for (int ch = 0; ch < format.channels; ch++) {
+                        sample += samples[ch] / 32768.0f;
+                    }
+                } else if (format.bitDepth == 8) {
+                    for (int ch = 0; ch < format.channels; ch++) {
+                        sample += (frameData[ch] - 128) / 128.0f;
+                    }
+                }
+                sample /= format.channels;
+
+                if (sample < currentMin) currentMin = sample;
+                if (sample > currentMax) currentMax = sample;
+                samplesInPixel++;
+
+                // Move to next pixel?
+                if (samplesInPixel >= data.samplesPerPixel / decimation) {
+                    data.minPeaks[currentPixel] = currentMin;
+                    data.maxPeaks[currentPixel] = currentMax;
+                    currentPixel++;
+                    currentMin = currentMax = 0.0f;
+                    samplesInPixel = 0;
+                }
+            }
+
+            framesRead += framesInChunk * decimation;
+        }
+
+        delete[] chunkBuffer;
+        data.isValid = true;
+
+        printf("[WaveformCache] ✓ Loaded: %d peaks\n", widthPixels);
+
+        return data;
+    }
+
+    std::map<std::string, WaveformData> fCache;
 };
 
 class DemoGL3DView : public BGLView {
@@ -636,6 +899,7 @@ public:
         : BView(frame, "time_ruler", B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP, B_WILL_DRAW)
         , fProject(project)
         , fPixelsPerSecond(pixelsPerSecond)
+        , fTrackNameWidth(150.0f)  // Match TrackLanesView
     {
         SetViewColor(45, 45, 50);
     }
@@ -652,8 +916,19 @@ public:
         SetHighColor(45, 45, 50);
         FillRect(bounds);
 
-        // Time markers
-        float duration = fProject.CalculateTotalDuration();
+        // Draw track name area background (darker)
+        SetHighColor(50, 50, 55);
+        FillRect(BRect(0, 0, fTrackNameWidth, bounds.bottom));
+
+        // Vertical separator between track names and timeline
+        SetHighColor(30, 30, 35);
+        StrokeLine(BPoint(fTrackNameWidth, 0), BPoint(fTrackNameWidth, bounds.bottom));
+
+        // Time markers start after track name area
+        const float timelineStart = fTrackNameWidth + 10.0f;  // Match TrackLanesView offset
+
+        // Calculate actual duration from tracks (like TrackLanesView does)
+        float duration = CalculateActualDuration();
         float width = bounds.Width();
 
         SetFont(be_plain_font);
@@ -667,7 +942,7 @@ public:
 
         SetHighColor(180, 180, 185);
         for (float t = 0; t <= duration; t += interval) {
-            float x = t * fPixelsPerSecond;
+            float x = timelineStart + (t * fPixelsPerSecond);
             if (x > width) break;
 
             // Draw tick mark
@@ -692,7 +967,7 @@ public:
 
             for (int beat = 0; beat * secondsPerBeat <= duration; beat++) {
                 float beatTime = beat * secondsPerBeat;
-                float x = beatTime * fPixelsPerSecond;
+                float x = timelineStart + (beatTime * fPixelsPerSecond);
                 if (x > width) break;
 
                 bool isMeasure = (beat % beatsPerMeasure) == 0;
@@ -715,16 +990,52 @@ public:
     }
 
 private:
+    float CalculateActualDuration() const {
+        // Calculate max duration from all tracks (same logic as TrackLanesView)
+        float maxDuration = 0.0f;
+
+        int trackCount = fProject.CountTracks();
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = fProject.TrackAt(i);
+            if (!track) continue;
+
+            const VeniceDAW::AudioFormat3DMix& format = track->GetAudioFormat();
+            int32 startSample = track->StartPosition();
+            int32 endSample = track->EndPosition();
+
+            // Convert samples to seconds
+            float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+            float startTime = startSample / sampleRate;
+            float endTime = endSample / sampleRate;
+
+            // If no explicit end position, calculate from file size
+            if (endSample == 0 && format.fileSize > 0 && format.channels > 0 && format.bitDepth > 0) {
+                int32 bytesPerSample = (format.bitDepth + 7) / 8;
+                int32 totalSamples = format.fileSize / (format.channels * bytesPerSample);
+                endTime = startTime + (totalSamples / sampleRate);
+            }
+
+            if (endTime > maxDuration) {
+                maxDuration = endTime;
+            }
+        }
+
+        // Fallback to 30 seconds if no tracks or no valid duration
+        return maxDuration > 0 ? maxDuration : 30.0f;
+    }
+
     const VeniceDAW::Project3DMix& fProject;
     float fPixelsPerSecond;
+    float fTrackNameWidth;  // Width of track name column
 };
 
 // Track Lane View - Shows individual tracks as horizontal lanes
 class TrackLanesView : public BView {
 public:
-    TrackLanesView(BRect frame, const VeniceDAW::Project3DMix& project, float pixelsPerSecond)
+    TrackLanesView(BRect frame, const VeniceDAW::Project3DMix& project, float pixelsPerSecond, const char* projectFilePath)
         : BView(frame, "track_lanes", B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP_BOTTOM, B_WILL_DRAW)
         , fProject(project)
+        , fProjectPath(projectFilePath)
         , fPixelsPerSecond(pixelsPerSecond)
         , fPlayheadPosition(0.0f)
     {
@@ -853,12 +1164,107 @@ public:
                 SetHighColor(trackColor.red * 1.0, trackColor.green * 1.0, trackColor.blue * 1.0);
                 StrokeRect(blockRect);
 
-                // Simplified waveform visualization - BRIGHTER
-                SetHighColor(trackColor.red * 0.8, trackColor.green * 0.8, trackColor.blue * 0.8, 200);
-                float centerY = y + laneHeight / 2;
-                for (float x = blockRect.left; x < blockRect.right && x < bounds.right; x += 4) {
-                    float waveHeight = 10 + (int)(x * 137) % 15;  // Pseudo-random
-                    StrokeLine(BPoint(x, centerY - waveHeight), BPoint(x, centerY + waveHeight));
+                // Real waveform visualization
+                int widthPixels = (int)(blockRect.Width());
+                WaveformData* waveform = nullptr;
+
+                // Try to get audio file path
+                BString audioPath = track->AudioFilePath();
+
+                if (audioPath.Length() > 0 && widthPixels > 0) {
+                    BString resolvedPath;
+
+                    // Extract just the filename from the path
+                    BPath pathObj(audioPath.String());
+                    const char* filename = pathObj.Leaf();
+
+                    if (filename) {
+                        // Get project directory from .3dmix file path
+                        BString projectDir;
+                        if (fProjectPath.Length() > 0) {
+                            BPath projectPath(fProjectPath.String());
+                            BPath parentPath;
+                            if (projectPath.GetParent(&parentPath) == B_OK) {
+                                projectDir = parentPath.Path();
+                            }
+                        }
+
+                        // Try common extensions including no extension
+                        const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
+
+                        for (int ext = 0; extensions[ext] != nullptr; ext++) {
+                            BString testPath = projectDir;
+                            testPath << "/" << filename << extensions[ext];
+
+                            // Check if file exists
+                            entry_ref ref;
+                            if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
+                                resolvedPath = testPath;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Debug logging for first track
+                    if (i == 0) {
+                        printf("[TrackLanes] Original path: '%s'\n", audioPath.String());
+                        printf("[TrackLanes] Filename: '%s'\n", filename ? filename : "NULL");
+                        printf("[TrackLanes] Project file: '%s'\n", fProjectPath.String());
+
+                        // Calculate and show project dir
+                        BString debugProjectDir;
+                        if (fProjectPath.Length() > 0) {
+                            BPath debugPath(fProjectPath.String());
+                            BPath debugParent;
+                            if (debugPath.GetParent(&debugParent) == B_OK) {
+                                debugProjectDir = debugParent.Path();
+                            }
+                        }
+                        printf("[TrackLanes] Project dir: '%s'\n", debugProjectDir.String());
+                        printf("[TrackLanes] Resolved path: '%s' (width=%dpx)\n",
+                               resolvedPath.String(), widthPixels);
+                    }
+
+                    if (resolvedPath.Length() > 0) {
+                        // Pass audio format for raw PCM support
+                        const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
+                        waveform = WaveformCache::Instance().GetWaveform(resolvedPath.String(), widthPixels, &audioFormat);
+
+                        if (i == 0) {
+                            printf("[TrackLanes] Waveform loaded: %s\n",
+                                   (waveform && waveform->isValid) ? "YES" : "NO");
+                        }
+                    }
+                }
+
+                if (waveform && waveform->isValid) {
+                    // Draw real waveform
+                    SetHighColor(trackColor.red * 0.9, trackColor.green * 0.9, trackColor.blue * 0.9, 220);
+                    float centerY = y + laneHeight / 2;
+                    float maxHeight = (laneHeight - 12) * 0.5f;  // Max waveform height
+
+                    for (int px = 0; px < widthPixels && px < (int)waveform->minPeaks.size(); px++) {
+                        float x = blockRect.left + px;
+                        if (x >= bounds.right) break;
+
+                        float minPeak = waveform->minPeaks[px];
+                        float maxPeak = waveform->maxPeaks[px];
+
+                        // Scale peaks to visual height
+                        float minY = centerY - (minPeak * maxHeight);
+                        float maxY = centerY - (maxPeak * maxHeight);
+
+                        // Draw vertical line from min to max peak
+                        StrokeLine(BPoint(x, minY), BPoint(x, maxY));
+                    }
+                } else {
+                    // Fallback: simplified waveform visualization
+                    SetHighColor(trackColor.red * 0.8, trackColor.green * 0.8, trackColor.blue * 0.8, 200);
+                    float centerY = y + laneHeight / 2;
+                    for (float x = blockRect.left; x < blockRect.right && x < bounds.right; x += 4) {
+                        float waveHeight = 10 + (int)(x * 137) % 15;  // Pseudo-random
+                        StrokeLine(BPoint(x, centerY - waveHeight), BPoint(x, centerY + waveHeight));
+                    }
                 }
             } else {
                 // If no duration, draw a placeholder block
@@ -899,6 +1305,7 @@ public:
 
 private:
     const VeniceDAW::Project3DMix& fProject;
+    BString fProjectPath;  // Full path to .3dmix file for audio file resolution
     float fPixelsPerSecond;
     float fPlayheadPosition;
 };
@@ -906,9 +1313,10 @@ private:
 // Main Timeline Content View - Container for ruler and lanes
 class TimelineContentView : public BView {
 public:
-    TimelineContentView(BRect frame, const VeniceDAW::Project3DMix& project)
+    TimelineContentView(BRect frame, const VeniceDAW::Project3DMix& project, const char* projectFilePath)
         : BView(frame, "timeline_content", B_FOLLOW_ALL, B_WILL_DRAW)
         , fProject(project)
+        , fProjectPath(projectFilePath)
         , fPixelsPerSecond(50.0f)  // Initial zoom
         , fPlayheadPosition(0.0f)
         , fIsPlaying(false)
@@ -921,10 +1329,10 @@ public:
         fRulerView = new TimeRulerView(rulerFrame, project, fPixelsPerSecond);
         AddChild(fRulerView);
 
-        // Create track lanes view
+        // Create track lanes view with project file path for audio file resolution
         BRect lanesFrame = Bounds();
         lanesFrame.top = 41;
-        fLanesView = new TrackLanesView(lanesFrame, project, fPixelsPerSecond);
+        fLanesView = new TrackLanesView(lanesFrame, project, fPixelsPerSecond, projectFilePath);
         AddChild(fLanesView);
     }
 
@@ -1022,6 +1430,7 @@ public:
 
 private:
     const VeniceDAW::Project3DMix& fProject;
+    BString fProjectPath;  // Full path to .3dmix file for audio file resolution
     TimeRulerView* fRulerView;
     TrackLanesView* fLanesView;
     float fPixelsPerSecond;
@@ -1032,14 +1441,15 @@ private:
 // Timeline visualization window
 class TimelineWindow : public BWindow {
 public:
-    TimelineWindow(const VeniceDAW::Project3DMix& project)
+    TimelineWindow(const VeniceDAW::Project3DMix& project, const char* projectFilePath)
         : BWindow(BRect(100, 100, 1400, 850), "Timeline View - Modern DAW Style",
                   B_TITLED_WINDOW, B_NOT_ZOOMABLE | B_ASYNCHRONOUS_CONTROLS)
         , fProject(project)
+        , fProjectPath(projectFilePath)
         , fContentView(nullptr)
         , fUpdateRunner(nullptr)
     {
-        fContentView = new TimelineContentView(Bounds(), project);
+        fContentView = new TimelineContentView(Bounds(), project, projectFilePath);
         AddChild(fContentView);
 
         // Timer will be created in Show() to ensure window loop is active
@@ -1112,6 +1522,7 @@ public:
 
 private:
     const VeniceDAW::Project3DMix& fProject;
+    BString fProjectPath;  // Full path to the .3dmix file
     TimelineContentView* fContentView;
     BMessageRunner* fUpdateRunner;
 };
@@ -1125,6 +1536,7 @@ public:
         , fUpdateRunner(nullptr)
         , fTimelineWindow(nullptr)
         , fProject(nullptr)
+        , fProjectPath(projectPath)  // Store the project file path
     {
         // Create GL view
         BRect bounds = Bounds();
@@ -1229,7 +1641,8 @@ public:
         }
 
         if (!fTimelineWindow) {
-            fTimelineWindow = new TimelineWindow(*fProject);
+            // Pass both the project and the project file path for audio file resolution
+            fTimelineWindow = new TimelineWindow(*fProject, fProjectPath.String());
         }
 
         if (fTimelineWindow->IsHidden()) {
@@ -1273,6 +1686,7 @@ private:
     BMessageRunner* fUpdateRunner;
     TimelineWindow* fTimelineWindow;
     VeniceDAW::Project3DMix* fProject;
+    BString fProjectPath;  // Full path to the .3dmix file
 };
 
 class DemoApp : public BApplication {
