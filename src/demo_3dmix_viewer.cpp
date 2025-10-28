@@ -201,7 +201,7 @@ public:
 
     void DrawAudioSource(const AudioSource& source) {
         glPushMatrix();
-        glTranslatef(source.x, 0.0f, source.z);  // Always on Y=0 plane
+        glTranslatef(source.x, 0.0f, source.y);  // Map 3dmix Y to OpenGL Z (depth)
 
         // Draw vertical cylinder/pole
         glColor3ub(source.color.red, source.color.green, source.color.blue);
@@ -259,7 +259,7 @@ public:
 
             // Project 3D position (top of pole) to screen coordinates
             GLdouble screenX, screenY, screenZ;
-            gluProject(source.x, 0.8, source.z,  // 0.8 = top of pole
+            gluProject(source.x, 0.8, source.y,  // 0.8 = top of pole, source.y for Z
                       modelview, projection, viewport,
                       &screenX, &screenY, &screenZ);
 
@@ -961,18 +961,28 @@ public:
             window->SetTitle(title.String());
         }
 
-        printf("[Timeline] Playback %s\n", fIsPlaying ? "STARTED" : "PAUSED");
+        // Force immediate redraw of playhead
+        if (fLanesView) {
+            fLanesView->Invalidate();
+        }
+
+        printf("[Timeline] Playback %s at position %.2fs\n",
+               fIsPlaying ? "STARTED" : "PAUSED", fPlayheadPosition);
     }
 
     void UpdatePlayhead(float deltaSeconds) {
         if (fIsPlaying) {
             fPlayheadPosition += deltaSeconds;
+
             float duration = fProject.CalculateTotalDuration();
-            if (fPlayheadPosition > duration) {
-                fPlayheadPosition = 0.0f;  // Loop
+
+            // Loop back to start only if we have a valid duration
+            if (duration > 0 && fPlayheadPosition > duration) {
+                fPlayheadPosition = 0.0f;
             }
-            fLanesView->SetPlayheadPosition(fPlayheadPosition);
         }
+        // Always update playhead display, even when paused
+        fLanesView->SetPlayheadPosition(fPlayheadPosition);
     }
 
     void ResetPlayhead() {
@@ -988,26 +998,20 @@ public:
     virtual void KeyDown(const char* bytes, int32 numBytes) override {
         char key = bytes[0];
 
-        printf("[Timeline] KeyDown: key='%c' (0x%02x)\n", (key >= 32 && key < 127) ? key : '?', (unsigned char)key);
-
         switch (key) {
             case '+':
             case '=':
-                printf("[Timeline] Zoom IN\n");
                 ZoomIn();
                 break;
             case '-':
             case '_':
-                printf("[Timeline] Zoom OUT\n");
                 ZoomOut();
                 break;
             case ' ':  // Spacebar
-                printf("[Timeline] SPACEBAR detected - toggling playback\n");
                 TogglePlayback();
                 break;
             case 'r':
             case 'R':
-                printf("[Timeline] Reset playhead\n");
                 ResetPlayhead();
                 break;
             default:
@@ -1038,9 +1042,19 @@ public:
         fContentView = new TimelineContentView(Bounds(), project);
         AddChild(fContentView);
 
-        // Create animation timer (30 FPS)
-        BMessage pulse('Tpls');
-        fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 33ms = ~30 FPS
+        // Timer will be created in Show() to ensure window loop is active
+        printf("[TimelineWindow] Created, timer will start on Show()\n");
+    }
+
+    virtual void Show() override {
+        BWindow::Show();
+
+        // Create animation timer now that window is shown and loop is active
+        if (!fUpdateRunner) {
+            printf("[TimelineWindow] Starting animation timer (30 FPS)\n");
+            BMessage pulse('Tpls');
+            fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 33ms = ~30 FPS
+        }
     }
 
     ~TimelineWindow() {
@@ -1054,10 +1068,40 @@ public:
                     fContentView->UpdatePlayhead(0.033f);  // 33ms in seconds
                 }
                 break;
+
+            case B_KEY_DOWN: {
+                // Intercept keyboard events at window level to handle regardless of focus
+                int32 key = 0;
+                if (message->FindInt32("key", &key) == B_OK) {
+                    if (key == B_SPACE) {
+                        // Spacebar - toggle playback
+                        if (fContentView) {
+                            fContentView->TogglePlayback();
+                        }
+                        return;  // Event handled
+                    } else if (key == 0x72 || key == 0x52) {  // 'r' or 'R'
+                        // Reset playhead
+                        if (fContentView) {
+                            fContentView->ResetPlayhead();
+                        }
+                        return;
+                    }
+                }
+                // Fall through to default for unhandled keys
+                BWindow::MessageReceived(message);
+                break;
+            }
+
             default:
                 BWindow::MessageReceived(message);
                 break;
         }
+    }
+
+    void DebugTimerStatus() {
+        printf("[TimelineWindow] Timer status check:\n");
+        printf("  fUpdateRunner: %p\n", fUpdateRunner);
+        printf("  fContentView: %p\n", fContentView);
     }
 
     virtual bool QuitRequested() override {
