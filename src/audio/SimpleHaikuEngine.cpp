@@ -296,13 +296,30 @@ status_t SimpleHaikuEngine::Stop()
 void SimpleHaikuEngine::ResetAllTracks()
 {
     // Resetting tracks
-    
+
     for (SimpleTrack* track : fTracks) {
         if (track && track->HasFile()) {
             track->SetPlaybackPosition(0);
             printf("  Reset '%s' to beginning\n", track->GetName());
         }
     }
+}
+
+int64 SimpleHaikuEngine::GetGlobalPlaybackPosition() const
+{
+    // Get maximum playback position across all tracks with loaded files
+    int64 maxPosition = 0;
+
+    for (const SimpleTrack* track : fTracks) {
+        if (track && track->HasFile()) {
+            int64 trackPosition = track->GetPlaybackPosition();
+            if (trackPosition > maxPosition) {
+                maxPosition = trackPosition;
+            }
+        }
+    }
+
+    return maxPosition;
 }
 
 status_t SimpleHaikuEngine::AddTrack(SimpleTrack* track)

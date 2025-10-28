@@ -171,8 +171,9 @@ public:
     status_t Stop();
     bool IsRunning() const { return fRunning; }
     
-    // Playback controls  
+    // Playback controls
     void ResetAllTracks();     // Reset playback position of all loaded files
+    int64 GetGlobalPlaybackPosition() const;  // Get maximum playback position across all tracks
     void SetMasterVolume(float volume) { fMasterVolume = volume; }
     float GetMasterVolume() const { return fMasterVolume; }
     

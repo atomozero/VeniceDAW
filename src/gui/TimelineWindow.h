@@ -179,6 +179,7 @@ public:
 
     virtual bool QuitRequested() override;
     virtual void MessageReceived(BMessage* message) override;
+    virtual void DispatchMessage(BMessage* message, BHandler* handler) override;
 
     // Playhead update (called from timer)
     void UpdatePlayhead();

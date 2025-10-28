@@ -545,6 +545,32 @@ bool TimelineWindow::QuitRequested()
     return false;  // Don't actually quit, just hide
 }
 
+void TimelineWindow::DispatchMessage(BMessage* message, BHandler* handler)
+{
+    // Intercept keyboard events
+    if (message->what == B_KEY_DOWN) {
+        int32 key = 0;
+
+        if (message->FindInt32("key", &key) == B_OK) {
+            if (key == B_SPACE) {
+                // Toggle play/stop with spacebar
+                if (fEngine) {
+                    if (fEngine->IsRunning()) {
+                        fEngine->Stop();
+                        printf("TimelineWindow: Playback stopped (spacebar)\n");
+                    } else {
+                        fEngine->Start();
+                        printf("TimelineWindow: Playback started (spacebar)\n");
+                    }
+                }
+                return;  // Event handled
+            }
+        }
+    }
+
+    BWindow::DispatchMessage(message, handler);
+}
+
 void TimelineWindow::MessageReceived(BMessage* message)
 {
     switch (message->what) {
@@ -578,16 +604,25 @@ void TimelineWindow::MessageReceived(BMessage* message)
 
 void TimelineWindow::UpdatePlayhead()
 {
-    if (!fEngine || !fEngine->IsRunning()) {
+    if (!fEngine) {
         return;
     }
 
-    // Update playhead position
-    // For now, just increment (will integrate with actual playback later)
-    if (fTimelineView && fTimeRuler) {
-        int64 currentFrame = fTimelineView->GetPlayheadPosition();
-        currentFrame += 2205;  // ~50ms at 44.1kHz
+    // Get actual playback position from audio engine
+    int64 currentFrame = 0;
 
+    if (fEngine->IsRunning()) {
+        // Get real position from audio files being played
+        currentFrame = fEngine->GetGlobalPlaybackPosition();
+    } else {
+        // When stopped, keep playhead at current position (don't reset to 0)
+        if (fTimelineView) {
+            currentFrame = fTimelineView->GetPlayheadPosition();
+        }
+    }
+
+    // Update playhead display
+    if (fTimelineView && fTimeRuler) {
         fTimelineView->SetPlayheadPosition(currentFrame);
         fTimeRuler->SetPlayheadPosition(currentFrame);
 
