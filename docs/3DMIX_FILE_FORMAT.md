@@ -140,10 +140,19 @@ For each object:
     +N+4     4       float    v_to - timeline end position (seconds)
     +N+8     4       float    st_skip - skip from start (seconds)
     +N+12    4       float    loop_point - loop position (seconds)
-    +N+16    ...     data     SampleCache data (optional)
+    +N+16    4       uint32   sample_count - number of audio samples in cache
+    +N+20    M*2     int16[]  samples - cached audio data (M samples × 2 bytes each)
 ```
 
-**Source**: `track_obj.cpp` lines 520-544 (SimpleObject::Load/Save)
+**SampleCache Format:**
+The SampleCache stores a downsampled/cached version of the audio for waveform display.
+- sample_count: Total number of 16-bit samples in the cache
+- samples: Array of int16 values (big-endian on PowerPC, swapped on Intel/ARM)
+- Size can be large (several MB for long tracks)
+
+**Source**:
+- `track_obj.cpp` lines 520-544 (SimpleObject::Load/Save)
+- `track_obj.cpp` lines 1952-2049 (SampleCache::Save/Load)
 
 This explains the complete storage model:
 - .3dmix file: Project-level data (tracks, 3D positions, BPM, selection)

@@ -791,6 +791,56 @@ status_t Legacy3DMixLoader::ParseTrackObjectRecord(BDataIO* stream, Track3DMix* 
 	loopPointRaw = B_BENDIAN_TO_HOST_INT32(loopPointRaw);
 	float loopPoint = *((float*)&loopPointRaw);
 
+	// Read SampleCache data (audio sample cache)
+	// Format: sample_count (4 bytes) + samples (sample_count * 2 bytes)
+	uint32 sampleCount;
+	bytesRead = stream->Read(&sampleCount, sizeof(sampleCount));
+	if (bytesRead != sizeof(sampleCount)) {
+		AUDIO_LOG_WARNING("3DMixLoader", "Failed to read SampleCache count, continuing anyway");
+		// Not critical - continue without cache data
+	} else {
+		sampleCount = B_BENDIAN_TO_HOST_INT32(sampleCount);
+
+		// Skip sample data (we don't need to load the cache into memory)
+		// Each sample is 2 bytes (short/int16)
+		int32 sampleDataSize = sampleCount * 2;
+
+		if (sampleDataSize > 0 && sampleDataSize < 100000000) { // Sanity check: < 100MB
+			// Try to cast to BPositionIO to use Seek, otherwise read and discard
+			BPositionIO* posStream = dynamic_cast<BPositionIO*>(stream);
+			if (posStream) {
+				// Use Seek for efficient skip
+				off_t newPos = posStream->Seek(sampleDataSize, SEEK_CUR);
+				if (newPos < 0) {
+					AUDIO_LOG_WARNING("3DMixLoader", "Failed to skip SampleCache data");
+				} else {
+					AUDIO_LOG_DEBUG("3DMixLoader", "Skipped SampleCache: %d samples (%d bytes)",
+					                sampleCount, sampleDataSize);
+				}
+			} else {
+				// Read and discard in chunks
+				const int32 kChunkSize = 8192;
+				char discardBuffer[kChunkSize];
+				int32 remaining = sampleDataSize;
+
+				while (remaining > 0) {
+					int32 toRead = (remaining < kChunkSize) ? remaining : kChunkSize;
+					ssize_t read = stream->Read(discardBuffer, toRead);
+					if (read <= 0) {
+						AUDIO_LOG_WARNING("3DMixLoader", "Failed to read/skip SampleCache data");
+						break;
+					}
+					remaining -= read;
+				}
+
+				AUDIO_LOG_DEBUG("3DMixLoader", "Read and discarded SampleCache: %d samples (%d bytes)",
+				                sampleCount, sampleDataSize);
+			}
+		} else if (sampleDataSize > 0) {
+			AUDIO_LOG_WARNING("3DMixLoader", "SampleCache size too large: %d bytes", sampleDataSize);
+		}
+	}
+
 	// Apply timeline positions to track
 	const AudioFormat3DMix& format = track->GetAudioFormat();
 	float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
