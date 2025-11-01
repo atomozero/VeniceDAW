@@ -1521,14 +1521,87 @@ public:
                         SetHighColor(trackColor.red * 0.6, trackColor.green * 0.6, trackColor.blue * 0.6);
                         FillRect(updateBlockRect);
 
-                        // Redraw waveform in simple mode (fast)
+                        // Redraw waveform in the update area
                         if (simpleMode) {
                             // Just the colored block - already filled above
                         } else {
-                            // For detailed mode, we'd need to redraw the waveform segment
-                            // For now, just redraw the block to avoid gaps
-                            SetHighColor(trackColor.red * 0.7, trackColor.green * 0.7, trackColor.blue * 0.7);
-                            FillRect(updateBlockRect);
+                            // Redraw waveform for the section that intersects updateRect
+                            // Get audio file path and resolve it
+                            BString audioPath = track->AudioFilePath();
+                            if (audioPath.Length() > 0) {
+                                BString resolvedPath;
+                                BPath pathObj(audioPath.String());
+                                const char* filename = pathObj.Leaf();
+                                if (filename) {
+                                    // Get project directory
+                                    BPath projectPath(fProjectPath.String());
+                                    BPath parentPath;
+                                    if (projectPath.GetParent(&parentPath) == B_OK) {
+                                        BString projectDir(parentPath.Path());
+                                        const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
+                                        for (int ext = 0; extensions[ext] != nullptr; ext++) {
+                                            BString testPath = projectDir;
+                                            testPath << "/" << filename << extensions[ext];
+                                            entry_ref ref;
+                                            if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
+                                                resolvedPath = testPath;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Get audio cache and render waveform
+                                if (resolvedPath.Length() > 0) {
+                                    VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
+                                    if (audioFormat.sampleRate == 0) {
+                                        audioFormat.sampleRate = fProject.ProjectSampleRate();
+                                    }
+                                    const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
+                                    if (audioCache && audioCache->isValid && !audioCache->samples.empty()) {
+                                        // Render waveform for updateBlockRect area
+                                        float maxHeight = (laneHeight - 10) / 2.0f;
+                                        float centerY = y + laneHeight / 2;
+                                        float secondsPerPixel = 1.0f / fPixelsPerSecond;
+
+                                        int pixelSkip = 1;
+                                        if (fPixelsPerSecond > 100.0f) pixelSkip = 1;
+                                        else if (fPixelsPerSecond > 50.0f) pixelSkip = 2;
+                                        else if (fPixelsPerSecond > 20.0f) pixelSkip = 3;
+                                        else pixelSkip = 4;
+
+                                        int widthPixels = (int)(updateBlockRect.Width());
+                                        int lineCount = widthPixels / pixelSkip;
+                                        if (lineCount > 0) {
+                                            BeginLineArray(lineCount);
+                                            rgb_color waveColor = {
+                                                (uint8)(trackColor.red * 0.9),
+                                                (uint8)(trackColor.green * 0.9),
+                                                (uint8)(trackColor.blue * 0.9),
+                                                220
+                                            };
+
+                                            // Calculate start time for this update rect
+                                            float updateStartTime = (updateBlockRect.left - startX) / fPixelsPerSecond;
+
+                                            for (int px = 0; px < widthPixels; px += pixelSkip) {
+                                                float x = updateBlockRect.left + px;
+                                                if (x >= blockRect.right || x >= bounds.right) break;
+
+                                                float time = updateStartTime + (px / fPixelsPerSecond);
+                                                float minPeak, maxPeak;
+                                                audioCache->GetSample(time, secondsPerPixel, &minPeak, &maxPeak);
+
+                                                float minY = centerY - (minPeak * maxHeight);
+                                                float maxY = centerY - (maxPeak * maxHeight);
+
+                                                AddLine(BPoint(x, minY), BPoint(x, maxY), waveColor);
+                                            }
+                                            EndLineArray();
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
