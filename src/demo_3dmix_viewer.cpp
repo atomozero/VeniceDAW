@@ -22,6 +22,7 @@
 #include <Bitmap.h>
 #include <View.h>
 #include <Font.h>
+#include <Button.h>
 
 // Include our 3dmix parser
 #include "audio/3dmix/3DMixFormat.h"
@@ -48,7 +49,7 @@ struct AudioSampleCache {
     int channels;                    // Number of channels
     bool isValid;
 
-    AudioSampleCache() : sampleRate(44100.0f), channels(1), isValid(false) {}
+    AudioSampleCache() : sampleRate(0.0f), channels(1), isValid(false) {}
 
     // R6-style GetSample: Calculate min/max ON-THE-FLY for a time range
     // This is called once per pixel during rendering
@@ -220,6 +221,8 @@ private:
         AudioSampleCache cache;
 
         printf("[AudioCache] Loading RAW PCM: '%s'\n", filePath);
+        printf("[AudioCache] RAW format: bitDepth=%d, channels=%d, sampleRate=%.0f\n",
+               format.bitDepth, format.channels, format.sampleRate);
 
         BFile file(filePath, B_READ_ONLY);
         if (file.InitCheck() != B_OK) {
@@ -231,16 +234,77 @@ private:
             return cache;
         }
 
+        // Check for BeOS Track Object header (!TRK marker)
+        off_t headerSkip = 0;
+        char marker[5] = {0};
+        file.Read(marker, 4);
+        if (strcmp(marker, "!TRK") == 0) {
+            // This is a BeOS Track Object file with header - skip to audio data
+            // The header contains: !TRK, track name, SIMPRAW_, filename, etc.
+            // Audio data typically starts around offset 96, but we'll search for it
+
+            // Read more header to find audio start
+            uint8 headerBuf[512];
+            file.Seek(0, SEEK_SET);
+            ssize_t headerRead = file.Read(headerBuf, 512);
+
+            // BeOS Track Object files typically have a 96-byte header
+            // Header structure: !TRK, track name, SIMPRAW_, filename, various metadata
+            // Let's try to find the sample rate in the header
+
+            // Common sample rates to check for
+            float detectedRate = 44100.0f;  // default
+
+            // Scan header for int32 values that match common sample rates
+            int32 commonRates[] = {11025, 22050, 44100, 48000, 88200, 96000};
+            for (int offset = 4; offset < 90; offset += 4) {
+                // Try reading as big-endian int32
+                uint8* ptr = headerBuf + offset;
+                int32 beValue = (ptr[0] << 24) | (ptr[1] << 16) | (ptr[2] << 8) | ptr[3];
+
+                // Check if it matches a common sample rate
+                for (int i = 0; i < 6; i++) {
+                    if (beValue == commonRates[i]) {
+                        detectedRate = (float)beValue;
+                        printf("[AudioCache] Found sample rate in header at offset %d: %.0f Hz\n", offset, detectedRate);
+                        goto found_rate;
+                    }
+                }
+            }
+found_rate:
+
+            headerSkip = 96;
+            printf("[AudioCache] Detected BeOS Track Object header, skip=%lld bytes, rate=%.0f Hz\n",
+                   headerSkip, detectedRate);
+
+            file.Seek(headerSkip, SEEK_SET);
+            fileSize -= headerSkip;
+
+            // Override format sample rate if we detected one
+            if (detectedRate > 0) {
+                cache.sampleRate = detectedRate;
+            }
+        } else {
+            // Pure RAW file, start from beginning
+            file.Seek(0, SEEK_SET);
+        }
+
         // Calculate total frames
         int32 bytesPerSample = (format.bitDepth + 7) / 8;
         int32 bytesPerFrame = bytesPerSample * format.channels;
         int64 totalFrames = fileSize / bytesPerFrame;
 
+        printf("[AudioCache] RAW calculation: fileSize=%lld, bytesPerFrame=%d, totalFrames=%lld\n",
+               fileSize, bytesPerFrame, totalFrames);
+
         if (totalFrames <= 0) {
             return cache;
         }
 
-        cache.sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+        // Use detected sample rate from header if available, otherwise use format or default
+        if (cache.sampleRate == 0) {
+            cache.sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+        }
         cache.channels = format.channels;
         cache.samples.reserve(totalFrames);
 
@@ -261,16 +325,48 @@ private:
                 // Convert to mono float
                 float sample = 0.0f;
                 if (format.bitDepth == 16) {
+                    // BeOS Track Object files are BIG-ENDIAN!
+                    // Need to swap bytes on little-endian Haiku
                     int16* samples = (int16*)frameData;
+
+                    // Debug: log first few raw values (BEFORE swap)
+                    if (cache.samples.size() < 5) {
+                        printf("[AudioCache] Sample %zu: raw int16 values (LE) = [", cache.samples.size());
+                        for (int ch = 0; ch < format.channels; ch++) {
+                            printf("%d%s", samples[ch], ch < format.channels-1 ? ", " : "");
+                        }
+                        printf("]\n");
+                    }
+
                     for (int ch = 0; ch < format.channels; ch++) {
-                        sample += samples[ch] / 32768.0f;
+                        // Swap bytes for big-endian to little-endian conversion
+                        int16 rawValue = samples[ch];
+                        int16 swappedValue = ((rawValue & 0xFF) << 8) | ((rawValue >> 8) & 0xFF);
+
+                        if (cache.samples.size() < 5) {
+                            printf("[AudioCache] Channel %d: LE=%d, BE(swapped)=%d\n", ch, rawValue, swappedValue);
+                        }
+
+                        sample += swappedValue / 32768.0f;
                     }
                 } else if (format.bitDepth == 8) {
                     for (int ch = 0; ch < format.channels; ch++) {
                         sample += (frameData[ch] - 128) / 128.0f;
                     }
+                } else {
+                    // Unknown bit depth - assume 16-bit
+                    printf("[AudioCache] WARNING: Unknown bitDepth %d, assuming 16-bit\n", format.bitDepth);
+                    int16* samples = (int16*)frameData;
+                    for (int ch = 0; ch < format.channels; ch++) {
+                        sample += samples[ch] / 32768.0f;
+                    }
                 }
                 sample /= format.channels;
+
+                // Debug: log first few converted values
+                if (cache.samples.size() < 5) {
+                    printf("[AudioCache] Sample %zu: converted float = %.6f\n", cache.samples.size(), sample);
+                }
 
                 cache.samples.push_back(sample);
             }
@@ -1690,14 +1786,31 @@ private:
 
     // Mix all tracks into output buffer (R6-inspired architecture)
     void MixTracks(float* buffer, int32 frameCount, const media_raw_audio_format& format) {
+        static int callbackCount = 0;
+        callbackCount++;
+
+        // Debug: log first few callbacks
+        if (callbackCount <= 3) {
+            printf("[MixTracks] Callback #%d: frameCount=%d, channels=%d, rate=%.0f\n",
+                   callbackCount, frameCount, format.channel_count, format.frame_rate);
+        }
+
         // Clear buffer
         memset(buffer, 0, frameCount * format.channel_count * sizeof(float));
 
         int trackCount = fProject.CountTracks();
-        if (trackCount == 0) return;
+        if (trackCount == 0) {
+            if (callbackCount <= 3) printf("[MixTracks] No tracks in project!\n");
+            return;
+        }
 
         // Calculate current time position
         float currentTime = fCurrentFramePosition / 44100.0f;
+
+        if (callbackCount <= 3) {
+            printf("[MixTracks] currentTime=%.2fs, framePos=%ld, trackCount=%d\n",
+                   currentTime, fCurrentFramePosition, trackCount);
+        }
 
         // Mix each track (R6-style: sum all tracks)
         for (int i = 0; i < trackCount; i++) {
@@ -1737,37 +1850,65 @@ private:
                 }
             }
 
-            if (resolvedPath.Length() == 0) continue;
+            if (resolvedPath.Length() == 0) {
+                if (callbackCount <= 3) printf("[MixTracks] Track %d: file not found\n", i);
+                continue;
+            }
 
             // Get audio cache
             const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
             const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
-            if (!audioCache || !audioCache->isValid || audioCache->samples.empty()) continue;
+            if (!audioCache || !audioCache->isValid || audioCache->samples.empty()) {
+                if (callbackCount <= 3) {
+                    printf("[MixTracks] Track %d: cache invalid (cache=%p, valid=%d, samples=%zu)\n",
+                           i, audioCache, audioCache ? audioCache->isValid : 0,
+                           audioCache ? audioCache->samples.size() : 0);
+                }
+                continue;
+            }
 
             // Calculate track start time
             float trackStartTime = track->StartPosition() / audioCache->sampleRate;
             float relativeTime = currentTime - trackStartTime;
 
-            if (relativeTime < 0) continue;  // Track hasn't started yet
+            if (relativeTime < 0) {
+                if (callbackCount <= 3) printf("[MixTracks] Track %d: not started yet (relTime=%.2f)\n", i, relativeTime);
+                continue;  // Track hasn't started yet
+            }
 
             // Calculate sample index
             int64 sampleIndex = (int64)(relativeTime * audioCache->sampleRate);
-            if (sampleIndex >= (int64)audioCache->samples.size()) continue;  // Track ended
+            if (sampleIndex >= (int64)audioCache->samples.size()) {
+                if (callbackCount <= 3) printf("[MixTracks] Track %d: ended (idx=%ld >= size=%zu)\n",
+                                               i, sampleIndex, audioCache->samples.size());
+                continue;  // Track ended
+            }
+
+            if (callbackCount <= 3) {
+                printf("[MixTracks] Track %d: MIXING! idx=%ld, samples=%zu, rate=%.0f\n",
+                       i, sampleIndex, audioCache->samples.size(), audioCache->sampleRate);
+            }
 
             // Copy samples from track to output buffer
+            int32 samplesCopied = 0;
             for (int32 frame = 0; frame < frameCount; frame++) {
                 int64 srcIdx = sampleIndex + frame;
                 if (srcIdx >= (int64)audioCache->samples.size()) break;
 
                 float sample = audioCache->samples[srcIdx];
 
-                // Apply volume (simplified, no panning yet)
-                float volume = 0.3f;  // Reduce volume to avoid clipping with multiple tracks
+                // Apply volume - INCREASED to 0.8 for better audibility
+                float volume = 0.8f;
 
                 // Mix into output (sum all tracks)
                 for (uint32 ch = 0; ch < format.channel_count; ch++) {
                     buffer[frame * format.channel_count + ch] += sample * volume;
                 }
+                samplesCopied++;
+            }
+
+            if (callbackCount <= 3) {
+                printf("[MixTracks] Track %d: Copied %d samples\n", i, samplesCopied);
             }
         }
 
@@ -1887,14 +2028,39 @@ public:
         , fTimelineWindow(nullptr)
         , fProject(nullptr)
         , fProjectPath(projectPath)  // Store the project file path
+        , fPlayButton(nullptr)
+        , fSoundPlayer(nullptr)
+        , fCurrentFramePosition(0)
+        , fIsPlaying(false)
     {
-        // Create GL view
         BRect bounds = Bounds();
-        fGLView = new DemoGL3DView(bounds, "gl_view");
+
+        // Reserve space at bottom for controls
+        const float controlHeight = 50;
+        BRect glRect = bounds;
+        glRect.bottom -= controlHeight;
+
+        // Create GL view (reduced height)
+        fGLView = new DemoGL3DView(glRect, "gl_view");
         AddChild(fGLView);
+
+        // Create Play/Pause button at bottom
+        BRect buttonRect = bounds;
+        buttonRect.top = buttonRect.bottom - controlHeight + 10;
+        buttonRect.bottom = buttonRect.bottom - 10;
+        buttonRect.left = (bounds.Width() / 2) - 60;
+        buttonRect.right = buttonRect.left + 120;
+
+        fPlayButton = new BButton(buttonRect, "play_button", "▶ Play",
+                                  new BMessage('Play'));
+        fPlayButton->SetTarget(this);
+        AddChild(fPlayButton);
 
         // Load and parse 3dmix file
         LoadProject(projectPath);
+
+        // Initialize audio playback
+        InitAudioPlayback();
 
         // Start animation
         BMessage pulse(MSG_PULSE);
@@ -1902,6 +2068,13 @@ public:
     }
 
     ~DemoWindow() {
+        // Stop audio first
+        if (fSoundPlayer) {
+            fSoundPlayer->Stop();
+            delete fSoundPlayer;
+            fSoundPlayer = nullptr;
+        }
+
         delete fUpdateRunner;
 
         // Properly close TimelineWindow if it exists
@@ -2009,12 +2182,20 @@ public:
                     fGLView->Pulse();
                 }
                 break;
+
+            case 'Play':
+                TogglePlayback();
+                break;
+
             case B_KEY_DOWN: {
                 const char* bytes;
                 if (message->FindString("bytes", &bytes) == B_OK) {
                     char key = bytes[0];
                     if (key == 't' || key == 'T') {
                         OpenTimelineWindow();
+                        return;
+                    } else if (key == ' ') {  // Spacebar also toggles playback
+                        TogglePlayback();
                         return;
                     }
                 }
@@ -2023,6 +2204,134 @@ public:
             default:
                 BWindow::MessageReceived(message);
         }
+    }
+
+    void InitAudioPlayback() {
+        if (!fProject) return;
+
+        // Initialize BSoundPlayer for audio playback
+        media_raw_audio_format format;
+        format.frame_rate = 44100.0f;  // CD quality
+        format.channel_count = 2;      // Stereo
+        format.format = media_raw_audio_format::B_AUDIO_FLOAT;
+        format.byte_order = B_MEDIA_HOST_ENDIAN;
+        format.buffer_size = 4096;
+
+        fSoundPlayer = new BSoundPlayer(&format, "VeniceDAW 3D Player", PlayBufferFunc, nullptr, this);
+        if (fSoundPlayer->InitCheck() == B_OK) {
+            printf("[3D Audio] BSoundPlayer initialized successfully\n");
+        } else {
+            printf("[3D Audio] ERROR: Failed to initialize BSoundPlayer!\n");
+            delete fSoundPlayer;
+            fSoundPlayer = nullptr;
+        }
+    }
+
+    void TogglePlayback() {
+        if (!fSoundPlayer || !fProject) return;
+
+        fIsPlaying = !fIsPlaying;
+
+        if (fIsPlaying) {
+            fSoundPlayer->Start();
+            fSoundPlayer->SetHasData(true);
+            fPlayButton->SetLabel("⏸ Pause");
+            printf("[3D Audio] Playback STARTED\n");
+        } else {
+            fSoundPlayer->Stop();
+            fPlayButton->SetLabel("▶ Play");
+            printf("[3D Audio] Playback PAUSED\n");
+        }
+    }
+
+    // Static callback for BSoundPlayer
+    static void PlayBufferFunc(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format) {
+        DemoWindow* window = (DemoWindow*)cookie;
+        window->MixTracks((float*)buffer, size / sizeof(float) / format.channel_count, format);
+    }
+
+    // Mix all tracks (same logic as TimelineContentView)
+    void MixTracks(float* buffer, int32 frameCount, const media_raw_audio_format& format) {
+        // Clear buffer
+        memset(buffer, 0, frameCount * format.channel_count * sizeof(float));
+
+        if (!fProject) return;
+
+        int trackCount = fProject->CountTracks();
+        if (trackCount == 0) return;
+
+        // Calculate current time position
+        float currentTime = fCurrentFramePosition / 44100.0f;
+
+        // Mix each track
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = fProject->TrackAt(i);
+            if (!track) continue;
+
+            // Get audio file path and resolve it
+            BString audioPath = track->AudioFilePath();
+            if (audioPath.Length() == 0) continue;
+
+            BString resolvedPath;
+            BPath pathObj(audioPath.String());
+            const char* filename = pathObj.Leaf();
+            if (!filename) continue;
+
+            BString projectDir;
+            if (fProjectPath.Length() > 0) {
+                BPath projectPath(fProjectPath.String());
+                BPath parentPath;
+                if (projectPath.GetParent(&parentPath) == B_OK) {
+                    projectDir = parentPath.Path();
+                }
+            }
+
+            const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
+            for (int ext = 0; extensions[ext] != nullptr; ext++) {
+                BString testPath = projectDir;
+                testPath << "/" << filename << extensions[ext];
+
+                entry_ref ref;
+                if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
+                    resolvedPath = testPath;
+                    break;
+                }
+            }
+
+            if (resolvedPath.Length() == 0) continue;
+
+            // Get audio cache
+            const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
+            const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
+            if (!audioCache || !audioCache->isValid || audioCache->samples.empty()) continue;
+
+            // Calculate track start time
+            float trackStartTime = track->StartPosition() / audioCache->sampleRate;
+            float relativeTime = currentTime - trackStartTime;
+
+            if (relativeTime < 0) continue;  // Track hasn't started yet
+
+            // Calculate sample index
+            int64 sampleIndex = (int64)(relativeTime * audioCache->sampleRate);
+            if (sampleIndex >= (int64)audioCache->samples.size()) continue;  // Track ended
+
+            // Copy samples from track to output buffer
+            for (int32 frame = 0; frame < frameCount; frame++) {
+                int64 srcIdx = sampleIndex + frame;
+                if (srcIdx >= (int64)audioCache->samples.size()) break;
+
+                float sample = audioCache->samples[srcIdx];
+                float volume = 0.8f;
+
+                // Mix into output (sum all tracks)
+                for (uint32 ch = 0; ch < format.channel_count; ch++) {
+                    buffer[frame * format.channel_count + ch] += sample * volume;
+                }
+            }
+        }
+
+        // Update frame position for next callback
+        fCurrentFramePosition += frameCount;
     }
 
     virtual bool QuitRequested() override {
@@ -2037,6 +2346,12 @@ private:
     TimelineWindow* fTimelineWindow;
     VeniceDAW::Project3DMix* fProject;
     BString fProjectPath;  // Full path to the .3dmix file
+
+    // Audio playback
+    BButton* fPlayButton;
+    BSoundPlayer* fSoundPlayer;
+    int64 fCurrentFramePosition;
+    bool fIsPlaying;
 };
 
 class DemoApp : public BApplication {
