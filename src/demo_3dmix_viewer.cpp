@@ -1390,14 +1390,29 @@ public:
         , fTrackMute(trackMute)
         , fTrackSolo(trackSolo)
         , fParentWindow(parentWindow)
+        , fWaveformCacheValid(false)
+        , fCachedZoom(-1.0f)
+        , fWaveformCacheBitmap(nullptr)
     {
         SetViewColor(35, 35, 40);
         SetFlags(Flags() | B_FULL_UPDATE_ON_RESIZE);
     }
 
+    ~TrackLanesView() {
+        // Clean up waveform cache
+        if (fWaveformCacheBitmap) {
+            delete fWaveformCacheBitmap;
+            fWaveformCacheBitmap = nullptr;
+        }
+    }
+
     void SetPixelsPerSecond(float pps) {
         fPixelsPerSecond = pps;
         fLastPlayheadX = -1.0f;
+
+        // OPTIMIZATION: Invalidate waveform cache when zoom changes
+        fWaveformCacheValid = false;
+
         Invalidate();
     }
 
@@ -2029,6 +2044,11 @@ private:
     bool* fTrackMute;
     bool* fTrackSolo;
     BWindow* fParentWindow;  // For posting mute/solo change messages
+
+    // PERFORMANCE: Waveform bitmap cache to avoid redrawing every frame
+    BBitmap* fWaveformCacheBitmap;  // Pre-rendered waveforms
+    bool fWaveformCacheValid;       // Is cache still valid?
+    float fCachedZoom;              // Zoom level when cache was created
 };
 
 // Main Timeline Content View - Container for ruler and lanes
