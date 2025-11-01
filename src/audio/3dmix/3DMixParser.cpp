@@ -582,8 +582,9 @@ status_t Legacy3DMixLoader::ParseSingleTrackRecord(BDataIO* stream, Track3DMix* 
 	if (status == B_OK) {
 		track->SetAudioFilePath(haikuPath.String());
 	} else {
-		track->SetAudioFilePath(audioFilePath.String()); // Keep original for reference
-		ReportWarning("Could not translate audio file path");
+		// Keep original path - timeline will resolve filename from project directory
+		track->SetAudioFilePath(audioFilePath.String());
+		AUDIO_LOG_DEBUG("3DMixLoader", "Keeping original BeOS path (will resolve at runtime): %s", audioFilePath.String());
 	}
 
 	// Extract track name from file path
