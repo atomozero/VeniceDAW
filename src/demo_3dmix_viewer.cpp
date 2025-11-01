@@ -44,8 +44,9 @@ struct WaveformData {
     std::vector<float> maxPeaks;
     int samplesPerPixel;
     bool isValid;
+    bool isLoading;  // True if being generated in background
 
-    WaveformData() : samplesPerPixel(0), isValid(false) {}
+    WaveformData() : samplesPerPixel(0), isValid(false), isLoading(false) {}
 };
 
 // Waveform cache - stores generated waveforms to avoid reloading
@@ -1046,7 +1047,7 @@ public:
 
     void SetPixelsPerSecond(float pps) {
         fPixelsPerSecond = pps;
-        fLastPlayheadX = -1.0f;  // Force full redraw on zoom
+        fLastPlayheadX = -1.0f;
         Invalidate();
     }
 
@@ -1076,9 +1077,9 @@ public:
         BRect bounds = Bounds();
 
         // OPTIMIZATION: Detect if we're only updating playhead
-        bool playheadOnly = (updateRect.Width() < 30);  // Narrow rect = just playhead
+        bool playheadOnly = (updateRect.Width() < 30);
 
-        // Background (only in update area)
+        // Background
         SetHighColor(35, 35, 40);
         FillRect(updateRect);
 
@@ -1090,12 +1091,10 @@ public:
         font_height fh;
         be_plain_font->GetHeight(&fh);
 
-        // OPTIMIZATION: Skip pixels when zoomed out
-        int pixelSkip = 1;
-        if (fPixelsPerSecond < 5.0f) pixelSkip = 4;
-        else if (fPixelsPerSecond < 15.0f) pixelSkip = 2;
+        // ULTRA-SIMPLE MODE: just colored blocks when zoomed way out
+        bool simpleMode = (fPixelsPerSecond < 10.0f);
 
-        // If we're only redrawing the playhead, skip expensive waveform rendering
+        // If only redrawing playhead, skip waveforms entirely
         if (!playheadOnly) {
             // Draw each track lane
         for (int i = 0; i < trackCount; i++) {
@@ -1199,80 +1198,65 @@ public:
                 WaveformData* waveform = nullptr;
 
                 // Try to get audio file path
-                BString audioPath = track->AudioFilePath();
+                // OPTIMIZATION: Skip waveform loading entirely in simple mode!
+                if (!simpleMode) {
+                    BString audioPath = track->AudioFilePath();
 
-                if (audioPath.Length() > 0 && widthPixels > 0) {
-                    BString resolvedPath;
+                    if (audioPath.Length() > 0 && widthPixels > 0) {
+                        BString resolvedPath;
 
-                    // Extract just the filename from the path
-                    BPath pathObj(audioPath.String());
-                    const char* filename = pathObj.Leaf();
+                        // Extract just the filename from the path
+                        BPath pathObj(audioPath.String());
+                        const char* filename = pathObj.Leaf();
 
-                    if (filename) {
-                        // Get project directory from .3dmix file path
-                        BString projectDir;
-                        if (fProjectPath.Length() > 0) {
-                            BPath projectPath(fProjectPath.String());
-                            BPath parentPath;
-                            if (projectPath.GetParent(&parentPath) == B_OK) {
-                                projectDir = parentPath.Path();
+                        if (filename) {
+                            // Get project directory from .3dmix file path
+                            BString projectDir;
+                            if (fProjectPath.Length() > 0) {
+                                BPath projectPath(fProjectPath.String());
+                                BPath parentPath;
+                                if (projectPath.GetParent(&parentPath) == B_OK) {
+                                    projectDir = parentPath.Path();
+                                }
+                            }
+
+                            // Try common extensions including no extension
+                            const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
+
+                            for (int ext = 0; extensions[ext] != nullptr; ext++) {
+                                BString testPath = projectDir;
+                                testPath << "/" << filename << extensions[ext];
+
+                                // Check if file exists
+                                entry_ref ref;
+                                if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
+                                    resolvedPath = testPath;
+                                    break;
+                                }
                             }
                         }
 
-                        // Try common extensions including no extension
-                        const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
-
-                        for (int ext = 0; extensions[ext] != nullptr; ext++) {
-                            BString testPath = projectDir;
-                            testPath << "/" << filename << extensions[ext];
-
-                            // Check if file exists
-                            entry_ref ref;
-                            if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
-                                resolvedPath = testPath;
-                                break;
-                            }
-                        }
-                    }
-
-                    // Debug logging for first track
-                    if (i == 0) {
-                        printf("[TrackLanes] Original path: '%s'\n", audioPath.String());
-                        printf("[TrackLanes] Filename: '%s'\n", filename ? filename : "NULL");
-                        printf("[TrackLanes] Project file: '%s'\n", fProjectPath.String());
-
-                        // Calculate and show project dir
-                        BString debugProjectDir;
-                        if (fProjectPath.Length() > 0) {
-                            BPath debugPath(fProjectPath.String());
-                            BPath debugParent;
-                            if (debugPath.GetParent(&debugParent) == B_OK) {
-                                debugProjectDir = debugParent.Path();
-                            }
-                        }
-                        printf("[TrackLanes] Project dir: '%s'\n", debugProjectDir.String());
-                        printf("[TrackLanes] Resolved path: '%s' (width=%dpx)\n",
-                               resolvedPath.String(), widthPixels);
-                    }
-
-                    if (resolvedPath.Length() > 0) {
-                        // Pass audio format for raw PCM support
-                        const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
-                        waveform = WaveformCache::Instance().GetWaveform(resolvedPath.String(), widthPixels, &audioFormat);
-
-                        if (i == 0) {
-                            printf("[TrackLanes] Waveform loaded: %s\n",
-                                   (waveform && waveform->isValid) ? "YES" : "NO");
+                        if (resolvedPath.Length() > 0) {
+                            // Pass audio format for raw PCM support
+                            const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
+                            waveform = WaveformCache::Instance().GetWaveform(resolvedPath.String(), widthPixels, &audioFormat);
                         }
                     }
                 }
 
-                if (waveform && waveform->isValid) {
-                    // Draw real waveform - OPTIMIZED with BeginLineArray + adaptive detail
+                // ULTRA-FAST: simple colored block when zoomed way out
+                if (simpleMode) {
+                    SetHighColor(trackColor.red * 0.85, trackColor.green * 0.85, trackColor.blue * 0.85, 180);
+                    FillRect(blockRect);
+                } else if (waveform && waveform->isValid) {
+                    // Draw real waveform - detailed mode only
                     float centerY = y + laneHeight / 2;
                     float maxHeight = (laneHeight - 12) * 0.5f;
 
-                    // Count lines to draw with pixel skip
+                    // Adaptive detail
+                    int pixelSkip = 1;
+                    if (fPixelsPerSecond < 15.0f) pixelSkip = 2;
+
                     int lineCount = 0;
                     for (int px = 0; px < widthPixels && px < (int)waveform->minPeaks.size(); px += pixelSkip) {
                         float x = blockRect.left + px;
@@ -1280,7 +1264,6 @@ public:
                         lineCount++;
                     }
 
-                    // Draw all lines in one batch - MUCH faster!
                     if (lineCount > 0) {
                         BeginLineArray(lineCount);
                         rgb_color waveColor = {
@@ -1304,14 +1287,13 @@ public:
                         }
                         EndLineArray();
                     }
-                } else {
-                    // Fallback: simplified waveform
+                } else if (!simpleMode) {
+                    // Fallback: pseudo-random waveform (only in detailed mode)
                     SetHighColor(trackColor.red * 0.8, trackColor.green * 0.8, trackColor.blue * 0.8, 200);
                     float centerY = y + laneHeight / 2;
 
-                    // Count lines
                     int lineCount = 0;
-                    for (float x = blockRect.left; x < blockRect.right && x < bounds.right; x += 4) {
+                    for (float x = blockRect.left; x < blockRect.right && x < bounds.right; x += 8) {
                         lineCount++;
                     }
 
@@ -1324,7 +1306,7 @@ public:
                             200
                         };
 
-                        for (float x = blockRect.left; x < blockRect.right && x < bounds.right; x += 4) {
+                        for (float x = blockRect.left; x < blockRect.right && x < bounds.right; x += 8) {
                             float waveHeight = 10 + (int)(x * 137) % 15;
                             AddLine(BPoint(x, centerY - waveHeight), BPoint(x, centerY + waveHeight), waveColor);
                         }
