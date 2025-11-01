@@ -18,7 +18,10 @@
       "Bash(python3:*)",
       "Bash(./test_3dmix_parser:*)",
       "Bash(git restore:*)",
-      "Bash(g++:*)"
+      "Bash(g++:*)",
+      "Bash(./diagnose_track_loop:*)",
+      "Bash(for file in \"/boot/home/Desktop/3D_Mixes/the-lynx/the-lynx-3dmix\"/{epiano-left,bass,drums,kickcrash})",
+      "Bash(do echo \"\" ./diagnose_track_loop \"$file\")"
     ],
     "deny": [],
     "ask": []

@@ -23,6 +23,7 @@
 #include <View.h>
 #include <Font.h>
 #include <Button.h>
+#include <StringView.h>
 
 // Include our 3dmix parser
 #include "audio/3dmix/3DMixFormat.h"
@@ -34,6 +35,17 @@
 #include <MediaTrack.h>
 #include <Path.h>
 #include <Entry.h>
+
+// AudioLogger stub - for 3dmix import system compatibility
+namespace VeniceDAW {
+    enum class LogLevel { DEBUG, INFO, WARNING, ERROR };
+    class AudioLogger {
+    public:
+        static void Log(LogLevel level, const char* component, const char* format, ...) {
+            // Empty stub - suppress logging in demo viewer
+        }
+    };
+}
 
 struct AudioSource {
     BString name;
@@ -1174,6 +1186,9 @@ public:
         , fPixelsPerSecond(pixelsPerSecond)
         , fTrackNameWidth(150.0f)  // Match TrackLanesView
         , fPlayheadPosition(-1.0f)  // Playhead position in seconds
+        , fLoopEnabled(false)
+        , fLoopInPoint(0.0f)
+        , fLoopOutPoint(0.0f)
     {
         SetViewColor(45, 45, 50);
     }
@@ -1185,6 +1200,13 @@ public:
 
     void SetPlayheadPosition(float position) {
         fPlayheadPosition = position;
+        Invalidate();
+    }
+
+    void SetLoopRegion(float inPoint, float outPoint, bool enabled) {
+        fLoopInPoint = inPoint;
+        fLoopOutPoint = outPoint;
+        fLoopEnabled = enabled;
         Invalidate();
     }
 
@@ -1263,6 +1285,32 @@ public:
             }
         }
 
+        // Draw loop region markers
+        if (fLoopEnabled && fLoopOutPoint > fLoopInPoint) {
+            const float timelineStart = fTrackNameWidth + 10.0f;
+            float loopInX = timelineStart + fLoopInPoint * fPixelsPerSecond;
+            float loopOutX = timelineStart + fLoopOutPoint * fPixelsPerSecond;
+
+            // Draw semi-transparent green region
+            SetHighColor(0, 255, 100, 40);
+            FillRect(BRect(loopInX, 0, loopOutX, bounds.bottom));
+
+            // Draw loop in marker (green vertical line)
+            SetHighColor(0, 255, 100);
+            SetPenSize(2.0);
+            StrokeLine(BPoint(loopInX, 0), BPoint(loopInX, bounds.bottom));
+
+            // Draw loop out marker (green vertical line)
+            StrokeLine(BPoint(loopOutX, 0), BPoint(loopOutX, bounds.bottom));
+            SetPenSize(1.0);
+
+            // Draw "Loop" label
+            SetHighColor(0, 255, 100);
+            SetFont(be_bold_font);
+            DrawString("LOOP", BPoint(loopInX + 5, 15));
+            SetFont(be_plain_font);
+        }
+
         // Draw playhead (red vertical line)
         if (fPlayheadPosition >= 0) {
             const float timelineStart = fTrackNameWidth + 10.0f;
@@ -1321,6 +1369,11 @@ private:
     float fPixelsPerSecond;
     float fTrackNameWidth;  // Width of track name column
     float fPlayheadPosition;  // Playhead position in seconds
+
+    // Loop region state
+    bool fLoopEnabled;
+    float fLoopInPoint;
+    float fLoopOutPoint;
 };
 
 // Track Lane View - Shows individual tracks as horizontal lanes
@@ -1989,6 +2042,9 @@ public:
         , fProjectPath(projectFilePath)
         , fPixelsPerSecond(50.0f)  // Initial zoom
         , fPlayheadPosition(0.0f)
+        , fLoopEnabled(false)
+        , fLoopInPoint(0.0f)
+        , fLoopOutPoint(0.0f)
         , fSharedSoundPlayer(sharedSoundPlayer)
         , fSharedFramePosition(sharedFramePosition)
         , fSharedIsPlaying(sharedIsPlaying)
@@ -2114,12 +2170,21 @@ public:
             media_raw_audio_format format = fSharedSoundPlayer->Format();
             fPlayheadPosition = (*fSharedFramePosition) / format.frame_rate;
 
-            float duration = fProject.CalculateTotalDuration();
-
-            // Loop back to start only if we have a valid duration
-            if (duration > 0 && fPlayheadPosition > duration) {
-                fPlayheadPosition = 0.0f;
-                *fSharedFramePosition = 0;
+            // Handle loop region playback
+            if (fLoopEnabled && fLoopOutPoint > fLoopInPoint) {
+                if (fPlayheadPosition >= fLoopOutPoint) {
+                    // Loop back to in point
+                    fPlayheadPosition = fLoopInPoint;
+                    *fSharedFramePosition = (int64)(fLoopInPoint * format.frame_rate);
+                    printf("[Loop] Looping back from %.2fs to %.2fs\n", fLoopOutPoint, fLoopInPoint);
+                }
+            } else {
+                // Normal playback: loop back to start at end of song
+                float duration = fProject.CalculateTotalDuration();
+                if (duration > 0 && fPlayheadPosition > duration) {
+                    fPlayheadPosition = 0.0f;
+                    *fSharedFramePosition = 0;
+                }
             }
         }
         // Always update playhead display, even when paused
@@ -2203,6 +2268,38 @@ public:
             case B_END:
                 JumpToEnd();
                 break;
+            case 'i':
+            case 'I':
+                // Set loop in point at current playhead position
+                fLoopInPoint = fPlayheadPosition;
+                if (fLoopOutPoint <= fLoopInPoint) {
+                    fLoopOutPoint = fLoopInPoint + 5.0f;  // Default 5 second loop
+                }
+                fRulerView->SetLoopRegion(fLoopInPoint, fLoopOutPoint, fLoopEnabled);
+                fLanesView->Invalidate();
+                printf("[Loop] In point set at %.2fs\n", fLoopInPoint);
+                break;
+            case 'o':
+            case 'O':
+                // Set loop out point at current playhead position
+                fLoopOutPoint = fPlayheadPosition;
+                if (fLoopInPoint >= fLoopOutPoint) {
+                    fLoopInPoint = fmax(0.0f, fLoopOutPoint - 5.0f);
+                }
+                fRulerView->SetLoopRegion(fLoopInPoint, fLoopOutPoint, fLoopEnabled);
+                fLanesView->Invalidate();
+                printf("[Loop] Out point set at %.2fs\n", fLoopOutPoint);
+                break;
+            case 'l':
+            case 'L':
+                // Toggle loop enabled/disabled
+                fLoopEnabled = !fLoopEnabled;
+                fRulerView->SetLoopRegion(fLoopInPoint, fLoopOutPoint, fLoopEnabled);
+                fLanesView->Invalidate();
+                printf("[Loop] Loop %s (%.2fs - %.2fs)\n",
+                       fLoopEnabled ? "ENABLED" : "DISABLED",
+                       fLoopInPoint, fLoopOutPoint);
+                break;
             default:
                 BView::KeyDown(bytes, numBytes);
                 break;
@@ -2216,6 +2313,11 @@ private:
     TrackLanesView* fLanesView;
     float fPixelsPerSecond;
     float fPlayheadPosition;
+
+    // Loop region state
+    bool fLoopEnabled;
+    float fLoopInPoint;   // Loop start time in seconds
+    float fLoopOutPoint;  // Loop end time in seconds
 
     // Shared audio playback system (owned by DemoWindow)
     BSoundPlayer* fSharedSoundPlayer;
@@ -2301,6 +2403,12 @@ public:
         printf("[TimelineWindow] Timer status check:\n");
         printf("  fUpdateRunner: %p\n", fUpdateRunner);
         printf("  fContentView: %p\n", fContentView);
+    }
+
+    void SetPlayheadPosition(float position) {
+        if (fContentView) {
+            fContentView->ResetPlayhead();  // Reset to start (position 0)
+        }
     }
 
     virtual bool QuitRequested() override {
@@ -2410,6 +2518,8 @@ public:
         , fProject(nullptr)
         , fProjectPath(projectPath)  // Store the project file path
         , fPlayButton(nullptr)
+        , fStopButton(nullptr)
+        , fTimeDisplay(nullptr)
         , fMasterVUMeter(nullptr)
         , fSoundPlayer(nullptr)
         , fCurrentFramePosition(0)
@@ -2446,7 +2556,20 @@ public:
         fMasterVUMeter = new MasterVUMeterView(vuRect);
         AddChild(fMasterVUMeter);
 
-        // Create Play/Pause button at bottom center
+        // Create transport controls at bottom center
+        // Stop button
+        BRect stopRect = bounds;
+        stopRect.top = stopRect.bottom - controlHeight + 10;
+        stopRect.bottom = stopRect.bottom - 10;
+        stopRect.left = (bounds.Width() / 2) - 130;
+        stopRect.right = stopRect.left + 60;
+
+        fStopButton = new BButton(stopRect, "stop_button", "⏹ Stop",
+                                  new BMessage('Stop'));
+        fStopButton->SetTarget(this);
+        AddChild(fStopButton);
+
+        // Play/Pause button
         BRect buttonRect = bounds;
         buttonRect.top = buttonRect.bottom - controlHeight + 10;
         buttonRect.bottom = buttonRect.bottom - 10;
@@ -2457,6 +2580,18 @@ public:
                                   new BMessage('Play'));
         fPlayButton->SetTarget(this);
         AddChild(fPlayButton);
+
+        // Time display (right of Play button)
+        BRect timeRect = bounds;
+        timeRect.top = timeRect.bottom - controlHeight + 10;
+        timeRect.bottom = timeRect.bottom - 10;
+        timeRect.left = (bounds.Width() / 2) + 70;
+        timeRect.right = timeRect.left + 140;
+
+        fTimeDisplay = new BStringView(timeRect, "time_display", "0:00.0 / 0:00.0");
+        fTimeDisplay->SetAlignment(B_ALIGN_LEFT);
+        fTimeDisplay->SetFont(be_fixed_font);
+        AddChild(fTimeDisplay);
 
         // Load and parse 3dmix file
         LoadProject(projectPath);
@@ -2586,10 +2721,16 @@ public:
                 if (fGLView) {
                     fGLView->Pulse();
                 }
+                // Update time display
+                UpdateTimeDisplay();
                 break;
 
             case 'Play':
                 TogglePlayback();
+                break;
+
+            case 'Stop':
+                StopPlayback();
                 break;
 
             case B_KEY_DOWN: {
@@ -2601,6 +2742,9 @@ public:
                         return;
                     } else if (key == ' ') {  // Spacebar also toggles playback
                         TogglePlayback();
+                        return;
+                    } else if (key == 's' || key == 'S') {  // 'S' key for Stop
+                        StopPlayback();
                         return;
                     }
                 }
@@ -2696,6 +2840,81 @@ public:
             fPlayButton->SetLabel("▶ Play");
             printf("[3D Audio] Playback PAUSED\n");
         }
+    }
+
+    void StopPlayback() {
+        if (!fSoundPlayer || !fProject) return;
+
+        // Stop playback AND reset playhead to beginning
+        if (fIsPlaying) {
+            fSoundPlayer->Stop();
+            fIsPlaying = false;
+        }
+
+        fCurrentFramePosition = 0;
+        fPlayButton->SetLabel("▶ Play");
+
+        // Update timeline windows
+        if (fTimelineWindow && fTimelineWindow->Lock()) {
+            fTimelineWindow->SetPlayheadPosition(0.0f);
+            fTimelineWindow->Unlock();
+        }
+
+        printf("[3D Audio] Playback STOPPED (reset to start)\n");
+    }
+
+    void UpdateTimeDisplay() {
+        if (!fTimeDisplay || !fProject || !fSoundPlayer) return;
+
+        // Calculate current time from frame position
+        media_raw_audio_format format = fSoundPlayer->Format();
+        float currentTime = fCurrentFramePosition / format.frame_rate;
+
+        // Calculate total duration
+        float totalDuration = GetProjectDuration();
+
+        // Format: M:SS.d / M:SS.d
+        int currentMin = (int)(currentTime / 60.0f);
+        float currentSec = currentTime - (currentMin * 60.0f);
+        int totalMin = (int)(totalDuration / 60.0f);
+        float totalSec = totalDuration - (totalMin * 60.0f);
+
+        BString timeText;
+        timeText.SetToFormat("%d:%04.1f / %d:%04.1f", currentMin, currentSec, totalMin, totalSec);
+        fTimeDisplay->SetText(timeText.String());
+    }
+
+    float GetProjectDuration() {
+        if (!fProject) return 0.0f;
+
+        float maxDuration = 0.0f;
+        int trackCount = fProject->CountTracks();
+
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = fProject->TrackAt(i);
+            if (!track) continue;
+
+            const VeniceDAW::AudioFormat3DMix& format = track->GetAudioFormat();
+            int32 startSample = track->StartPosition();
+            int32 endSample = track->EndPosition();
+
+            const float kTimelineReferenceRate = 22050.0f;
+            float sampleRate = kTimelineReferenceRate;
+            float startTime = startSample / sampleRate;
+            float endTime = endSample / sampleRate;
+
+            if (endSample == 0 && format.fileSize > 0 && format.channels > 0 && format.bitDepth > 0) {
+                int32 bytesPerSample = (format.bitDepth + 7) / 8;
+                int32 totalSamples = format.fileSize / (format.channels * bytesPerSample);
+                endTime = startTime + (totalSamples / sampleRate);
+            }
+
+            if (endTime > maxDuration) {
+                maxDuration = endTime;
+            }
+        }
+
+        return maxDuration > 0 ? maxDuration : 30.0f;
     }
 
     // Static callback for BSoundPlayer
@@ -2954,8 +3173,10 @@ private:
     VeniceDAW::Project3DMix* fProject;
     BString fProjectPath;  // Full path to the .3dmix file
 
-    // Audio playback
+    // Audio playback and transport controls
     BButton* fPlayButton;
+    BButton* fStopButton;
+    BStringView* fTimeDisplay;
     MasterVUMeterView* fMasterVUMeter;
     BSoundPlayer* fSoundPlayer;
     int64 fCurrentFramePosition;
