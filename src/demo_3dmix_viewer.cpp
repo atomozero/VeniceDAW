@@ -1261,13 +1261,17 @@ private:
 // Track Lane View - Shows individual tracks as horizontal lanes
 class TrackLanesView : public BView {
 public:
-    TrackLanesView(BRect frame, const VeniceDAW::Project3DMix& project, float pixelsPerSecond, const char* projectFilePath)
+    TrackLanesView(BRect frame, const VeniceDAW::Project3DMix& project, float pixelsPerSecond, const char* projectFilePath,
+                   bool* trackMute, bool* trackSolo, BWindow* parentWindow)
         : BView(frame, "track_lanes", B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP_BOTTOM, B_WILL_DRAW)
         , fProject(project)
         , fProjectPath(projectFilePath)
         , fPixelsPerSecond(pixelsPerSecond)
         , fPlayheadPosition(0.0f)
         , fLastPlayheadX(-1.0f)
+        , fTrackMute(trackMute)
+        , fTrackSolo(trackSolo)
+        , fParentWindow(parentWindow)
     {
         SetViewColor(35, 35, 40);
         SetFlags(Flags() | B_FULL_UPDATE_ON_RESIZE);
@@ -1300,6 +1304,55 @@ public:
         Invalidate(newRect);
 
         fLastPlayheadX = newX;
+    }
+
+    virtual void MouseDown(BPoint where) override {
+        // Check if click is on a Mute/Solo widget
+        int trackCount = fProject.CountTracks();
+        float laneHeight = 60.0f;
+        float trackNameWidth = 150.0f;
+
+        for (int i = 0; i < trackCount; i++) {
+            float y = i * laneHeight;
+            float widgetLeft = trackNameWidth - 24;
+            float widgetTop = y + (laneHeight - 24) / 2;
+            BRect muteSoloRect(widgetLeft, widgetTop, widgetLeft + 12, widgetTop + 24);
+
+            if (muteSoloRect.Contains(where)) {
+                // Click on widget - determine if mute or solo
+                float midpoint = widgetTop + 12;
+
+                if (where.y < midpoint) {
+                    // Click on Mute (top half)
+                    if (fTrackMute && i < 64) {
+                        fTrackMute[i] = !fTrackMute[i];
+                        printf("[Mute/Solo] Track %d mute: %s\n", i, fTrackMute[i] ? "ON" : "OFF");
+                        Invalidate();  // Redraw to show state change
+                    }
+                } else {
+                    // Click on Solo (bottom half) - EXCLUSIVE: only one track can be solo'd at a time
+                    if (fTrackSolo && i < 64) {
+                        // If clicking the same track that's already solo'd, toggle it off
+                        if (fTrackSolo[i]) {
+                            fTrackSolo[i] = false;
+                            printf("[Mute/Solo] Track %d solo: OFF\n", i);
+                        } else {
+                            // Clear all other solos first (radio button behavior)
+                            for (int j = 0; j < 64; j++) {
+                                fTrackSolo[j] = false;
+                            }
+                            // Then enable this track's solo
+                            fTrackSolo[i] = true;
+                            printf("[Mute/Solo] Track %d solo: ON (exclusive - all others disabled)\n", i);
+                        }
+                        Invalidate();  // Redraw to show state change
+                    }
+                }
+                return;  // Click handled
+            }
+        }
+
+        BView::MouseDown(where);
     }
 
     virtual void Draw(BRect updateRect) override {
@@ -1378,6 +1431,50 @@ public:
 
             SetHighColor(trackColor);
             FillRect(BRect(5, y + 5, 8, y + laneHeight - 6));
+
+            // Mute/Solo widget (BeOS 3D Mixer style)
+            // Position: left of track name area, 12px wide, 24px tall
+            float widgetLeft = trackNameWidth - 24;
+            float widgetTop = y + (laneHeight - 24) / 2;  // Center vertically
+            BRect muteSoloRect(widgetLeft, widgetTop, widgetLeft + 12, widgetTop + 24);
+
+            // Background for full widget (green by default)
+            SetHighColor(80, 200, 80);
+            FillRect(muteSoloRect);
+
+            // Mute section (top half)
+            BRect muteRect = muteSoloRect;
+            muteRect.bottom = widgetTop + 12;
+            if (fTrackMute && fTrackMute[i]) {
+                SetHighColor(200, 80, 80);  // Red when muted
+                FillRect(muteRect);
+            }
+
+            // Solo section (bottom half)
+            BRect soloRect = muteSoloRect;
+            soloRect.top = widgetTop + 12;
+            if (fTrackSolo && fTrackSolo[i]) {
+                SetHighColor(200, 80, 80);  // Red when solo'd
+                FillRect(soloRect);
+            }
+
+            // Draw "M" and "S" labels
+            SetFontSize(9);
+            SetHighColor(20, 20, 20);  // Dark text
+            SetDrawingMode(B_OP_OVER);
+            DrawString("M", BPoint(widgetLeft + 3, widgetTop + 10));
+            DrawString("S", BPoint(widgetLeft + 4, widgetTop + 22));
+            SetDrawingMode(B_OP_COPY);
+
+            // Border around widget
+            SetHighColor(150, 0, 0);
+            StrokeRect(muteSoloRect);
+            // Divider line between M and S
+            MovePenTo(BPoint(widgetLeft, widgetTop + 12));
+            StrokeLine(BPoint(widgetLeft + 12, widgetTop + 12));
+
+            // Reset font size
+            SetFontSize(be_plain_font->Size());
 
             // Track region (audio block representation)
             // Each track has its own start/end position in samples
@@ -1809,13 +1906,19 @@ private:
     float fPixelsPerSecond;
     float fPlayheadPosition;
     float fLastPlayheadX;  // Cache last playhead X position for partial redraws
+
+    // Mute/Solo state (pointers to DemoWindow arrays)
+    bool* fTrackMute;
+    bool* fTrackSolo;
+    BWindow* fParentWindow;  // For posting mute/solo change messages
 };
 
 // Main Timeline Content View - Container for ruler and lanes
 class TimelineContentView : public BView {
 public:
     TimelineContentView(BRect frame, const VeniceDAW::Project3DMix& project, const char* projectFilePath,
-                        BSoundPlayer* sharedSoundPlayer, int64* sharedFramePosition, bool* sharedIsPlaying)
+                        BSoundPlayer* sharedSoundPlayer, int64* sharedFramePosition, bool* sharedIsPlaying,
+                        bool* trackMute, bool* trackSolo, BWindow* parentWindow)
         : BView(frame, "timeline_content", B_FOLLOW_ALL, B_WILL_DRAW)
         , fProject(project)
         , fProjectPath(projectFilePath)
@@ -1836,7 +1939,8 @@ public:
         // Create track lanes view with project file path for audio file resolution
         BRect lanesFrame = Bounds();
         lanesFrame.top = 41;
-        fLanesView = new TrackLanesView(lanesFrame, project, fPixelsPerSecond, projectFilePath);
+        fLanesView = new TrackLanesView(lanesFrame, project, fPixelsPerSecond, projectFilePath,
+                                        trackMute, trackSolo, parentWindow);
         AddChild(fLanesView);
 
         printf("[Timeline] Using shared audio engine from 3D Mixer window\n");
@@ -2058,7 +2162,8 @@ private:
 class TimelineWindow : public BWindow {
 public:
     TimelineWindow(const VeniceDAW::Project3DMix& project, const char* projectFilePath,
-                   BSoundPlayer* sharedSoundPlayer, int64* sharedFramePosition, bool* sharedIsPlaying)
+                   BSoundPlayer* sharedSoundPlayer, int64* sharedFramePosition, bool* sharedIsPlaying,
+                   bool* trackMute, bool* trackSolo, BWindow* parentWindow)
         : BWindow(BRect(100, 100, 1400, 850), "Timeline View - Modern DAW Style",
                   B_TITLED_WINDOW, B_NOT_ZOOMABLE | B_ASYNCHRONOUS_CONTROLS)
         , fProject(project)
@@ -2067,7 +2172,8 @@ public:
         , fUpdateRunner(nullptr)
     {
         fContentView = new TimelineContentView(Bounds(), project, projectFilePath,
-                                                sharedSoundPlayer, sharedFramePosition, sharedIsPlaying);
+                                                sharedSoundPlayer, sharedFramePosition, sharedIsPlaying,
+                                                trackMute, trackSolo, parentWindow);
         AddChild(fContentView);
 
         // Timer will be created in Show() to ensure window loop is active
@@ -2245,9 +2351,15 @@ public:
         , fIsPlaying(false)
         , fMasterLevelLeft(0.0f)
         , fMasterLevelRight(0.0f)
+        , fAnySoloActive(false)
     {
         // Initialize track levels to zero
         memset(fTrackLevels, 0, sizeof(fTrackLevels));
+
+        // Initialize mute/solo states (all off by default)
+        memset(fTrackMute, 0, sizeof(fTrackMute));
+        memset(fTrackSolo, 0, sizeof(fTrackSolo));
+
         BRect bounds = Bounds();
 
         // Reserve space at bottom for controls
@@ -2389,9 +2501,10 @@ public:
         }
 
         if (!fTimelineWindow) {
-            // Pass project, project path, and shared audio engine references
+            // Pass project, project path, shared audio engine, and mute/solo state
             fTimelineWindow = new TimelineWindow(*fProject, fProjectPath.String(),
-                                                  fSoundPlayer, &fCurrentFramePosition, &fIsPlaying);
+                                                  fSoundPlayer, &fCurrentFramePosition, &fIsPlaying,
+                                                  fTrackMute, fTrackSolo, this);
             printf("[DemoWindow] Created Timeline window with shared audio engine\n");
         }
 
@@ -2542,10 +2655,28 @@ public:
         // Clear track levels
         memset(fTrackLevels, 0, sizeof(fTrackLevels));
 
+        // Check if any track has solo enabled
+        fAnySoloActive = false;
+        for (int i = 0; i < trackCount && i < 64; i++) {
+            if (fTrackSolo[i]) {
+                fAnySoloActive = true;
+                break;
+            }
+        }
+
         // Mix each track
         for (int i = 0; i < trackCount; i++) {
             VeniceDAW::Track3DMix* track = fProject->TrackAt(i);
             if (!track) continue;
+
+            // Apply mute/solo logic (BeOS 3D Mixer style)
+            if (i < 64) {
+                // Skip if muted
+                if (fTrackMute[i]) continue;
+
+                // Skip if solo is active elsewhere and this track is not solo'd
+                if (fAnySoloActive && !fTrackSolo[i]) continue;
+            }
 
             // Get audio file path and resolve it
             BString audioPath = track->AudioFilePath();
@@ -2771,6 +2902,11 @@ private:
     // Master output levels (stereo L/R)
     float fMasterLevelLeft;
     float fMasterLevelRight;
+
+    // Mute/Solo state per track (BeOS 3D Mixer style)
+    bool fTrackMute[64];     // true = track silenced
+    bool fTrackSolo[64];     // true = track solo'd
+    bool fAnySoloActive;     // Cache: true if any track has solo
 };
 
 class DemoApp : public BApplication {
