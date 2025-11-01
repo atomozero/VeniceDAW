@@ -1573,15 +1573,16 @@ private:
 // Main Timeline Content View - Container for ruler and lanes
 class TimelineContentView : public BView {
 public:
-    TimelineContentView(BRect frame, const VeniceDAW::Project3DMix& project, const char* projectFilePath)
+    TimelineContentView(BRect frame, const VeniceDAW::Project3DMix& project, const char* projectFilePath,
+                        BSoundPlayer* sharedSoundPlayer, int64* sharedFramePosition, bool* sharedIsPlaying)
         : BView(frame, "timeline_content", B_FOLLOW_ALL, B_WILL_DRAW)
         , fProject(project)
         , fProjectPath(projectFilePath)
         , fPixelsPerSecond(50.0f)  // Initial zoom
         , fPlayheadPosition(0.0f)
-        , fIsPlaying(false)
-        , fSoundPlayer(nullptr)
-        , fCurrentFramePosition(0)
+        , fSharedSoundPlayer(sharedSoundPlayer)
+        , fSharedFramePosition(sharedFramePosition)
+        , fSharedIsPlaying(sharedIsPlaying)
     {
         SetViewColor(30, 30, 35);
 
@@ -1597,80 +1598,11 @@ public:
         fLanesView = new TrackLanesView(lanesFrame, project, fPixelsPerSecond, projectFilePath);
         AddChild(fLanesView);
 
-        // Detect sample rate from first valid track (same logic as DemoWindow)
-        float detectedSampleRate = 44100.0f;  // Default fallback
-        int trackCount = project.CountTracks();
-
-        for (int i = 0; i < trackCount; i++) {
-            VeniceDAW::Track3DMix* track = project.TrackAt(i);
-            if (!track) continue;
-
-            BString audioPath = track->AudioFilePath();
-            if (audioPath.Length() == 0) continue;
-
-            BString resolvedPath;
-            BPath pathObj(audioPath.String());
-            const char* filename = pathObj.Leaf();
-            if (!filename) continue;
-
-            // Try to find the file in project directory
-            BPath projectPath(projectFilePath);
-            BPath parentPath;
-            if (projectPath.GetParent(&parentPath) == B_OK) {
-                BString projectDir(parentPath.Path());
-
-                const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
-                for (int ext = 0; extensions[ext] != nullptr; ext++) {
-                    BString testPath = projectDir;
-                    testPath << "/" << filename << extensions[ext];
-
-                    entry_ref ref;
-                    if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
-                        resolvedPath = testPath;
-                        break;
-                    }
-                }
-            }
-
-            if (resolvedPath.Length() == 0) continue;
-
-            // Get audio cache and check sample rate - use project sample rate if track doesn't have one
-            VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
-            if (audioFormat.sampleRate == 0) {
-                audioFormat.sampleRate = project.ProjectSampleRate();
-            }
-            const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
-            if (audioCache && audioCache->isValid && audioCache->sampleRate > 0) {
-                detectedSampleRate = audioCache->sampleRate;
-                printf("[Timeline Audio] Detected sample rate from track: %.0f Hz\n", detectedSampleRate);
-                break;  // Use first valid track's rate
-            }
-        }
-
-        // Initialize BSoundPlayer for audio playback with detected sample rate
-        media_raw_audio_format format;
-        format.frame_rate = detectedSampleRate;
-        format.channel_count = 2;      // Stereo
-        format.format = media_raw_audio_format::B_AUDIO_FLOAT;
-        format.byte_order = B_MEDIA_HOST_ENDIAN;
-        format.buffer_size = 4096;
-
-        fSoundPlayer = new BSoundPlayer(&format, "VeniceDAW Timeline Player", PlayBufferFunc, nullptr, this);
-        if (fSoundPlayer->InitCheck() == B_OK) {
-            printf("[AudioPlayback] BSoundPlayer initialized successfully (%.0fHz, stereo, float)\n", detectedSampleRate);
-        } else {
-            printf("[AudioPlayback] ERROR: Failed to initialize BSoundPlayer!\n");
-            delete fSoundPlayer;
-            fSoundPlayer = nullptr;
-        }
+        printf("[Timeline] Using shared audio engine from 3D Mixer window\n");
     }
 
     ~TimelineContentView() {
-        if (fSoundPlayer) {
-            fSoundPlayer->Stop();
-            delete fSoundPlayer;
-            fSoundPlayer = nullptr;
-        }
+        // Don't delete fSharedSoundPlayer - it's owned by DemoWindow
     }
 
     void ZoomIn() {
@@ -1728,20 +1660,20 @@ public:
     }
 
     void TogglePlayback() {
-        fIsPlaying = !fIsPlaying;
+        *fSharedIsPlaying = !(*fSharedIsPlaying);
 
-        if (fSoundPlayer) {
-            if (fIsPlaying) {
+        if (fSharedSoundPlayer) {
+            if (*fSharedIsPlaying) {
                 // Start audio playback
-                fSoundPlayer->Start();
-                fSoundPlayer->SetHasData(true);
+                fSharedSoundPlayer->Start();
+                fSharedSoundPlayer->SetHasData(true);
                 printf("[AudioPlayback] STARTED at position %.2fs (frame %ld)\n",
-                       fPlayheadPosition, fCurrentFramePosition);
+                       fPlayheadPosition, *fSharedFramePosition);
             } else {
                 // Stop audio playback
-                fSoundPlayer->Stop();
+                fSharedSoundPlayer->Stop();
                 printf("[AudioPlayback] PAUSED at position %.2fs (frame %ld)\n",
-                       fPlayheadPosition, fCurrentFramePosition);
+                       fPlayheadPosition, *fSharedFramePosition);
             }
         }
 
@@ -1749,7 +1681,7 @@ public:
         BWindow* window = Window();
         if (window) {
             BString title = "Timeline View - Modern DAW Style";
-            if (fIsPlaying) {
+            if (*fSharedIsPlaying) {
                 title << " [PLAYING ♪]";
             } else {
                 title << " [PAUSED]";
@@ -1764,17 +1696,17 @@ public:
     }
 
     void UpdatePlayhead(float deltaSeconds) {
-        if (fIsPlaying && fSoundPlayer) {
+        if (*fSharedIsPlaying && fSharedSoundPlayer) {
             // Sync playhead with actual audio position using BSoundPlayer's sample rate
-            media_raw_audio_format format = fSoundPlayer->Format();
-            fPlayheadPosition = fCurrentFramePosition / format.frame_rate;
+            media_raw_audio_format format = fSharedSoundPlayer->Format();
+            fPlayheadPosition = (*fSharedFramePosition) / format.frame_rate;
 
             float duration = fProject.CalculateTotalDuration();
 
             // Loop back to start only if we have a valid duration
             if (duration > 0 && fPlayheadPosition > duration) {
                 fPlayheadPosition = 0.0f;
-                fCurrentFramePosition = 0;
+                *fSharedFramePosition = 0;
             }
         }
         // Always update playhead display, even when paused
@@ -1783,7 +1715,7 @@ public:
 
     void ResetPlayhead() {
         fPlayheadPosition = 0.0f;
-        fCurrentFramePosition = 0;
+        *fSharedFramePosition = 0;
         fLanesView->SetPlayheadPosition(fPlayheadPosition);
         printf("[AudioPlayback] Playhead reset to 0.0s\n");
     }
@@ -1859,188 +1791,24 @@ public:
     }
 
 private:
-    // Audio playback callback (static, calls MixTracks on instance)
-    static void PlayBufferFunc(void* cookie, void* buffer, size_t size, const media_raw_audio_format& format) {
-        TimelineContentView* view = (TimelineContentView*)cookie;
-        view->MixTracks((float*)buffer, size / sizeof(float) / format.channel_count, format);
-    }
-
-    // Mix all tracks into output buffer (R6-inspired architecture)
-    void MixTracks(float* buffer, int32 frameCount, const media_raw_audio_format& format) {
-        static int callbackCount = 0;
-        callbackCount++;
-
-        // Debug: log first few callbacks
-        if (callbackCount <= 3) {
-            printf("[MixTracks] Callback #%d: frameCount=%d, channels=%d, rate=%.0f\n",
-                   callbackCount, frameCount, format.channel_count, format.frame_rate);
-        }
-
-        // Clear buffer
-        memset(buffer, 0, frameCount * format.channel_count * sizeof(float));
-
-        int trackCount = fProject.CountTracks();
-        if (trackCount == 0) {
-            if (callbackCount <= 3) printf("[MixTracks] No tracks in project!\n");
-            return;
-        }
-
-        // Calculate current time position
-        float currentTime = fCurrentFramePosition / 44100.0f;
-
-        if (callbackCount <= 3) {
-            printf("[MixTracks] currentTime=%.2fs, framePos=%ld, trackCount=%d\n",
-                   currentTime, fCurrentFramePosition, trackCount);
-        }
-
-        // Mix each track (R6-style: sum all tracks)
-        for (int i = 0; i < trackCount; i++) {
-            VeniceDAW::Track3DMix* track = fProject.TrackAt(i);
-            if (!track) continue;
-
-            // Get audio file path
-            BString audioPath = track->AudioFilePath();
-            if (audioPath.Length() == 0) continue;
-
-            // Resolve audio file (same logic as waveform rendering)
-            BString resolvedPath;
-            BPath pathObj(audioPath.String());
-            const char* filename = pathObj.Leaf();
-            if (!filename) continue;
-
-            // Get project directory
-            BString projectDir;
-            if (fProjectPath.Length() > 0) {
-                BPath projectPath(fProjectPath.String());
-                BPath parentPath;
-                if (projectPath.GetParent(&parentPath) == B_OK) {
-                    projectDir = parentPath.Path();
-                }
-            }
-
-            // Try common extensions
-            const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
-            for (int ext = 0; extensions[ext] != nullptr; ext++) {
-                BString testPath = projectDir;
-                testPath << "/" << filename << extensions[ext];
-
-                entry_ref ref;
-                if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
-                    resolvedPath = testPath;
-                    break;
-                }
-            }
-
-            if (resolvedPath.Length() == 0) {
-                if (callbackCount <= 3) printf("[MixTracks] Track %d: file not found\n", i);
-                continue;
-            }
-
-            // Get audio cache - use project sample rate if track doesn't have one
-            VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
-            if (audioFormat.sampleRate == 0) {
-                audioFormat.sampleRate = fProject.ProjectSampleRate();
-            }
-            const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
-            if (!audioCache || !audioCache->isValid || audioCache->samples.empty()) {
-                if (callbackCount <= 3) {
-                    printf("[MixTracks] Track %d: cache invalid (cache=%p, valid=%d, samples=%zu)\n",
-                           i, audioCache, audioCache ? audioCache->isValid : 0,
-                           audioCache ? audioCache->samples.size() : 0);
-                }
-                continue;
-            }
-
-            // Calculate track start time
-            float trackStartTime = track->StartPosition() / audioCache->sampleRate;
-            float relativeTime = currentTime - trackStartTime;
-
-            if (relativeTime < 0) {
-                if (callbackCount <= 3) printf("[MixTracks] Track %d: not started yet (relTime=%.2f)\n", i, relativeTime);
-                continue;  // Track hasn't started yet
-            }
-
-            // Get loop parameters (BeOS 3DMix compatibility)
-            // In BeOS format: st_skip is stored in LoopStart, loop_point in LoopEnd
-            int64 loopStart = track->LoopStart();    // Trim: where to start in the audio file
-            int64 loopEnd = track->LoopEnd();        // Loop point: where to loop back
-            int64 loopLength = loopEnd - loopStart;
-
-            // Debug: log loop info once
-            static bool loopLogged[32] = {false};
-            if (callbackCount <= 3 && !loopLogged[i] && i < 32 && loopLength > 0) {
-                printf("[Loop] Track %d: trim=%.3fs, loop=%.3fs (length=%.3fs)\n",
-                       i, loopStart / audioCache->sampleRate, loopEnd / audioCache->sampleRate,
-                       loopLength / audioCache->sampleRate);
-                loopLogged[i] = true;
-            }
-
-            // Calculate sample index
-            int64 sampleIndex = (int64)(relativeTime * audioCache->sampleRate);
-
-            if (callbackCount <= 3) {
-                printf("[MixTracks] Track %d: MIXING! idx=%ld, samples=%zu, rate=%.0f\n",
-                       i, sampleIndex, audioCache->samples.size(), audioCache->sampleRate);
-            }
-
-            // Copy samples from track to output buffer with BeOS-style looping
-            int32 samplesCopied = 0;
-            for (int32 frame = 0; frame < frameCount; frame++) {
-                int64 srcIdx = sampleIndex + frame;
-
-                // Apply BeOS-style looping if loop parameters are valid
-                if (loopLength > 0 && loopEnd > loopStart) {
-                    // Add trim offset
-                    srcIdx += loopStart;
-
-                    // Apply modulo looping when we exceed loop end point
-                    if (srcIdx >= loopEnd) {
-                        int64 offsetFromLoopStart = srcIdx - loopStart;
-                        srcIdx = loopStart + (offsetFromLoopStart % loopLength);
-                    }
-                }
-
-                // Safety check: ensure we're within bounds
-                if (srcIdx < 0 || srcIdx >= (int64)audioCache->samples.size()) break;
-
-                float sample = audioCache->samples[srcIdx];
-
-                // Apply volume - INCREASED to 0.8 for better audibility
-                float volume = 0.8f;
-
-                // Mix into output (sum all tracks)
-                for (uint32 ch = 0; ch < format.channel_count; ch++) {
-                    buffer[frame * format.channel_count + ch] += sample * volume;
-                }
-                samplesCopied++;
-            }
-
-            if (callbackCount <= 3) {
-                printf("[MixTracks] Track %d: Copied %d samples\n", i, samplesCopied);
-            }
-        }
-
-        // Update frame position for next callback
-        fCurrentFramePosition += frameCount;
-    }
-
     const VeniceDAW::Project3DMix& fProject;
     BString fProjectPath;  // Full path to .3dmix file for audio file resolution
     TimeRulerView* fRulerView;
     TrackLanesView* fLanesView;
     float fPixelsPerSecond;
     float fPlayheadPosition;
-    bool fIsPlaying;
 
-    // Audio playback system
-    BSoundPlayer* fSoundPlayer;
-    int64 fCurrentFramePosition;  // Current playback position in frames (samples)
+    // Shared audio playback system (owned by DemoWindow)
+    BSoundPlayer* fSharedSoundPlayer;
+    int64* fSharedFramePosition;
+    bool* fSharedIsPlaying;
 };
 
 // Timeline visualization window
 class TimelineWindow : public BWindow {
 public:
-    TimelineWindow(const VeniceDAW::Project3DMix& project, const char* projectFilePath)
+    TimelineWindow(const VeniceDAW::Project3DMix& project, const char* projectFilePath,
+                   BSoundPlayer* sharedSoundPlayer, int64* sharedFramePosition, bool* sharedIsPlaying)
         : BWindow(BRect(100, 100, 1400, 850), "Timeline View - Modern DAW Style",
                   B_TITLED_WINDOW, B_NOT_ZOOMABLE | B_ASYNCHRONOUS_CONTROLS)
         , fProject(project)
@@ -2048,11 +1816,12 @@ public:
         , fContentView(nullptr)
         , fUpdateRunner(nullptr)
     {
-        fContentView = new TimelineContentView(Bounds(), project, projectFilePath);
+        fContentView = new TimelineContentView(Bounds(), project, projectFilePath,
+                                                sharedSoundPlayer, sharedFramePosition, sharedIsPlaying);
         AddChild(fContentView);
 
         // Timer will be created in Show() to ensure window loop is active
-        printf("[TimelineWindow] Created, timer will start on Show()\n");
+        printf("[TimelineWindow] Created with shared audio engine\n");
     }
 
     virtual void Show() override {
@@ -2272,8 +2041,10 @@ public:
         }
 
         if (!fTimelineWindow) {
-            // Pass both the project and the project file path for audio file resolution
-            fTimelineWindow = new TimelineWindow(*fProject, fProjectPath.String());
+            // Pass project, project path, and shared audio engine references
+            fTimelineWindow = new TimelineWindow(*fProject, fProjectPath.String(),
+                                                  fSoundPlayer, &fCurrentFramePosition, &fIsPlaying);
+            printf("[DemoWindow] Created Timeline window with shared audio engine\n");
         }
 
         if (fTimelineWindow->IsHidden()) {
