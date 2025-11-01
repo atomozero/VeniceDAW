@@ -1960,24 +1960,48 @@ private:
                 continue;  // Track hasn't started yet
             }
 
+            // Get loop parameters (BeOS 3DMix compatibility)
+            // In BeOS format: st_skip is stored in LoopStart, loop_point in LoopEnd
+            int64 loopStart = track->LoopStart();    // Trim: where to start in the audio file
+            int64 loopEnd = track->LoopEnd();        // Loop point: where to loop back
+            int64 loopLength = loopEnd - loopStart;
+
+            // Debug: log loop info once
+            static bool loopLogged[32] = {false};
+            if (callbackCount <= 3 && !loopLogged[i] && i < 32 && loopLength > 0) {
+                printf("[Loop] Track %d: trim=%.3fs, loop=%.3fs (length=%.3fs)\n",
+                       i, loopStart / audioCache->sampleRate, loopEnd / audioCache->sampleRate,
+                       loopLength / audioCache->sampleRate);
+                loopLogged[i] = true;
+            }
+
             // Calculate sample index
             int64 sampleIndex = (int64)(relativeTime * audioCache->sampleRate);
-            if (sampleIndex >= (int64)audioCache->samples.size()) {
-                if (callbackCount <= 3) printf("[MixTracks] Track %d: ended (idx=%ld >= size=%zu)\n",
-                                               i, sampleIndex, audioCache->samples.size());
-                continue;  // Track ended
-            }
 
             if (callbackCount <= 3) {
                 printf("[MixTracks] Track %d: MIXING! idx=%ld, samples=%zu, rate=%.0f\n",
                        i, sampleIndex, audioCache->samples.size(), audioCache->sampleRate);
             }
 
-            // Copy samples from track to output buffer
+            // Copy samples from track to output buffer with BeOS-style looping
             int32 samplesCopied = 0;
             for (int32 frame = 0; frame < frameCount; frame++) {
                 int64 srcIdx = sampleIndex + frame;
-                if (srcIdx >= (int64)audioCache->samples.size()) break;
+
+                // Apply BeOS-style looping if loop parameters are valid
+                if (loopLength > 0 && loopEnd > loopStart) {
+                    // Add trim offset
+                    srcIdx += loopStart;
+
+                    // Apply modulo looping when we exceed loop end point
+                    if (srcIdx >= loopEnd) {
+                        int64 offsetFromLoopStart = srcIdx - loopStart;
+                        srcIdx = loopStart + (offsetFromLoopStart % loopLength);
+                    }
+                }
+
+                // Safety check: ensure we're within bounds
+                if (srcIdx < 0 || srcIdx >= (int64)audioCache->samples.size()) break;
 
                 float sample = audioCache->samples[srcIdx];
 
@@ -2455,21 +2479,49 @@ public:
 
             if (relativeTime < 0) continue;  // Track hasn't started yet
 
+            // Get loop parameters (BeOS 3DMix compatibility)
+            // In BeOS format: st_skip is stored in LoopStart, loop_point in LoopEnd
+            int64 loopStart = track->LoopStart();    // Trim: where to start in the audio file
+            int64 loopEnd = track->LoopEnd();        // Loop point: where to loop back
+            int64 loopLength = loopEnd - loopStart;
+
+            // Debug: log loop info once per track
+            static bool loopLogged[32] = {false};
+            if (!loopLogged[i] && i < 32 && loopLength > 0) {
+                printf("[Loop] Track %d: trim=%.3fs, loop=%.3fs (length=%.3fs)\n",
+                       i, loopStart / audioCache->sampleRate, loopEnd / audioCache->sampleRate,
+                       loopLength / audioCache->sampleRate);
+                loopLogged[i] = true;
+            }
+
             // Calculate sample rate conversion ratio
             float sampleRateRatio = audioCache->sampleRate / format.frame_rate;
 
-            // Copy samples from track to output buffer with sample rate conversion
+            // Copy samples from track to output buffer with sample rate conversion and looping
             for (int32 frame = 0; frame < frameCount; frame++) {
                 // Calculate source sample position (fractional)
                 float srcPosition = relativeTime * audioCache->sampleRate + (frame * sampleRateRatio);
                 int64 srcIdx = (int64)srcPosition;
 
-                if (srcIdx >= (int64)audioCache->samples.size()) break;  // Track ended
+                // Apply BeOS-style looping if loop parameters are valid
+                if (loopLength > 0 && loopEnd > loopStart) {
+                    // Add trim offset
+                    srcIdx += loopStart;
+
+                    // Apply modulo looping when we exceed loop end point
+                    if (srcIdx >= loopEnd) {
+                        int64 offsetFromLoopStart = srcIdx - loopStart;
+                        srcIdx = loopStart + (offsetFromLoopStart % loopLength);
+                    }
+                }
+
+                // Safety check: ensure we're within bounds
+                if (srcIdx < 0 || srcIdx >= (int64)audioCache->samples.size()) break;
 
                 // Linear interpolation for smooth sample rate conversion
                 float sample;
                 if (srcIdx + 1 < (int64)audioCache->samples.size()) {
-                    float frac = srcPosition - srcIdx;
+                    float frac = srcPosition - (int64)srcPosition;
                     float s1 = audioCache->samples[srcIdx];
                     float s2 = audioCache->samples[srcIdx + 1];
                     sample = s1 + frac * (s2 - s1);

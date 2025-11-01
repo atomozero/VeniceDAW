@@ -843,16 +843,19 @@ status_t Legacy3DMixLoader::ParseTrackObjectRecord(BDataIO* stream, Track3DMix* 
 	}
 
 	// Apply timeline positions to track
-	const AudioFormat3DMix& format = track->GetAudioFormat();
-	float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+	// IMPORTANT: Loop points in Track Object files are in seconds relative to the
+	// ORIGINAL audio (22050Hz), not the resampled audio (44100Hz).
+	// BeOS resampled files to 44100Hz but kept loop times in original scale.
+	// We play at 22050Hz (correct speed), so we use 22050Hz as the sample rate base.
+	const float kOriginalSampleRate = 22050.0f;  // Original sample rate before BeOS resampling
 
-	int32 startSample = (int32)(vFrom * sampleRate);
-	int32 endSample = (int32)(vTo * sampleRate);
+	int32 startSample = (int32)(vFrom * kOriginalSampleRate);
+	int32 endSample = (int32)(vTo * kOriginalSampleRate);
 
 	track->SetStartPosition(startSample);
 	track->SetEndPosition(endSample);
-	track->SetLoopStart((int32)(stSkip * sampleRate));
-	track->SetLoopEnd((int32)(loopPoint * sampleRate));
+	track->SetLoopStart((int32)(stSkip * kOriginalSampleRate));
+	track->SetLoopEnd((int32)(loopPoint * kOriginalSampleRate));
 
 	AUDIO_LOG_INFO("3DMixLoader", "Track '%s': timeline %.2fs-%.2fs, loop %.2f-%.2f",
 	               track->TrackName().String(), vFrom, vTo, stSkip, loopPoint);
