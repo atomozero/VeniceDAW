@@ -614,13 +614,68 @@ public:
         glColor3ub((uint8)r, (uint8)g, (uint8)b);
 
         // Scale sphere based on audio level
+        glPushMatrix();  // Push before scaling so we can pop back to unscaled position
         glScalef(pulseScale, pulseScale, pulseScale);
         gluSphere(quad, 0.3, 16, 16);
+        glPopMatrix();  // Pop scaling - back to (source.x, 0.8, source.y)
         gluDeleteQuadric(quad);
+
+        // === VU METER ===
+        // Draw VU meter above the sphere (we're at source.x, 0.8, source.y)
+        glPushMatrix();  // Push so we can pop back to 0.8 after drawing VU meter
+        glTranslatef(0.0f, 0.4f, 0.0f);  // Move up to 1.2 total (0.8 + 0.4)
+
+        // VU meter height based on audio level (0.0 to 2.0)
+        float meterHeight = source.level * 2.0f;
+        float meterWidth = 0.15f;
+
+        // Color based on level: Green → Yellow → Red
+        if (source.level < 0.5f) {
+            // Green zone (0.0 - 0.5)
+            float greenAmount = source.level * 2.0f;  // 0.0 to 1.0
+            glColor3f(0.0f, 0.8f * greenAmount, 0.0f);
+        } else if (source.level < 0.8f) {
+            // Yellow zone (0.5 - 0.8)
+            float yellowMix = (source.level - 0.5f) / 0.3f;  // 0.0 to 1.0
+            glColor3f(0.8f * yellowMix, 0.8f, 0.0f);
+        } else {
+            // Red zone (0.8 - 1.0+)
+            glColor3f(0.9f, 0.0f, 0.0f);
+        }
+
+        // Draw VU meter as vertical box
+        glBegin(GL_QUADS);
+        // Front face
+        glVertex3f(-meterWidth, 0.0f, meterWidth);
+        glVertex3f( meterWidth, 0.0f, meterWidth);
+        glVertex3f( meterWidth, meterHeight, meterWidth);
+        glVertex3f(-meterWidth, meterHeight, meterWidth);
+        // Back face
+        glVertex3f(-meterWidth, 0.0f, -meterWidth);
+        glVertex3f(-meterWidth, meterHeight, -meterWidth);
+        glVertex3f( meterWidth, meterHeight, -meterWidth);
+        glVertex3f( meterWidth, 0.0f, -meterWidth);
+        // Left face
+        glVertex3f(-meterWidth, 0.0f, -meterWidth);
+        glVertex3f(-meterWidth, 0.0f,  meterWidth);
+        glVertex3f(-meterWidth, meterHeight,  meterWidth);
+        glVertex3f(-meterWidth, meterHeight, -meterWidth);
+        // Right face
+        glVertex3f( meterWidth, 0.0f, -meterWidth);
+        glVertex3f( meterWidth, meterHeight, -meterWidth);
+        glVertex3f( meterWidth, meterHeight,  meterWidth);
+        glVertex3f( meterWidth, 0.0f,  meterWidth);
+        // Top face
+        glVertex3f(-meterWidth, meterHeight, -meterWidth);
+        glVertex3f(-meterWidth, meterHeight,  meterWidth);
+        glVertex3f( meterWidth, meterHeight,  meterWidth);
+        glVertex3f( meterWidth, meterHeight, -meterWidth);
+        glEnd();
+        glPopMatrix();
 
         // Draw base circle on ground
         glPushMatrix();
-        glTranslatef(0.0f, -0.8f, 0.0f);
+        glTranslatef(0.0f, -0.8f, 0.0f);  // Back to ground level
         glColor4f(source.color.red / 255.0f,
                   source.color.green / 255.0f,
                   source.color.blue / 255.0f, 0.3f);
@@ -940,8 +995,16 @@ public:
 
     void SetTrackLevels(const float* levels, int count) {
         // Update audio levels for each track
+        static int debugCount = 0;
         for (int i = 0; i < count && i < (int)fSources.size(); i++) {
             fSources[i].level = levels[i];
+            if (debugCount < 5 && levels[i] > 0.1f) {
+                printf("[VU Debug] Track %d: level=%.3f\n", i, levels[i]);
+            }
+        }
+        if (debugCount < 5) {
+            printf("[VU Debug] Updated %d/%d tracks\n", count, (int)fSources.size());
+            debugCount++;
         }
     }
 
@@ -2082,6 +2145,89 @@ private:
     BMessageRunner* fUpdateRunner;
 };
 
+// Master VU Meter View - Shows stereo L/R levels horizontally
+class MasterVUMeterView : public BView {
+public:
+    MasterVUMeterView(BRect frame)
+        : BView(frame, "master_vu", B_FOLLOW_BOTTOM | B_FOLLOW_LEFT, B_WILL_DRAW)
+        , fLeftLevel(0.0f)
+        , fRightLevel(0.0f)
+    {
+        SetViewColor(B_TRANSPARENT_COLOR);
+    }
+
+    void SetLevels(float left, float right) {
+        fLeftLevel = left;
+        fRightLevel = right;
+        Invalidate();
+    }
+
+    virtual void Draw(BRect updateRect) override {
+        BRect bounds = Bounds();
+
+        // Background
+        SetHighColor(20, 20, 25);
+        FillRect(bounds);
+
+        // Labels
+        SetHighColor(180, 180, 180);
+        SetFontSize(9);
+        DrawString("L", BPoint(5, 12));
+        DrawString("R", BPoint(5, 27));
+
+        // Meter dimensions
+        const float meterLeft = 20;
+        const float meterWidth = bounds.Width() - 25;
+        const float meterHeight = 8;
+
+        // Left channel meter (top)
+        BRect leftRect(meterLeft, 4, meterLeft + meterWidth, 4 + meterHeight);
+        DrawMeter(leftRect, fLeftLevel);
+
+        // Right channel meter (bottom)
+        BRect rightRect(meterLeft, 19, meterLeft + meterWidth, 19 + meterHeight);
+        DrawMeter(rightRect, fRightLevel);
+    }
+
+private:
+    void DrawMeter(BRect rect, float level) {
+        // Background
+        SetHighColor(40, 40, 45);
+        FillRect(rect);
+
+        // Level bar
+        float fillWidth = rect.Width() * level;
+        if (fillWidth > 0) {
+            BRect fillRect = rect;
+            fillRect.right = fillRect.left + fillWidth;
+
+            // Color based on level: Green → Yellow → Red
+            if (level < 0.5f) {
+                // Green zone (0.0 - 0.5)
+                uint8 green = (uint8)(255 * (level * 2.0f));
+                SetHighColor(0, green, 0);
+            } else if (level < 0.8f) {
+                // Yellow zone (0.5 - 0.8)
+                float yellowMix = (level - 0.5f) / 0.3f;
+                uint8 red = (uint8)(255 * yellowMix);
+                SetHighColor(red, 200, 0);
+            } else {
+                // Red zone (0.8 - 1.0+)
+                SetHighColor(220, 0, 0);
+            }
+
+            FillRect(fillRect);
+        }
+
+        // Border
+        SetHighColor(80, 80, 85);
+        StrokeRect(rect);
+    }
+
+    float fLeftLevel;
+    float fRightLevel;
+};
+
 class DemoWindow : public BWindow {
 public:
     DemoWindow(const char* projectPath)
@@ -2093,9 +2239,12 @@ public:
         , fProject(nullptr)
         , fProjectPath(projectPath)  // Store the project file path
         , fPlayButton(nullptr)
+        , fMasterVUMeter(nullptr)
         , fSoundPlayer(nullptr)
         , fCurrentFramePosition(0)
         , fIsPlaying(false)
+        , fMasterLevelLeft(0.0f)
+        , fMasterLevelRight(0.0f)
     {
         // Initialize track levels to zero
         memset(fTrackLevels, 0, sizeof(fTrackLevels));
@@ -2110,7 +2259,17 @@ public:
         fGLView = new DemoGL3DView(glRect, "gl_view");
         AddChild(fGLView);
 
-        // Create Play/Pause button at bottom
+        // Create Master VU Meter (left of Play button)
+        BRect vuRect = bounds;
+        vuRect.top = vuRect.bottom - controlHeight + 10;
+        vuRect.bottom = vuRect.bottom - 10;
+        vuRect.left = (bounds.Width() / 2) - 250;
+        vuRect.right = vuRect.left + 180;
+
+        fMasterVUMeter = new MasterVUMeterView(vuRect);
+        AddChild(fMasterVUMeter);
+
+        // Create Play/Pause button at bottom center
         BRect buttonRect = bounds;
         buttonRect.top = buttonRect.bottom - controlHeight + 10;
         buttonRect.bottom = buttonRect.bottom - 10;
@@ -2555,12 +2714,34 @@ public:
             }
         }
 
+        // Calculate master output levels (L/R stereo)
+        float leftRmsSum = 0.0f;
+        float rightRmsSum = 0.0f;
+        if (format.channel_count >= 2) {
+            for (int32 frame = 0; frame < frameCount; frame++) {
+                float leftSample = buffer[frame * format.channel_count + 0];
+                float rightSample = buffer[frame * format.channel_count + 1];
+                leftRmsSum += leftSample * leftSample;
+                rightRmsSum += rightSample * rightSample;
+            }
+            if (frameCount > 0) {
+                fMasterLevelLeft = fmin(sqrt(leftRmsSum / frameCount) * 2.0f, 1.0f);
+                fMasterLevelRight = fmin(sqrt(rightRmsSum / frameCount) * 2.0f, 1.0f);
+            }
+        }
+
         // Update frame position for next callback
         fCurrentFramePosition += frameCount;
 
         // Pass track levels to 3D view for visual feedback
         if (fGLView) {
             fGLView->SetTrackLevels(fTrackLevels, trackCount);
+        }
+
+        // Update master VU meter
+        if (fMasterVUMeter && LockLooper()) {
+            fMasterVUMeter->SetLevels(fMasterLevelLeft, fMasterLevelRight);
+            UnlockLooper();
         }
     }
 
@@ -2579,12 +2760,17 @@ private:
 
     // Audio playback
     BButton* fPlayButton;
+    MasterVUMeterView* fMasterVUMeter;
     BSoundPlayer* fSoundPlayer;
     int64 fCurrentFramePosition;
     bool fIsPlaying;
 
     // Track levels for visual feedback (RMS level 0.0-1.0)
     float fTrackLevels[64];  // Max 64 tracks
+
+    // Master output levels (stereo L/R)
+    float fMasterLevelLeft;
+    float fMasterLevelRight;
 };
 
 class DemoApp : public BApplication {
