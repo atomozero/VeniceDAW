@@ -1038,26 +1038,49 @@ public:
         , fProjectPath(projectFilePath)
         , fPixelsPerSecond(pixelsPerSecond)
         , fPlayheadPosition(0.0f)
+        , fLastPlayheadX(-1.0f)
     {
         SetViewColor(35, 35, 40);
+        SetFlags(Flags() | B_FULL_UPDATE_ON_RESIZE);
     }
 
     void SetPixelsPerSecond(float pps) {
         fPixelsPerSecond = pps;
+        fLastPlayheadX = -1.0f;  // Force full redraw on zoom
         Invalidate();
     }
 
     void SetPlayheadPosition(float seconds) {
+        // OPTIMIZATION: Only invalidate playhead area, not entire view!
+        float oldX = 150 + fPlayheadPosition * fPixelsPerSecond;
+        float newX = 150 + seconds * fPixelsPerSecond;
+
         fPlayheadPosition = seconds;
-        Invalidate();
+
+        BRect bounds = Bounds();
+
+        // Invalidate old playhead position (with margin for anti-aliasing)
+        if (fLastPlayheadX >= 0) {
+            BRect oldRect(fLastPlayheadX - 10, 0, fLastPlayheadX + 10, bounds.bottom);
+            Invalidate(oldRect);
+        }
+
+        // Invalidate new playhead position
+        BRect newRect(newX - 10, 0, newX + 10, bounds.bottom);
+        Invalidate(newRect);
+
+        fLastPlayheadX = newX;
     }
 
     virtual void Draw(BRect updateRect) override {
         BRect bounds = Bounds();
 
-        // Background
+        // OPTIMIZATION: Detect if we're only updating playhead
+        bool playheadOnly = (updateRect.Width() < 30);  // Narrow rect = just playhead
+
+        // Background (only in update area)
         SetHighColor(35, 35, 40);
-        FillRect(bounds);
+        FillRect(updateRect);
 
         int trackCount = fProject.CountTracks();
         float laneHeight = 60.0f;
@@ -1067,7 +1090,14 @@ public:
         font_height fh;
         be_plain_font->GetHeight(&fh);
 
-        // Draw each track lane
+        // OPTIMIZATION: Skip pixels when zoomed out
+        int pixelSkip = 1;
+        if (fPixelsPerSecond < 5.0f) pixelSkip = 4;
+        else if (fPixelsPerSecond < 15.0f) pixelSkip = 2;
+
+        // If we're only redrawing the playhead, skip expensive waveform rendering
+        if (!playheadOnly) {
+            // Draw each track lane
         for (int i = 0; i < trackCount; i++) {
             VeniceDAW::Track3DMix* track = fProject.TrackAt(i);
             if (!track) continue;
@@ -1238,32 +1268,67 @@ public:
                 }
 
                 if (waveform && waveform->isValid) {
-                    // Draw real waveform
-                    SetHighColor(trackColor.red * 0.9, trackColor.green * 0.9, trackColor.blue * 0.9, 220);
+                    // Draw real waveform - OPTIMIZED with BeginLineArray + adaptive detail
                     float centerY = y + laneHeight / 2;
-                    float maxHeight = (laneHeight - 12) * 0.5f;  // Max waveform height
+                    float maxHeight = (laneHeight - 12) * 0.5f;
 
-                    for (int px = 0; px < widthPixels && px < (int)waveform->minPeaks.size(); px++) {
+                    // Count lines to draw with pixel skip
+                    int lineCount = 0;
+                    for (int px = 0; px < widthPixels && px < (int)waveform->minPeaks.size(); px += pixelSkip) {
                         float x = blockRect.left + px;
                         if (x >= bounds.right) break;
+                        lineCount++;
+                    }
 
-                        float minPeak = waveform->minPeaks[px];
-                        float maxPeak = waveform->maxPeaks[px];
+                    // Draw all lines in one batch - MUCH faster!
+                    if (lineCount > 0) {
+                        BeginLineArray(lineCount);
+                        rgb_color waveColor = {
+                            (uint8)(trackColor.red * 0.9),
+                            (uint8)(trackColor.green * 0.9),
+                            (uint8)(trackColor.blue * 0.9),
+                            220
+                        };
 
-                        // Scale peaks to visual height
-                        float minY = centerY - (minPeak * maxHeight);
-                        float maxY = centerY - (maxPeak * maxHeight);
+                        for (int px = 0; px < widthPixels && px < (int)waveform->minPeaks.size(); px += pixelSkip) {
+                            float x = blockRect.left + px;
+                            if (x >= bounds.right) break;
 
-                        // Draw vertical line from min to max peak
-                        StrokeLine(BPoint(x, minY), BPoint(x, maxY));
+                            float minPeak = waveform->minPeaks[px];
+                            float maxPeak = waveform->maxPeaks[px];
+
+                            float minY = centerY - (minPeak * maxHeight);
+                            float maxY = centerY - (maxPeak * maxHeight);
+
+                            AddLine(BPoint(x, minY), BPoint(x, maxY), waveColor);
+                        }
+                        EndLineArray();
                     }
                 } else {
-                    // Fallback: simplified waveform visualization
+                    // Fallback: simplified waveform
                     SetHighColor(trackColor.red * 0.8, trackColor.green * 0.8, trackColor.blue * 0.8, 200);
                     float centerY = y + laneHeight / 2;
+
+                    // Count lines
+                    int lineCount = 0;
                     for (float x = blockRect.left; x < blockRect.right && x < bounds.right; x += 4) {
-                        float waveHeight = 10 + (int)(x * 137) % 15;  // Pseudo-random
-                        StrokeLine(BPoint(x, centerY - waveHeight), BPoint(x, centerY + waveHeight));
+                        lineCount++;
+                    }
+
+                    if (lineCount > 0) {
+                        BeginLineArray(lineCount);
+                        rgb_color waveColor = {
+                            (uint8)(trackColor.red * 0.8),
+                            (uint8)(trackColor.green * 0.8),
+                            (uint8)(trackColor.blue * 0.8),
+                            200
+                        };
+
+                        for (float x = blockRect.left; x < blockRect.right && x < bounds.right; x += 4) {
+                            float waveHeight = 10 + (int)(x * 137) % 15;
+                            AddLine(BPoint(x, centerY - waveHeight), BPoint(x, centerY + waveHeight), waveColor);
+                        }
+                        EndLineArray();
                     }
                 }
             } else {
@@ -1283,8 +1348,9 @@ public:
             SetHighColor(30, 30, 35);
             StrokeLine(BPoint(trackNameWidth, y), BPoint(trackNameWidth, y + laneHeight - 1));
         }
+        }  // End of if (!playheadOnly)
 
-        // Draw playhead (red vertical line)
+        // Draw playhead (red vertical line) - ALWAYS draw this
         if (fPlayheadPosition >= 0) {
             float playheadX = 150 + fPlayheadPosition * fPixelsPerSecond;
 
@@ -1308,6 +1374,7 @@ private:
     BString fProjectPath;  // Full path to .3dmix file for audio file resolution
     float fPixelsPerSecond;
     float fPlayheadPosition;
+    float fLastPlayheadX;  // Cache last playhead X position for partial redraws
 };
 
 // Main Timeline Content View - Container for ruler and lanes
@@ -1344,8 +1411,45 @@ public:
 
     void ZoomOut() {
         fPixelsPerSecond /= 1.5f;
-        if (fPixelsPerSecond < 10.0f) fPixelsPerSecond = 10.0f;
+        if (fPixelsPerSecond < 1.0f) fPixelsPerSecond = 1.0f;
         UpdateZoom();
+    }
+
+    void FitToWindow() {
+        // Calculate duration from track data
+        float maxDuration = 0.0f;
+        int trackCount = fProject.CountTracks();
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = fProject.TrackAt(i);
+            if (!track) continue;
+
+            const VeniceDAW::AudioFormat3DMix& format = track->GetAudioFormat();
+            float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+
+            float startTime = track->StartPosition() / sampleRate;
+            float endTime = track->EndPosition() / sampleRate;
+
+            if (endTime == 0 && format.fileSize > 0) {
+                int32 bytesPerSample = (format.bitDepth + 7) / 8;
+                int32 totalSamples = format.fileSize / (format.channels * bytesPerSample);
+                endTime = startTime + (totalSamples / sampleRate);
+            }
+
+            if (endTime > maxDuration) maxDuration = endTime;
+        }
+
+        if (maxDuration > 0) {
+            // Calculate zoom to fit entire song with some margin
+            float availableWidth = Bounds().Width() - 170.0f;  // Subtract track name area
+            fPixelsPerSecond = availableWidth / maxDuration * 0.95f;  // 95% to leave margin
+
+            if (fPixelsPerSecond < 1.0f) fPixelsPerSecond = 1.0f;
+            if (fPixelsPerSecond > 200.0f) fPixelsPerSecond = 200.0f;
+
+            UpdateZoom();
+            printf("[Timeline] Fit to window: %.1f seconds @ %.1f px/sec\n",
+                   maxDuration, fPixelsPerSecond);
+        }
     }
 
     void UpdateZoom() {
@@ -1398,9 +1502,39 @@ public:
         fLanesView->SetPlayheadPosition(fPlayheadPosition);
     }
 
+    void JumpToEnd() {
+        // Calculate max duration
+        float maxDuration = 0.0f;
+        int trackCount = fProject.CountTracks();
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = fProject.TrackAt(i);
+            if (!track) continue;
+
+            const VeniceDAW::AudioFormat3DMix& format = track->GetAudioFormat();
+            float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+            float endTime = track->EndPosition() / sampleRate;
+
+            if (endTime == 0 && format.fileSize > 0) {
+                int32 bytesPerSample = (format.bitDepth + 7) / 8;
+                int32 totalSamples = format.fileSize / (format.channels * bytesPerSample);
+                endTime = track->StartPosition() / sampleRate + (totalSamples / sampleRate);
+            }
+
+            if (endTime > maxDuration) maxDuration = endTime;
+        }
+
+        if (maxDuration > 0) {
+            fPlayheadPosition = maxDuration;
+            fLanesView->SetPlayheadPosition(fPlayheadPosition);
+        }
+    }
+
     virtual void AttachedToWindow() override {
         BView::AttachedToWindow();
         MakeFocus(true);
+
+        // Auto-fit to show entire song on first open
+        FitToWindow();
     }
 
     virtual void KeyDown(const char* bytes, int32 numBytes) override {
@@ -1415,12 +1549,22 @@ public:
             case '_':
                 ZoomOut();
                 break;
+            case 'f':
+            case 'F':
+                FitToWindow();
+                break;
             case ' ':  // Spacebar
                 TogglePlayback();
                 break;
             case 'r':
             case 'R':
                 ResetPlayhead();
+                break;
+            case B_HOME:
+                ResetPlayhead();
+                break;
+            case B_END:
+                JumpToEnd();
                 break;
             default:
                 BView::KeyDown(bytes, numBytes);
