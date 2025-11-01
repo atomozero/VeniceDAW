@@ -1381,6 +1381,13 @@ public:
                     // Calculate time per pixel (like R6's "zoom" parameter)
                     float secondsPerPixel = 1.0f / fPixelsPerSecond;
 
+                    // Get loop parameters for visual loop repetition (BeOS-style)
+                    int64 loopStart = track->LoopStart();
+                    int64 loopEnd = track->LoopEnd();
+                    float loopStartTime = loopStart / sampleRate;
+                    float loopEndTime = loopEnd / sampleRate;
+                    float loopLength = loopEndTime - loopStartTime;
+
                     // Count lines for BeginLineArray
                     int lineCount = 0;
                     for (int px = 0; px < widthPixels; px += pixelSkip) {
@@ -1397,13 +1404,6 @@ public:
                             (uint8)(trackColor.blue * 0.9),
                             220
                         };
-
-                        // Get loop parameters for visual loop repetition (BeOS-style)
-                        int64 loopStart = track->LoopStart();
-                        int64 loopEnd = track->LoopEnd();
-                        float loopStartTime = loopStart / sampleRate;
-                        float loopEndTime = loopEnd / sampleRate;
-                        float loopLength = loopEndTime - loopStartTime;
 
                         // R6-style rendering: GetSample() called per pixel ON-THE-FLY!
                         float time = 0.0f;  // Start at beginning of audio
@@ -1429,6 +1429,28 @@ public:
                             time += secondsPerPixel;  // Advance time (like R6: time += zoom)
                         }
                         EndLineArray();
+                    }
+
+                    // Draw loop markers (vertical lines showing where loop repeats)
+                    if (loopLength > 0 && loopEnd > loopStart) {
+                        SetHighColor(255, 255, 255, 100);  // Semi-transparent white
+                        SetPenSize(1.0);
+
+                        // Draw a line at each loop repetition point
+                        float currentLoopTime = loopLength;
+                        while (currentLoopTime < trackDuration) {
+                            float loopMarkerX = blockRect.left + (currentLoopTime * fPixelsPerSecond);
+                            if (loopMarkerX >= blockRect.left && loopMarkerX <= blockRect.right) {
+                                // Draw dashed line effect
+                                float dashY = blockRect.top;
+                                while (dashY < blockRect.bottom) {
+                                    StrokeLine(BPoint(loopMarkerX, dashY),
+                                              BPoint(loopMarkerX, fmin(dashY + 4, blockRect.bottom)));
+                                    dashY += 8;  // 4px dash, 4px gap
+                                }
+                            }
+                            currentLoopTime += loopLength;
+                        }
                     }
                 } else if (!simpleMode) {
                     // Fallback: pseudo-random waveform (only in detailed mode)
