@@ -2460,6 +2460,42 @@ public:
             // Calculate sample rate conversion ratio
             float sampleRateRatio = audioCache->sampleRate / format.frame_rate;
 
+            // === 3D SPATIAL AUDIO CALCULATION ===
+            // Get track 3D position
+            VeniceDAW::Coordinate3D pos = track->Position();
+
+            // Calculate distance from listener (at origin 0,0,0)
+            // In BeOS 3D Mixer: Y is depth, X is left/right, Z is height
+            float distance = sqrt(pos.x * pos.x + pos.y * pos.y);
+
+            // Volume attenuation based on distance
+            // Closer sources are louder, distant sources are quieter
+            const float minDistance = 1.0f;  // Prevent division by zero
+            const float attenuationFactor = 0.15f;  // How quickly sound fades with distance
+            float distanceGain = 1.0f / (1.0f + (fmax(distance, minDistance) - minDistance) * attenuationFactor);
+
+            // Pan calculation based on X position
+            // X: negative = left, positive = right
+            const float panRange = 10.0f;  // Typical BeOS range is ±10 units
+            float pan = fmax(-1.0f, fmin(1.0f, pos.x / panRange));  // Clamp to ±1.0
+
+            // Calculate stereo gains using constant power panning
+            float leftGain = cos((pan + 1.0f) * M_PI / 4.0f) * distanceGain;
+            float rightGain = sin((pan + 1.0f) * M_PI / 4.0f) * distanceGain;
+
+            // Master volume scaling
+            const float masterVolume = 0.8f;
+            leftGain *= masterVolume;
+            rightGain *= masterVolume;
+
+            // Debug: log spatial parameters once per track
+            static bool spatialLogged[32] = {false};
+            if (!spatialLogged[i] && i < 32) {
+                printf("[3D Spatial] Track %d ('%s'): pos(%.2f, %.2f, %.2f) dist=%.2f pan=%.2f L=%.2f R=%.2f\n",
+                       i, track->TrackName().String(), pos.x, pos.y, pos.z, distance, pan, leftGain, rightGain);
+                spatialLogged[i] = true;
+            }
+
             // Track level calculation (RMS)
             float rmsSum = 0.0f;
             int32 sampleCount = 0;
@@ -2496,15 +2532,19 @@ public:
                     sample = audioCache->samples[srcIdx];
                 }
 
-                float volume = 0.8f;
-
                 // Accumulate for RMS calculation
                 rmsSum += sample * sample;
                 sampleCount++;
 
-                // Mix into output (sum all tracks)
-                for (uint32 ch = 0; ch < format.channel_count; ch++) {
-                    buffer[frame * format.channel_count + ch] += sample * volume;
+                // Mix into output with 3D spatial positioning
+                if (format.channel_count >= 2) {
+                    // Stereo output: apply pan and distance
+                    buffer[frame * format.channel_count + 0] += sample * leftGain;   // Left
+                    buffer[frame * format.channel_count + 1] += sample * rightGain;  // Right
+                } else {
+                    // Mono output: use average gain
+                    float monoGain = (leftGain + rightGain) * 0.5f;
+                    buffer[frame * format.channel_count + 0] += sample * monoGain;
                 }
             }
 
