@@ -1398,15 +1398,28 @@ public:
                             220
                         };
 
+                        // Get loop parameters for visual loop repetition (BeOS-style)
+                        int64 loopStart = track->LoopStart();
+                        int64 loopEnd = track->LoopEnd();
+                        float loopStartTime = loopStart / sampleRate;
+                        float loopEndTime = loopEnd / sampleRate;
+                        float loopLength = loopEndTime - loopStartTime;
+
                         // R6-style rendering: GetSample() called per pixel ON-THE-FLY!
                         float time = 0.0f;  // Start at beginning of audio
                         for (int px = 0; px < widthPixels; px += pixelSkip) {
                             float x = blockRect.left + px;
                             if (x >= bounds.right) break;
 
+                            // Apply loop modulo to show repeating pattern (BeOS-style)
+                            float sampleTime = time;
+                            if (loopLength > 0 && loopEnd > loopStart) {
+                                sampleTime = loopStartTime + fmod(time, loopLength);
+                            }
+
                             // Calculate min/max for THIS pixel's time range (like R6!)
                             float minPeak, maxPeak;
-                            audioCache->GetSample(time, secondsPerPixel, &minPeak, &maxPeak);
+                            audioCache->GetSample(sampleTime, secondsPerPixel, &minPeak, &maxPeak);
 
                             float minY = centerY - (minPeak * maxHeight);
                             float maxY = centerY - (maxPeak * maxHeight);
@@ -1581,6 +1594,13 @@ public:
                                                 220
                                             };
 
+                                            // Get loop parameters for visual loop repetition
+                                            int64 loopStart = track->LoopStart();
+                                            int64 loopEnd = track->LoopEnd();
+                                            float loopStartTime = loopStart / audioCache->sampleRate;
+                                            float loopEndTime = loopEnd / audioCache->sampleRate;
+                                            float loopLength = loopEndTime - loopStartTime;
+
                                             // Calculate start time for this update rect
                                             float updateStartTime = (updateBlockRect.left - startX) / fPixelsPerSecond;
 
@@ -1589,8 +1609,15 @@ public:
                                                 if (x >= blockRect.right || x >= bounds.right) break;
 
                                                 float time = updateStartTime + (px / fPixelsPerSecond);
+
+                                                // Apply loop modulo to show repeating pattern (BeOS-style)
+                                                float sampleTime = time;
+                                                if (loopLength > 0 && loopEnd > loopStart) {
+                                                    sampleTime = loopStartTime + fmod(time, loopLength);
+                                                }
+
                                                 float minPeak, maxPeak;
-                                                audioCache->GetSample(time, secondsPerPixel, &minPeak, &maxPeak);
+                                                audioCache->GetSample(sampleTime, secondsPerPixel, &minPeak, &maxPeak);
 
                                                 float minY = centerY - (minPeak * maxHeight);
                                                 float maxY = centerY - (maxPeak * maxHeight);
