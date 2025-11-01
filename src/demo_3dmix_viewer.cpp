@@ -221,8 +221,14 @@ private:
         AudioSampleCache cache;
 
         printf("[AudioCache] Loading RAW PCM: '%s'\n", filePath);
-        printf("[AudioCache] RAW format: bitDepth=%d, channels=%d, sampleRate=%.0f\n",
+        printf("[AudioCache] RAW format from track: bitDepth=%d, channels=%d, sampleRate=%d\n",
                format.bitDepth, format.channels, format.sampleRate);
+
+        // Initialize sample rate from format if available
+        if (format.sampleRate > 0) {
+            cache.sampleRate = (float)format.sampleRate;
+            printf("[AudioCache] Using sample rate from track format: %.0f Hz\n", cache.sampleRate);
+        }
 
         BFile file(filePath, B_READ_ONLY);
         if (file.InitCheck() != B_OK) {
@@ -280,8 +286,25 @@ found_rate:
             file.Seek(headerSkip, SEEK_SET);
             fileSize -= headerSkip;
 
-            // Override format sample rate if we detected one
-            if (detectedRate > 0) {
+            // Verify we're at the right position - read first few bytes to check
+            uint8 verifyBuf[8];
+            ssize_t verified = file.Read(verifyBuf, 8);
+            if (verified == 8) {
+                printf("[AudioCache] First 8 bytes after header: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                       verifyBuf[0], verifyBuf[1], verifyBuf[2], verifyBuf[3],
+                       verifyBuf[4], verifyBuf[5], verifyBuf[6], verifyBuf[7]);
+                // Seek back to start of audio
+                file.Seek(headerSkip, SEEK_SET);
+            }
+
+            // BeOS Track Object files were saved with resampled audio at 44100 Hz,
+            // but were originally recorded at 22050 Hz. Force half sample rate for correct playback.
+            // This matches the original BeOS 3D Mixer behavior where it resampled on load.
+            if (detectedRate == 44100.0f) {
+                cache.sampleRate = 22050.0f;
+                printf("[AudioCache] BeOS Track Object: Using corrected sample rate: %.0f Hz (was detecting %.0f Hz)\n",
+                       cache.sampleRate, detectedRate);
+            } else if (detectedRate > 0) {
                 cache.sampleRate = detectedRate;
             }
         } else {
@@ -375,8 +398,15 @@ found_rate:
         delete[] chunkBuffer;
         cache.isValid = true;
 
+        // Calculate expected duration at different sample rates for debugging
+        float duration44100 = cache.samples.size() / 44100.0f;
+        float duration22050 = cache.samples.size() / 22050.0f;
+
         printf("[AudioCache] ✓ Loaded %zu RAW samples at %.0f Hz\n",
                cache.samples.size(), cache.sampleRate);
+        printf("[AudioCache] ⏱️  Duration test: %.2fs @ 44100Hz OR %.2fs @ 22050Hz\n",
+               duration44100, duration22050);
+        printf("[AudioCache] 📝 Use stopwatch: play file and measure real duration!\n");
 
         return cache;
     }
@@ -1567,9 +1597,59 @@ public:
         fLanesView = new TrackLanesView(lanesFrame, project, fPixelsPerSecond, projectFilePath);
         AddChild(fLanesView);
 
-        // Initialize BSoundPlayer for audio playback
+        // Detect sample rate from first valid track (same logic as DemoWindow)
+        float detectedSampleRate = 44100.0f;  // Default fallback
+        int trackCount = project.CountTracks();
+
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = project.TrackAt(i);
+            if (!track) continue;
+
+            BString audioPath = track->AudioFilePath();
+            if (audioPath.Length() == 0) continue;
+
+            BString resolvedPath;
+            BPath pathObj(audioPath.String());
+            const char* filename = pathObj.Leaf();
+            if (!filename) continue;
+
+            // Try to find the file in project directory
+            BPath projectPath(projectFilePath);
+            BPath parentPath;
+            if (projectPath.GetParent(&parentPath) == B_OK) {
+                BString projectDir(parentPath.Path());
+
+                const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
+                for (int ext = 0; extensions[ext] != nullptr; ext++) {
+                    BString testPath = projectDir;
+                    testPath << "/" << filename << extensions[ext];
+
+                    entry_ref ref;
+                    if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
+                        resolvedPath = testPath;
+                        break;
+                    }
+                }
+            }
+
+            if (resolvedPath.Length() == 0) continue;
+
+            // Get audio cache and check sample rate - use project sample rate if track doesn't have one
+            VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
+            if (audioFormat.sampleRate == 0) {
+                audioFormat.sampleRate = project.ProjectSampleRate();
+            }
+            const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
+            if (audioCache && audioCache->isValid && audioCache->sampleRate > 0) {
+                detectedSampleRate = audioCache->sampleRate;
+                printf("[Timeline Audio] Detected sample rate from track: %.0f Hz\n", detectedSampleRate);
+                break;  // Use first valid track's rate
+            }
+        }
+
+        // Initialize BSoundPlayer for audio playback with detected sample rate
         media_raw_audio_format format;
-        format.frame_rate = 44100.0f;  // CD quality
+        format.frame_rate = detectedSampleRate;
         format.channel_count = 2;      // Stereo
         format.format = media_raw_audio_format::B_AUDIO_FLOAT;
         format.byte_order = B_MEDIA_HOST_ENDIAN;
@@ -1577,7 +1657,7 @@ public:
 
         fSoundPlayer = new BSoundPlayer(&format, "VeniceDAW Timeline Player", PlayBufferFunc, nullptr, this);
         if (fSoundPlayer->InitCheck() == B_OK) {
-            printf("[AudioPlayback] BSoundPlayer initialized successfully (44.1kHz, stereo, float)\n");
+            printf("[AudioPlayback] BSoundPlayer initialized successfully (%.0fHz, stereo, float)\n", detectedSampleRate);
         } else {
             printf("[AudioPlayback] ERROR: Failed to initialize BSoundPlayer!\n");
             delete fSoundPlayer;
@@ -1685,8 +1765,9 @@ public:
 
     void UpdatePlayhead(float deltaSeconds) {
         if (fIsPlaying && fSoundPlayer) {
-            // Sync playhead with actual audio position
-            fPlayheadPosition = fCurrentFramePosition / 44100.0f;
+            // Sync playhead with actual audio position using BSoundPlayer's sample rate
+            media_raw_audio_format format = fSoundPlayer->Format();
+            fPlayheadPosition = fCurrentFramePosition / format.frame_rate;
 
             float duration = fProject.CalculateTotalDuration();
 
@@ -1855,8 +1936,11 @@ private:
                 continue;
             }
 
-            // Get audio cache
-            const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
+            // Get audio cache - use project sample rate if track doesn't have one
+            VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
+            if (audioFormat.sampleRate == 0) {
+                audioFormat.sampleRate = fProject.ProjectSampleRate();
+            }
             const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
             if (!audioCache || !audioCache->isValid || audioCache->samples.empty()) {
                 if (callbackCount <= 3) {
@@ -2209,9 +2293,58 @@ public:
     void InitAudioPlayback() {
         if (!fProject) return;
 
+        // Detect sample rate from first valid track
+        float detectedSampleRate = 44100.0f;  // Default fallback
+        int trackCount = fProject->CountTracks();
+
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = fProject->TrackAt(i);
+            if (!track) continue;
+
+            BString audioPath = track->AudioFilePath();
+            if (audioPath.Length() == 0) continue;
+
+            BString resolvedPath;
+            BPath pathObj(audioPath.String());
+            const char* filename = pathObj.Leaf();
+            if (!filename) continue;
+
+            // Try to find the file in project directory
+            BPath projectPath(fProjectPath.String());
+            projectPath.GetParent(&projectPath);
+            BString projectDir(projectPath.Path());
+
+            const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
+            for (int ext = 0; extensions[ext] != nullptr; ext++) {
+                BString testPath = projectDir;
+                testPath << "/" << filename << extensions[ext];
+
+                entry_ref ref;
+                if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
+                    resolvedPath = testPath;
+                    break;
+                }
+            }
+
+            if (resolvedPath.Length() == 0) continue;
+
+            // Get audio cache and check sample rate - use project sample rate if track doesn't have one
+            VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
+            if (audioFormat.sampleRate == 0 && fProject) {
+                audioFormat.sampleRate = fProject->ProjectSampleRate();
+                printf("[InitAudio] Track %d: Using project sample rate: %d Hz\n", i, audioFormat.sampleRate);
+            }
+            const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
+            if (audioCache && audioCache->isValid && audioCache->sampleRate > 0) {
+                detectedSampleRate = audioCache->sampleRate;
+                printf("[3D Audio] Detected sample rate from track: %.0f Hz\n", detectedSampleRate);
+                break;  // Use first valid track's rate
+            }
+        }
+
         // Initialize BSoundPlayer for audio playback
         media_raw_audio_format format;
-        format.frame_rate = 44100.0f;  // CD quality
+        format.frame_rate = detectedSampleRate;
         format.channel_count = 2;      // Stereo
         format.format = media_raw_audio_format::B_AUDIO_FLOAT;
         format.byte_order = B_MEDIA_HOST_ENDIAN;
@@ -2219,7 +2352,7 @@ public:
 
         fSoundPlayer = new BSoundPlayer(&format, "VeniceDAW 3D Player", PlayBufferFunc, nullptr, this);
         if (fSoundPlayer->InitCheck() == B_OK) {
-            printf("[3D Audio] BSoundPlayer initialized successfully\n");
+            printf("[3D Audio] BSoundPlayer initialized at %.0f Hz\n", detectedSampleRate);
         } else {
             printf("[3D Audio] ERROR: Failed to initialize BSoundPlayer!\n");
             delete fSoundPlayer;
@@ -2250,7 +2383,7 @@ public:
         window->MixTracks((float*)buffer, size / sizeof(float) / format.channel_count, format);
     }
 
-    // Mix all tracks (same logic as TimelineContentView)
+    // Mix all tracks with proper sample rate conversion
     void MixTracks(float* buffer, int32 frameCount, const media_raw_audio_format& format) {
         // Clear buffer
         memset(buffer, 0, frameCount * format.channel_count * sizeof(float));
@@ -2260,8 +2393,8 @@ public:
         int trackCount = fProject->CountTracks();
         if (trackCount == 0) return;
 
-        // Calculate current time position
-        float currentTime = fCurrentFramePosition / 44100.0f;
+        // Calculate current time position using BSoundPlayer's actual sample rate
+        float currentTime = fCurrentFramePosition / format.frame_rate;
 
         // Mix each track
         for (int i = 0; i < trackCount; i++) {
@@ -2300,10 +2433,21 @@ public:
 
             if (resolvedPath.Length() == 0) continue;
 
-            // Get audio cache
-            const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
+            // Get audio cache - use project sample rate if track doesn't have one
+            VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
+            if (audioFormat.sampleRate == 0 && fProject) {
+                audioFormat.sampleRate = fProject->ProjectSampleRate();
+            }
             const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
             if (!audioCache || !audioCache->isValid || audioCache->samples.empty()) continue;
+
+            // Debug: log sample rate info once per track
+            static bool logged[32] = {false};
+            if (!logged[i] && i < 32) {
+                printf("[MixTracks] Track %d: file rate=%.0f Hz, playback rate=%.0f Hz, ratio=%.3f\n",
+                       i, audioCache->sampleRate, format.frame_rate, audioCache->sampleRate / format.frame_rate);
+                logged[i] = true;
+            }
 
             // Calculate track start time
             float trackStartTime = track->StartPosition() / audioCache->sampleRate;
@@ -2311,16 +2455,28 @@ public:
 
             if (relativeTime < 0) continue;  // Track hasn't started yet
 
-            // Calculate sample index
-            int64 sampleIndex = (int64)(relativeTime * audioCache->sampleRate);
-            if (sampleIndex >= (int64)audioCache->samples.size()) continue;  // Track ended
+            // Calculate sample rate conversion ratio
+            float sampleRateRatio = audioCache->sampleRate / format.frame_rate;
 
-            // Copy samples from track to output buffer
+            // Copy samples from track to output buffer with sample rate conversion
             for (int32 frame = 0; frame < frameCount; frame++) {
-                int64 srcIdx = sampleIndex + frame;
-                if (srcIdx >= (int64)audioCache->samples.size()) break;
+                // Calculate source sample position (fractional)
+                float srcPosition = relativeTime * audioCache->sampleRate + (frame * sampleRateRatio);
+                int64 srcIdx = (int64)srcPosition;
 
-                float sample = audioCache->samples[srcIdx];
+                if (srcIdx >= (int64)audioCache->samples.size()) break;  // Track ended
+
+                // Linear interpolation for smooth sample rate conversion
+                float sample;
+                if (srcIdx + 1 < (int64)audioCache->samples.size()) {
+                    float frac = srcPosition - srcIdx;
+                    float s1 = audioCache->samples[srcIdx];
+                    float s2 = audioCache->samples[srcIdx + 1];
+                    sample = s1 + frac * (s2 - s1);
+                } else {
+                    sample = audioCache->samples[srcIdx];
+                }
+
                 float volume = 0.8f;
 
                 // Mix into output (sum all tracks)
