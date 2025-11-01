@@ -39,6 +39,12 @@ struct AudioSource {
     BString name;
     float x, y, z;  // 3D position
     rgb_color color;
+    float level;     // Current audio level (0.0 to 1.0) for visual pulsing
+
+    AudioSource() : x(0), y(0), z(0), level(0) {
+        color.red = color.green = color.blue = 255;
+        color.alpha = 255;
+    }
 };
 
 // Audio sample cache - stores ALL audio samples (loaded once)
@@ -585,6 +591,10 @@ public:
         glPushMatrix();
         glTranslatef(source.x, 0.0f, source.y);  // Map 3dmix Y to OpenGL Z (depth)
 
+        // Audio level pulsing effect
+        float pulseScale = 1.0f + (source.level * 0.5f);  // Scale 1.0 to 1.5
+        float brightness = 1.0f + (source.level * 0.8f);  // Brightness multiplier
+
         // Draw vertical cylinder/pole
         glColor3ub(source.color.red, source.color.green, source.color.blue);
         GLUquadric* quad = gluNewQuadric();
@@ -594,8 +604,17 @@ public:
         gluCylinder(quad, 0.1, 0.1, 0.8, 12, 1);  // Thin pole
         glPopMatrix();
 
-        // Draw sphere on top of pole
+        // Draw sphere on top of pole with audio-reactive pulsing
         glTranslatef(0.0f, 0.8f, 0.0f);
+
+        // Brighten color based on audio level
+        float r = fmin(source.color.red * brightness, 255.0f);
+        float g = fmin(source.color.green * brightness, 255.0f);
+        float b = fmin(source.color.blue * brightness, 255.0f);
+        glColor3ub((uint8)r, (uint8)g, (uint8)b);
+
+        // Scale sphere based on audio level
+        glScalef(pulseScale, pulseScale, pulseScale);
         gluSphere(quad, 0.3, 16, 16);
         gluDeleteQuadric(quad);
 
@@ -919,6 +938,13 @@ public:
         fTrackCount = trackCount;
     }
 
+    void SetTrackLevels(const float* levels, int count) {
+        // Update audio levels for each track
+        for (int i = 0; i < count && i < (int)fSources.size(); i++) {
+            fSources[i].level = levels[i];
+        }
+    }
+
     void DrawProjectInfo() {
         // Only draw track name if hovering over a track
         if (fHoveredTrackIndex < 0 || fHoveredTrackIndex >= (int)fSources.size())
@@ -1019,12 +1045,18 @@ public:
         , fProject(project)
         , fPixelsPerSecond(pixelsPerSecond)
         , fTrackNameWidth(150.0f)  // Match TrackLanesView
+        , fPlayheadPosition(-1.0f)  // Playhead position in seconds
     {
         SetViewColor(45, 45, 50);
     }
 
     void SetPixelsPerSecond(float pps) {
         fPixelsPerSecond = pps;
+        Invalidate();
+    }
+
+    void SetPlayheadPosition(float position) {
+        fPlayheadPosition = position;
         Invalidate();
     }
 
@@ -1103,6 +1135,17 @@ public:
             }
         }
 
+        // Draw playhead (red vertical line)
+        if (fPlayheadPosition >= 0) {
+            const float timelineStart = fTrackNameWidth + 10.0f;
+            float playheadX = timelineStart + fPlayheadPosition * fPixelsPerSecond;
+
+            SetHighColor(255, 60, 60);
+            SetPenSize(2.0);
+            StrokeLine(BPoint(playheadX, 0), BPoint(playheadX, bounds.bottom));
+            SetPenSize(1.0);
+        }
+
         // Bottom border
         SetHighColor(30, 30, 35);
         StrokeLine(BPoint(0, bounds.bottom), BPoint(bounds.right, bounds.bottom));
@@ -1123,7 +1166,10 @@ private:
             int32 endSample = track->EndPosition();
 
             // Convert samples to seconds
-            float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+            // IMPORTANT: StartPosition/EndPosition were calculated at 22050 Hz in parser
+            // We must use the same rate here for correct timeline positioning
+            const float kTimelineReferenceRate = 22050.0f;
+            float sampleRate = kTimelineReferenceRate;  // Always use 22050 for timeline positioning
             float startTime = startSample / sampleRate;
             float endTime = endSample / sampleRate;
 
@@ -1146,6 +1192,7 @@ private:
     const VeniceDAW::Project3DMix& fProject;
     float fPixelsPerSecond;
     float fTrackNameWidth;  // Width of track name column
+    float fPlayheadPosition;  // Playhead position in seconds
 };
 
 // Track Lane View - Shows individual tracks as horizontal lanes
@@ -1276,7 +1323,11 @@ public:
             int32 endSample = track->EndPosition();
 
             // Convert samples to seconds
-            float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+            // IMPORTANT: StartPosition/EndPosition were calculated at 22050 Hz in parser
+            // (see 3DMixParser.cpp line 850: kOriginalSampleRate = 22050.0f)
+            // We must use the same rate here for correct timeline positioning
+            const float kTimelineReferenceRate = 22050.0f;
+            float sampleRate = kTimelineReferenceRate;  // Always use 22050 for timeline positioning
             float startTime = startSample / sampleRate;
             float endTime = endSample / sampleRate;
 
@@ -1528,7 +1579,12 @@ public:
                 const VeniceDAW::AudioFormat3DMix& format = track->GetAudioFormat();
                 int32 startSample = track->StartPosition();
                 int32 endSample = track->EndPosition();
-                float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+
+                // Convert samples to seconds
+                // IMPORTANT: StartPosition/EndPosition were calculated at 22050 Hz in parser
+                // We must use the same rate here for correct timeline positioning
+                const float kTimelineReferenceRate = 22050.0f;
+                float sampleRate = kTimelineReferenceRate;  // Always use 22050 for timeline positioning
                 float startTime = startSample / sampleRate;
                 float endTime = endSample / sampleRate;
 
@@ -1748,7 +1804,10 @@ public:
             if (!track) continue;
 
             const VeniceDAW::AudioFormat3DMix& format = track->GetAudioFormat();
-            float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+            // IMPORTANT: StartPosition/EndPosition were calculated at 22050 Hz in parser
+            // We must use the same rate here for correct timeline positioning
+            const float kTimelineReferenceRate = 22050.0f;
+            float sampleRate = kTimelineReferenceRate;  // Always use 22050 for timeline positioning
 
             float startTime = track->StartPosition() / sampleRate;
             float endTime = track->EndPosition() / sampleRate;
@@ -1833,12 +1892,14 @@ public:
         }
         // Always update playhead display, even when paused
         fLanesView->SetPlayheadPosition(fPlayheadPosition);
+        fRulerView->SetPlayheadPosition(fPlayheadPosition);
     }
 
     void ResetPlayhead() {
         fPlayheadPosition = 0.0f;
         *fSharedFramePosition = 0;
         fLanesView->SetPlayheadPosition(fPlayheadPosition);
+        fRulerView->SetPlayheadPosition(fPlayheadPosition);
         printf("[AudioPlayback] Playhead reset to 0.0s\n");
     }
 
@@ -1851,7 +1912,10 @@ public:
             if (!track) continue;
 
             const VeniceDAW::AudioFormat3DMix& format = track->GetAudioFormat();
-            float sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+            // IMPORTANT: StartPosition/EndPosition were calculated at 22050 Hz in parser
+            // We must use the same rate here for correct timeline positioning
+            const float kTimelineReferenceRate = 22050.0f;
+            float sampleRate = kTimelineReferenceRate;  // Always use 22050 for timeline positioning
             float endTime = track->EndPosition() / sampleRate;
 
             if (endTime == 0 && format.fileSize > 0) {
@@ -1866,6 +1930,7 @@ public:
         if (maxDuration > 0) {
             fPlayheadPosition = maxDuration;
             fLanesView->SetPlayheadPosition(fPlayheadPosition);
+            fRulerView->SetPlayheadPosition(fPlayheadPosition);
         }
     }
 
@@ -2032,6 +2097,8 @@ public:
         , fCurrentFramePosition(0)
         , fIsPlaying(false)
     {
+        // Initialize track levels to zero
+        memset(fTrackLevels, 0, sizeof(fTrackLevels));
         BRect bounds = Bounds();
 
         // Reserve space at bottom for controls
@@ -2313,6 +2380,9 @@ public:
         // Calculate current time position using BSoundPlayer's actual sample rate
         float currentTime = fCurrentFramePosition / format.frame_rate;
 
+        // Clear track levels
+        memset(fTrackLevels, 0, sizeof(fTrackLevels));
+
         // Mix each track
         for (int i = 0; i < trackCount; i++) {
             VeniceDAW::Track3DMix* track = fProject->TrackAt(i);
@@ -2390,6 +2460,10 @@ public:
             // Calculate sample rate conversion ratio
             float sampleRateRatio = audioCache->sampleRate / format.frame_rate;
 
+            // Track level calculation (RMS)
+            float rmsSum = 0.0f;
+            int32 sampleCount = 0;
+
             // Copy samples from track to output buffer with sample rate conversion and looping
             for (int32 frame = 0; frame < frameCount; frame++) {
                 // Calculate source sample position (fractional)
@@ -2424,15 +2498,30 @@ public:
 
                 float volume = 0.8f;
 
+                // Accumulate for RMS calculation
+                rmsSum += sample * sample;
+                sampleCount++;
+
                 // Mix into output (sum all tracks)
                 for (uint32 ch = 0; ch < format.channel_count; ch++) {
                     buffer[frame * format.channel_count + ch] += sample * volume;
                 }
             }
+
+            // Calculate RMS level for this track (0.0 to 1.0)
+            if (sampleCount > 0 && i < 64) {
+                float rms = sqrt(rmsSum / sampleCount);
+                fTrackLevels[i] = fmin(rms * 2.0f, 1.0f);  // Scale and clamp to 0-1
+            }
         }
 
         // Update frame position for next callback
         fCurrentFramePosition += frameCount;
+
+        // Pass track levels to 3D view for visual feedback
+        if (fGLView) {
+            fGLView->SetTrackLevels(fTrackLevels, trackCount);
+        }
     }
 
     virtual bool QuitRequested() override {
@@ -2453,6 +2542,9 @@ private:
     BSoundPlayer* fSoundPlayer;
     int64 fCurrentFramePosition;
     bool fIsPlaying;
+
+    // Track levels for visual feedback (RMS level 0.0-1.0)
+    float fTrackLevels[64];  // Max 64 tracks
 };
 
 class DemoApp : public BApplication {
