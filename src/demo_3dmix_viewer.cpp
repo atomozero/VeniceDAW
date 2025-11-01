@@ -433,6 +433,10 @@ public:
         , fMouseX(0)
         , fMouseY(0)
         , fHoveredTrackIndex(-1)
+        , fIsDragging(false)
+        , fDraggedTrackIndex(-1)
+        , fDragStartX(0.0f)
+        , fDragStartZ(0.0f)
     {
         SetEventMask(B_POINTER_EVENTS, 0);
     }
@@ -694,7 +698,62 @@ public:
     virtual void MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage) override {
         fMouseX = where.x;
         fMouseY = where.y;
+
+        if (fIsDragging && fDraggedTrackIndex >= 0 && fDraggedTrackIndex < (int)fSources.size()) {
+            // Drag in progress - move the track (BeOS 3D Mixer style)
+            // Calculate delta in screen space
+            float dx = where.x - fDragStartMouse.x;
+            float dy = where.y - fDragStartMouse.y;
+
+            // Convert screen delta to 3D world delta
+            // Simple approximation: scale by zoom distance
+            float scaleFactor = fabs(fZoom) / 800.0f;  // Empirical scaling
+            float worldDX = dx * scaleFactor;
+            float worldDZ = -dy * scaleFactor;  // Invert Y (screen Y goes down, world Z goes up)
+
+            // Update track position with constraints (±10 units like BeOS ±250)
+            AudioSource& track = fSources[fDraggedTrackIndex];
+            track.x = fDragStartX + worldDX;
+            track.y = fDragStartZ + worldDZ;  // Note: we use Y for Z axis in our system
+
+            // Apply boundary constraints
+            if (track.x > 10.0f) track.x = 10.0f;
+            if (track.x < -10.0f) track.x = -10.0f;
+            if (track.y > 10.0f) track.y = 10.0f;
+            if (track.y < -10.0f) track.y = -10.0f;
+
+            Invalidate();  // Redraw with new position
+        } else {
+            UpdateHoveredTrack();
+        }
+    }
+
+    virtual void MouseDown(BPoint where) override {
+        fMouseX = where.x;
+        fMouseY = where.y;
         UpdateHoveredTrack();
+
+        // Start drag if clicking on a track
+        if (fHoveredTrackIndex >= 0 && fHoveredTrackIndex < (int)fSources.size()) {
+            fIsDragging = true;
+            fDraggedTrackIndex = fHoveredTrackIndex;
+            fDragStartMouse = where;
+            fDragStartX = fSources[fDraggedTrackIndex].x;
+            fDragStartZ = fSources[fDraggedTrackIndex].y;  // Using Y for Z axis
+            printf("[Drag] Started dragging track %d '%s' from position (%.2f, %.2f)\n",
+                   fDraggedTrackIndex, fSources[fDraggedTrackIndex].name.String(),
+                   fDragStartX, fDragStartZ);
+        }
+    }
+
+    virtual void MouseUp(BPoint where) override {
+        if (fIsDragging && fDraggedTrackIndex >= 0 && fDraggedTrackIndex < (int)fSources.size()) {
+            printf("[Drag] Finished dragging track %d '%s' to position (%.2f, %.2f)\n",
+                   fDraggedTrackIndex, fSources[fDraggedTrackIndex].name.String(),
+                   fSources[fDraggedTrackIndex].x, fSources[fDraggedTrackIndex].y);
+            fIsDragging = false;
+            fDraggedTrackIndex = -1;
+        }
     }
 
     void UpdateHoveredTrack() {
@@ -1094,6 +1153,12 @@ private:
     float fMouseX;
     float fMouseY;
     int fHoveredTrackIndex;
+
+    // Drag & drop state (BeOS 3D Mixer style)
+    bool fIsDragging;
+    int fDraggedTrackIndex;
+    BPoint fDragStartMouse;
+    float fDragStartX, fDragStartZ;  // Original track position
 };
 
 // ============================================================================
