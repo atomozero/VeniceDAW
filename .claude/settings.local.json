@@ -16,7 +16,9 @@
       "Bash(./demo_3dmix_viewer:*)",
       "Bash(./analyze_3dmix_bmessage:*)",
       "Bash(python3:*)",
-      "Bash(./test_3dmix_parser:*)"
+      "Bash(./test_3dmix_parser:*)",
+      "Bash(git restore:*)",
+      "Bash(g++:*)"
     ],
     "deny": [],
     "ask": []

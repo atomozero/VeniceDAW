@@ -38,18 +38,59 @@ struct AudioSource {
     rgb_color color;
 };
 
-// Simple waveform data structure
-struct WaveformData {
-    std::vector<float> minPeaks;
-    std::vector<float> maxPeaks;
-    int samplesPerPixel;
+// Audio sample cache - stores ALL audio samples (loaded once)
+// Inspired by R6's SampleCache with on-the-fly GetSample() method
+struct AudioSampleCache {
+    std::vector<float> samples;      // All audio samples in memory
+    float sampleRate;                // Sample rate (e.g., 44100)
+    int channels;                    // Number of channels
     bool isValid;
-    bool isLoading;  // True if being generated in background
 
-    WaveformData() : samplesPerPixel(0), isValid(false), isLoading(false) {}
+    AudioSampleCache() : sampleRate(44100.0f), channels(1), isValid(false) {}
+
+    // R6-style GetSample: Calculate min/max ON-THE-FLY for a time range
+    // This is called once per pixel during rendering
+    void GetSample(float time, float duration, float* outMin, float* outMax) const {
+        *outMin = 0.0f;
+        *outMax = 0.0f;
+
+        if (!isValid || samples.empty() || time < 0) {
+            return;
+        }
+
+        // Convert time to sample indices
+        int startIdx = (int)(time * sampleRate);
+        int numSamples = (int)(duration * sampleRate);
+
+        if (numSamples == 0) numSamples = 1;
+        if (startIdx >= (int)samples.size()) return;
+
+        int endIdx = startIdx + numSamples;
+        if (endIdx > (int)samples.size()) {
+            endIdx = samples.size();
+        }
+
+        // Adaptive step like R6: step = 1 + (numSamples >> 1) for fast display
+        // This skips samples when zoomed out (many samples per pixel)
+        int step = 1 + (numSamples >> 1);  // Same as R6's fast_display mode
+        if (step < 1) step = 1;
+
+        float minVal = 0.0f;
+        float maxVal = 0.0f;
+
+        // Scan only this pixel's range
+        for (int i = startIdx; i < endIdx && i < (int)samples.size(); i += step) {
+            float v = samples[i];
+            if (v < minVal) minVal = v;
+            if (v > maxVal) maxVal = v;
+        }
+
+        *outMin = minVal;
+        *outMax = maxVal;
+    }
 };
 
-// Waveform cache - stores generated waveforms to avoid reloading
+// Waveform cache - R6 approach: only cache samples, calculate peaks on-the-fly
 class WaveformCache {
 public:
     static WaveformCache& Instance() {
@@ -57,159 +98,135 @@ public:
         return instance;
     }
 
-    WaveformData* GetWaveform(const char* filePath, int widthPixels, const VeniceDAW::AudioFormat3DMix* rawFormat = nullptr) {
-        BString key;
-        key << filePath << "_" << widthPixels;
-
-        auto it = fCache.find(key.String());
-        if (it != fCache.end()) {
-            return &it->second;
+    // Get audio sample cache (loads once, then returns cached version)
+    // Rendering will call GetSample() on the returned cache
+    const AudioSampleCache* GetAudioCache(const char* filePath, const VeniceDAW::AudioFormat3DMix* rawFormat = nullptr) {
+        // Check if already loaded
+        std::string key(filePath);
+        auto it = fSamplesCache.find(key);
+        if (it != fSamplesCache.end()) {
+            return &it->second;  // Already loaded!
         }
 
-        // Try with BMediaFile first
-        WaveformData waveform = GenerateWaveform(filePath, widthPixels);
-
-        // If that failed and we have raw format info, try reading as raw PCM
-        if (!waveform.isValid && rawFormat && rawFormat->isRawFormat) {
-            waveform = GenerateRawWaveform(filePath, widthPixels, *rawFormat);
-        }
-
-        fCache[key.String()] = waveform;
-        return &fCache[key.String()];
+        // Load audio samples ONCE
+        AudioSampleCache samples = LoadAudioSamples(filePath, rawFormat);
+        fSamplesCache[key] = samples;
+        return &fSamplesCache[key];
     }
 
 private:
     WaveformCache() {}
 
-    WaveformData GenerateWaveform(const char* filePath, int widthPixels) {
-        WaveformData data;
+    // Load ALL audio samples once (zoom-independent!)
+    AudioSampleCache LoadAudioSamples(const char* filePath, const VeniceDAW::AudioFormat3DMix* rawFormat) {
+        AudioSampleCache cache;
 
-        printf("[WaveformCache] Attempting to load: '%s'\n", filePath);
+        printf("[AudioCache] Loading audio samples: '%s'\n", filePath);
 
-        // Try to open audio file
+        // Try BMediaFile first
         entry_ref ref;
-        if (get_ref_for_path(filePath, &ref) != B_OK) {
-            printf("[WaveformCache] Failed: get_ref_for_path() failed\n");
-            return data;  // Invalid
-        }
+        if (get_ref_for_path(filePath, &ref) == B_OK) {
+            BMediaFile mediaFile(&ref);
+            if (mediaFile.InitCheck() == B_OK) {
+                // Get first audio track
+                BMediaTrack* track = nullptr;
+                for (int32 i = 0; i < mediaFile.CountTracks(); i++) {
+                    BMediaTrack* t = mediaFile.TrackAt(i);
+                    media_format format;
+                    if (t && t->EncodedFormat(&format) == B_OK) {
+                        if (format.type == B_MEDIA_RAW_AUDIO || format.type == B_MEDIA_ENCODED_AUDIO) {
+                            track = t;
+                            break;
+                        }
+                    }
+                    if (t && !track) {
+                        mediaFile.ReleaseTrack(t);
+                    }
+                }
 
-        BMediaFile mediaFile(&ref);
-        if (mediaFile.InitCheck() != B_OK) {
-            printf("[WaveformCache] Failed: BMediaFile::InitCheck() failed\n");
-            return data;  // Can't open file
-        }
+                if (track) {
+                    // Decode to raw audio
+                    media_format format;
+                    format.type = B_MEDIA_RAW_AUDIO;
+                    format.u.raw_audio = media_raw_audio_format::wildcard;
+                    format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_FLOAT;
+                    format.u.raw_audio.channel_count = 2;
 
-        // Get first audio track
-        BMediaTrack* track = nullptr;
-        for (int32 i = 0; i < mediaFile.CountTracks(); i++) {
-            BMediaTrack* t = mediaFile.TrackAt(i);
-            media_format format;
-            if (t && t->EncodedFormat(&format) == B_OK) {
-                if (format.type == B_MEDIA_RAW_AUDIO || format.type == B_MEDIA_ENCODED_AUDIO) {
-                    track = t;
-                    break;
+                    if (track->DecodedFormat(&format) == B_OK) {
+                        int64 frameCount = track->CountFrames();
+                        if (frameCount > 0) {
+                            cache.sampleRate = format.u.raw_audio.frame_rate;
+                            cache.channels = format.u.raw_audio.channel_count;
+
+                            // OPTIMIZATION: For very long files, decimate during loading
+                            // to reduce memory and improve performance
+                            int decimation = 1;
+                            if (frameCount > 5000000) decimation = 2;  // >2min: keep every 2nd sample
+                            if (frameCount > 10000000) decimation = 4; // >4min: keep every 4th sample
+
+                            cache.samples.reserve(frameCount / decimation);
+
+                            // Read samples with optional decimation
+                            const int bufferSize = 8192;
+                            float buffer[bufferSize * 2];
+                            int64 framesRead = 0;
+                            int decimationCounter = 0;
+
+                            while (framesRead < frameCount) {
+                                int64 frames = 0;
+                                if (track->ReadFrames(buffer, &frames) != B_OK || frames == 0) {
+                                    break;
+                                }
+
+                                // Convert stereo to mono and store (with decimation)
+                                for (int64 i = 0; i < frames; i++) {
+                                    if (decimationCounter++ % decimation == 0) {
+                                        float mono = (buffer[i * 2] + buffer[i * 2 + 1]) * 0.5f;
+                                        cache.samples.push_back(mono);
+                                    }
+                                }
+
+                                framesRead += frames;
+                            }
+
+                            // Adjust sample rate if decimated
+                            if (decimation > 1) {
+                                cache.sampleRate /= decimation;
+                            }
+
+                            mediaFile.ReleaseTrack(track);
+                            cache.isValid = true;
+                            printf("[AudioCache] ✓ Loaded %zu samples at %.0f Hz\n",
+                                   cache.samples.size(), cache.sampleRate);
+                            return cache;
+                        }
+                    }
+                    mediaFile.ReleaseTrack(track);
                 }
             }
-            if (t && !track) {
-                mediaFile.ReleaseTrack(t);
-            }
         }
 
-        if (!track) {
-            return data;  // No audio track
+        // Try RAW format if BMediaFile failed and we have format info
+        if (!cache.isValid && rawFormat && rawFormat->isRawFormat) {
+            cache = LoadRawAudioSamples(filePath, *rawFormat);
         }
 
-        // Decode to raw audio
-        media_format format;
-        format.type = B_MEDIA_RAW_AUDIO;
-        format.u.raw_audio = media_raw_audio_format::wildcard;
-        format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_FLOAT;
-        format.u.raw_audio.channel_count = 2;
-
-        if (track->DecodedFormat(&format) != B_OK) {
-            mediaFile.ReleaseTrack(track);
-            return data;  // Can't decode
-        }
-
-        int64 frameCount = track->CountFrames();
-        if (frameCount <= 0) {
-            mediaFile.ReleaseTrack(track);
-            return data;
-        }
-
-        // Calculate samples per pixel
-        int samplesPerPixel = (int)(frameCount / widthPixels);
-        if (samplesPerPixel < 1) samplesPerPixel = 1;
-
-        data.samplesPerPixel = samplesPerPixel;
-        data.minPeaks.resize(widthPixels, 0.0f);
-        data.maxPeaks.resize(widthPixels, 0.0f);
-
-        // Read and generate peaks
-        const int bufferSize = 4096;
-        float buffer[bufferSize * 2];  // Stereo
-        int64 framesRead = 0;
-        int currentPixel = 0;
-        float currentMin = 0.0f;
-        float currentMax = 0.0f;
-        int samplesInPixel = 0;
-
-        while (framesRead < frameCount && currentPixel < widthPixels) {
-            int64 framesToRead = bufferSize;
-            if (framesRead + framesToRead > frameCount) {
-                framesToRead = frameCount - framesRead;
-            }
-
-            int64 frames = 0;
-            if (track->ReadFrames(buffer, &frames) != B_OK || frames == 0) {
-                break;
-            }
-
-            // Process frames
-            for (int64 i = 0; i < frames && currentPixel < widthPixels; i++) {
-                // Mix stereo to mono
-                float sample = (buffer[i * 2] + buffer[i * 2 + 1]) * 0.5f;
-
-                if (sample < currentMin) currentMin = sample;
-                if (sample > currentMax) currentMax = sample;
-
-                samplesInPixel++;
-
-                if (samplesInPixel >= samplesPerPixel) {
-                    data.minPeaks[currentPixel] = currentMin;
-                    data.maxPeaks[currentPixel] = currentMax;
-                    currentPixel++;
-                    currentMin = 0.0f;
-                    currentMax = 0.0f;
-                    samplesInPixel = 0;
-                }
-            }
-
-            framesRead += frames;
-        }
-
-        mediaFile.ReleaseTrack(track);
-        data.isValid = true;
-
-        printf("[WaveformCache] Generated waveform for '%s': %d pixels, %d samples/pixel\n",
-               filePath, widthPixels, samplesPerPixel);
-
-        return data;
+        return cache;
     }
 
-    WaveformData GenerateRawWaveform(const char* filePath, int widthPixels, const VeniceDAW::AudioFormat3DMix& format) {
-        WaveformData data;
+    AudioSampleCache LoadRawAudioSamples(const char* filePath, const VeniceDAW::AudioFormat3DMix& format) {
+        AudioSampleCache cache;
 
-        printf("[WaveformCache] Loading RAW PCM: '%s'\n", filePath);
+        printf("[AudioCache] Loading RAW PCM: '%s'\n", filePath);
 
         BFile file(filePath, B_READ_ONLY);
         if (file.InitCheck() != B_OK) {
-            return data;
+            return cache;
         }
 
         off_t fileSize;
         if (file.GetSize(&fileSize) != B_OK || fileSize == 0) {
-            return data;
+            return cache;
         }
 
         // Calculate total frames
@@ -218,43 +235,28 @@ private:
         int64 totalFrames = fileSize / bytesPerFrame;
 
         if (totalFrames <= 0) {
-            return data;
+            return cache;
         }
 
-        data.samplesPerPixel = (int)(totalFrames / widthPixels);
-        if (data.samplesPerPixel < 1) data.samplesPerPixel = 1;
+        cache.sampleRate = format.sampleRate > 0 ? format.sampleRate : 44100.0f;
+        cache.channels = format.channels;
+        cache.samples.reserve(totalFrames);
 
-        data.minPeaks.resize(widthPixels, 0.0f);
-        data.maxPeaks.resize(widthPixels, 0.0f);
-
-        // ULTRA-FAST: Read large sequential chunks with in-memory skipping
-        // This avoids slow disk seeks - read 1MB chunks at a time
-        const int chunkFrames = 262144;  // 256K frames per chunk
+        // Read ALL samples in large chunks
+        const int chunkFrames = 131072;  // 128K frames per chunk
         const int chunkSize = chunkFrames * bytesPerFrame;
         uint8* chunkBuffer = new uint8[chunkSize];
 
-        int currentPixel = 0;
-        int64 framesRead = 0;
-        float currentMin = 0.0f, currentMax = 0.0f;
-        int samplesInPixel = 0;
-
-        // Decimation factor - skip frames for speed
-        int decimation = data.samplesPerPixel / 32;  // Max 32 samples per pixel
-        if (decimation < 1) decimation = 1;
-
-        while (framesRead < totalFrames && currentPixel < widthPixels) {
+        while (cache.samples.size() < (size_t)totalFrames) {
             ssize_t bytesRead = file.Read(chunkBuffer, chunkSize);
             if (bytesRead <= 0) break;
 
             int framesInChunk = bytesRead / bytesPerFrame;
 
-            // Process frames in chunk with decimation
-            for (int i = 0; i < framesInChunk; i += decimation) {
-                if (currentPixel >= widthPixels) break;
-
+            for (int i = 0; i < framesInChunk; i++) {
                 uint8* frameData = chunkBuffer + (i * bytesPerFrame);
 
-                // Quick mono mix
+                // Convert to mono float
                 float sample = 0.0f;
                 if (format.bitDepth == 16) {
                     int16* samples = (int16*)frameData;
@@ -268,32 +270,20 @@ private:
                 }
                 sample /= format.channels;
 
-                if (sample < currentMin) currentMin = sample;
-                if (sample > currentMax) currentMax = sample;
-                samplesInPixel++;
-
-                // Move to next pixel?
-                if (samplesInPixel >= data.samplesPerPixel / decimation) {
-                    data.minPeaks[currentPixel] = currentMin;
-                    data.maxPeaks[currentPixel] = currentMax;
-                    currentPixel++;
-                    currentMin = currentMax = 0.0f;
-                    samplesInPixel = 0;
-                }
+                cache.samples.push_back(sample);
             }
-
-            framesRead += framesInChunk * decimation;
         }
 
         delete[] chunkBuffer;
-        data.isValid = true;
+        cache.isValid = true;
 
-        printf("[WaveformCache] ✓ Loaded: %d peaks\n", widthPixels);
+        printf("[AudioCache] ✓ Loaded %zu RAW samples at %.0f Hz\n",
+               cache.samples.size(), cache.sampleRate);
 
-        return data;
+        return cache;
     }
 
-    std::map<std::string, WaveformData> fCache;
+    std::map<std::string, AudioSampleCache> fSamplesCache;  // Samples cached by filePath (loaded once)
 };
 
 class DemoGL3DView : public BGLView {
@@ -1088,8 +1078,9 @@ public:
         font_height fh;
         be_plain_font->GetHeight(&fh);
 
-        // ULTRA-SIMPLE MODE: just colored blocks when zoomed way out
-        bool simpleMode = (fPixelsPerSecond < 10.0f);
+        // ULTRA-SIMPLE MODE: colored blocks only when zoomed WAY out
+        // With zoom-independent rendering, we can show waveforms even at very low zoom!
+        bool simpleMode = (fPixelsPerSecond < 3.0f);
 
         // When updating only playhead, we still need to redraw the lanes it crosses
         // but we can skip track names and other static elements
@@ -1195,9 +1186,9 @@ public:
                 SetHighColor(trackColor.red * 1.0, trackColor.green * 1.0, trackColor.blue * 1.0);
                 StrokeRect(blockRect);
 
-                // Real waveform visualization
+                // Real waveform visualization - R6-style on-the-fly rendering!
                 int widthPixels = (int)(blockRect.Width());
-                WaveformData* waveform = nullptr;
+                const AudioSampleCache* audioCache = nullptr;
 
                 // Try to get audio file path
                 // OPTIMIZATION: Skip waveform loading entirely in simple mode!
@@ -1239,9 +1230,9 @@ public:
                         }
 
                         if (resolvedPath.Length() > 0) {
-                            // Pass audio format for raw PCM support
+                            // R6 approach: Get audio cache (samples loaded once, peaks calculated on-the-fly!)
                             const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
-                            waveform = WaveformCache::Instance().GetWaveform(resolvedPath.String(), widthPixels, &audioFormat);
+                            audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
                         }
                     }
                 }
@@ -1250,8 +1241,8 @@ public:
                 if (simpleMode) {
                     SetHighColor(trackColor.red * 0.85, trackColor.green * 0.85, trackColor.blue * 0.85, 180);
                     FillRect(blockRect);
-                } else if (waveform && waveform->isValid) {
-                    // Draw real waveform - detailed mode only
+                } else if (audioCache && audioCache->isValid) {
+                    // Draw real waveform using R6-style on-the-fly GetSample() (FAST!)
                     float centerY = y + laneHeight / 2;
                     float maxHeight = (laneHeight - 12) * 0.5f;
 
@@ -1259,8 +1250,12 @@ public:
                     int pixelSkip = 1;
                     if (fPixelsPerSecond < 15.0f) pixelSkip = 2;
 
+                    // Calculate time per pixel (like R6's "zoom" parameter)
+                    float secondsPerPixel = 1.0f / fPixelsPerSecond;
+
+                    // Count lines for BeginLineArray
                     int lineCount = 0;
-                    for (int px = 0; px < widthPixels && px < (int)waveform->minPeaks.size(); px += pixelSkip) {
+                    for (int px = 0; px < widthPixels; px += pixelSkip) {
                         float x = blockRect.left + px;
                         if (x >= bounds.right) break;
                         lineCount++;
@@ -1275,17 +1270,22 @@ public:
                             220
                         };
 
-                        for (int px = 0; px < widthPixels && px < (int)waveform->minPeaks.size(); px += pixelSkip) {
+                        // R6-style rendering: GetSample() called per pixel ON-THE-FLY!
+                        float time = 0.0f;  // Start at beginning of audio
+                        for (int px = 0; px < widthPixels; px += pixelSkip) {
                             float x = blockRect.left + px;
                             if (x >= bounds.right) break;
 
-                            float minPeak = waveform->minPeaks[px];
-                            float maxPeak = waveform->maxPeaks[px];
+                            // Calculate min/max for THIS pixel's time range (like R6!)
+                            float minPeak, maxPeak;
+                            audioCache->GetSample(time, secondsPerPixel, &minPeak, &maxPeak);
 
                             float minY = centerY - (minPeak * maxHeight);
                             float maxY = centerY - (maxPeak * maxHeight);
 
                             AddLine(BPoint(x, minY), BPoint(x, maxY), waveColor);
+
+                            time += secondsPerPixel;  // Advance time (like R6: time += zoom)
                         }
                         EndLineArray();
                     }
