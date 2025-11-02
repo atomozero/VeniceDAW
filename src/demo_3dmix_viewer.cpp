@@ -1547,8 +1547,34 @@ private:
             targetView->SetHighColor(trackColor);
             targetView->FillRect(BRect(5, y + 5, 8, y + laneHeight - 6));
 
-            // NOTE: Full waveform rendering will be added incrementally
-            // For now, just draw placeholder blocks to test cache system
+            // Track name text
+            targetView->SetFont(be_plain_font);
+            font_height fh;
+            be_plain_font->GetHeight(&fh);
+
+            targetView->SetHighColor(200, 200, 205);
+            BString trackName = track->TrackName();
+            if (trackName.Length() == 0) {
+                trackName = "Track ";
+                trackName << (i + 1);
+            }
+
+            // Truncate if too long
+            if (be_plain_font->StringWidth(trackName.String()) > trackNameWidth - 10) {
+                BString testStr;
+                do {
+                    trackName.Truncate(trackName.Length() - 1);
+                    testStr = trackName;
+                    testStr << "...";
+                } while (be_plain_font->StringWidth(testStr.String()) > trackNameWidth - 10 && trackName.Length() > 3);
+                trackName = testStr;
+            }
+
+            targetView->DrawString(trackName.String(), BPoint(10, y + (laneHeight / 2) + (fh.ascent / 2)));
+
+            // Lane separator
+            targetView->SetHighColor(25, 25, 30);
+            targetView->StrokeLine(BPoint(0, y + laneHeight - 1), BPoint(bounds.right, y + laneHeight - 1));
         }
     }
 
@@ -1610,16 +1636,15 @@ public:
         // This dramatically reduces CPU usage by avoiding re-rendering every frame
         bool playheadOnly = (updateRect.Width() < 30);
 
-        // TEMPORARY: Disable cache rebuilding until implementation is complete
-        if (false && !playheadOnly && !fWaveformCacheValid) {
+        // HYBRID APPROACH: Cache renders static elements (backgrounds, track names)
+        // while waveforms are drawn on top each frame for accuracy
+        if (!playheadOnly && !fWaveformCacheValid) {
             // Cache invalid, rebuild it (happens on zoom changes or first draw)
             RebuildWaveformCache();
         }
 
-        // TEMPORARY: Cache disabled until RenderTracksToView() is fully implemented
-        // TODO: Complete RenderTracksToView() with track names and waveforms
-        // If cache is valid and we're doing full redraw, use it!
-        if (false && fWaveformCacheValid && fWaveformCacheBitmap && !playheadOnly) {
+        // If cache is valid and we're doing full redraw, use it as base layer!
+        if (fWaveformCacheValid && fWaveformCacheBitmap && !playheadOnly) {
             // FAST PATH: Just blit the cached bitmap
             DrawBitmap(fWaveformCacheBitmap, BPoint(0, 0));
 
