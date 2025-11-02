@@ -34,6 +34,7 @@ Mixer3DView::Mixer3DView(BRect frame, SimpleHaikuEngine* engine)
     , fGLLocker("3D Mixer GL Lock")
     , fCameraDirty(true)  // Initial cache computation needed
     , fLastUpdateTime(system_time())
+    , fGridDisplayList(0)  // OpenGL optimization: will be created in InitGL()
 {
     fCameraTarget[0] = 0.0f;
     fCameraTarget[1] = 0.0f;
@@ -63,6 +64,13 @@ Mixer3DView::~Mixer3DView()
         if (windowGuard) {
             GLContextGuard glGuard(this);
             if (glGuard) {
+                // Delete display lists for static geometry
+                if (fGridDisplayList != 0) {
+                    glDeleteLists(fGridDisplayList, 1);
+                    fGridDisplayList = 0;
+                    printf("Mixer3DView: Grid display list deleted\n");
+                }
+
                 // Ensure all GL commands are completed
                 glFinish();
 
@@ -285,63 +293,130 @@ void Mixer3DView::RenderScene()
 
 void Mixer3DView::DrawGrid()
 {
-    glDisable(GL_LIGHTING);
+    // OpenGL Optimization: Use display list for static grid geometry
+    // This pre-compiles the grid rendering commands for reuse each frame
+    if (fGridDisplayList == 0) {
+        // First time: Create display list and compile grid geometry
+        fGridDisplayList = glGenLists(1);
+        if (fGridDisplayList == 0) {
+            printf("[OpenGL] Warning: Failed to create grid display list, falling back to immediate mode\n");
+            // Fall through to direct rendering below
+        } else {
+            glNewList(fGridDisplayList, GL_COMPILE_AND_EXECUTE);
 
-    // Draw subtle "glass floor" plane with gradient (3dmix heritage)
+            glDisable(GL_LIGHTING);
+
+            // Draw subtle "glass floor" plane with gradient (3dmix heritage)
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            glBegin(GL_QUADS);
+            // Center brighter (BeOS yellow tint), edges darker
+            glColor4f(0.15f, 0.15f, 0.2f, 0.3f);  // Edge color (darker blue)
+            glVertex3f(-10, -0.01f, -10);
+            glVertex3f(10, -0.01f, -10);
+
+            glColor4f(0.2f, 0.22f, 0.28f, 0.5f);  // Center (lighter)
+            glVertex3f(10, -0.01f, 10);
+            glVertex3f(-10, -0.01f, 10);
+            glEnd();
+
+            // Draw elegant grid lines (3dmix style - sparse and clean)
+            glLineWidth(1.0f);
+            glBegin(GL_LINES);
+
+            // Outer grid - faint lines
+            for (int i = -10; i <= 10; i += 2) {
+                // Distance-based alpha for depth effect
+                float alpha = 1.0f - (abs(i) / 12.0f);
+                glColor4f(0.25f, 0.28f, 0.35f, alpha * 0.4f);
+
+                glVertex3f(i, 0, -10); glVertex3f(i, 0, 10);  // X lines
+                glVertex3f(-10, 0, i); glVertex3f(10, 0, i);  // Z lines
+            }
+            glEnd();
+
+            // Center cross - brighter (BeOS signature yellow-orange)
+            glLineWidth(2.0f);
+            glBegin(GL_LINES);
+            glColor4f(0.9f, 0.7f, 0.3f, 0.8f);  // BeOS yellow
+            glVertex3f(-10, 0, 0); glVertex3f(10, 0, 0);   // X axis
+            glVertex3f(0, 0, -10); glVertex3f(0, 0, 10);   // Z axis
+            glEnd();
+
+            // Axis indicators (subtle 3dmix style)
+            glLineWidth(3.0f);
+            glBegin(GL_LINES);
+            // X axis - warm orange-red (BeOS heritage)
+            glColor4f(1.0f, 0.5f, 0.2f, 0.9f);
+            glVertex3f(0, 0, 0); glVertex3f(3, 0, 0);
+
+            // Y axis - bright yellow-green
+            glColor4f(0.7f, 1.0f, 0.3f, 0.9f);
+            glVertex3f(0, 0, 0); glVertex3f(0, 3, 0);
+
+            // Z axis - cool blue-cyan
+            glColor4f(0.2f, 0.6f, 1.0f, 0.9f);
+            glVertex3f(0, 0, 0); glVertex3f(0, 0, 3);
+            glEnd();
+
+            glLineWidth(1.0f);  // Reset
+            glEnable(GL_LIGHTING);
+
+            glEndList();
+            printf("[OpenGL] Grid display list created (ID: %u) - static geometry cached\n", fGridDisplayList);
+            return;  // Grid already drawn by GL_COMPILE_AND_EXECUTE
+        }
+    }
+
+    // Fast path: Reuse compiled display list (huge performance gain!)
+    if (fGridDisplayList != 0) {
+        glCallList(fGridDisplayList);
+        return;
+    }
+
+    // Fallback path: Direct rendering (only if display list creation failed)
+    glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glBegin(GL_QUADS);
-    // Center brighter (BeOS yellow tint), edges darker
-    glColor4f(0.15f, 0.15f, 0.2f, 0.3f);  // Edge color (darker blue)
+    glColor4f(0.15f, 0.15f, 0.2f, 0.3f);
     glVertex3f(-10, -0.01f, -10);
     glVertex3f(10, -0.01f, -10);
-
-    glColor4f(0.2f, 0.22f, 0.28f, 0.5f);  // Center (lighter)
+    glColor4f(0.2f, 0.22f, 0.28f, 0.5f);
     glVertex3f(10, -0.01f, 10);
     glVertex3f(-10, -0.01f, 10);
     glEnd();
 
-    // Draw elegant grid lines (3dmix style - sparse and clean)
     glLineWidth(1.0f);
     glBegin(GL_LINES);
-
-    // Outer grid - faint lines
     for (int i = -10; i <= 10; i += 2) {
-        // Distance-based alpha for depth effect
         float alpha = 1.0f - (abs(i) / 12.0f);
         glColor4f(0.25f, 0.28f, 0.35f, alpha * 0.4f);
-
-        glVertex3f(i, 0, -10); glVertex3f(i, 0, 10);  // X lines
-        glVertex3f(-10, 0, i); glVertex3f(10, 0, i);  // Z lines
+        glVertex3f(i, 0, -10); glVertex3f(i, 0, 10);
+        glVertex3f(-10, 0, i); glVertex3f(10, 0, i);
     }
     glEnd();
 
-    // Center cross - brighter (BeOS signature yellow-orange)
     glLineWidth(2.0f);
     glBegin(GL_LINES);
-    glColor4f(0.9f, 0.7f, 0.3f, 0.8f);  // BeOS yellow
-    glVertex3f(-10, 0, 0); glVertex3f(10, 0, 0);   // X axis
-    glVertex3f(0, 0, -10); glVertex3f(0, 0, 10);   // Z axis
+    glColor4f(0.9f, 0.7f, 0.3f, 0.8f);
+    glVertex3f(-10, 0, 0); glVertex3f(10, 0, 0);
+    glVertex3f(0, 0, -10); glVertex3f(0, 0, 10);
     glEnd();
 
-    // Axis indicators (subtle 3dmix style)
     glLineWidth(3.0f);
     glBegin(GL_LINES);
-    // X axis - warm orange-red (BeOS heritage)
     glColor4f(1.0f, 0.5f, 0.2f, 0.9f);
     glVertex3f(0, 0, 0); glVertex3f(3, 0, 0);
-
-    // Y axis - bright yellow-green
     glColor4f(0.7f, 1.0f, 0.3f, 0.9f);
     glVertex3f(0, 0, 0); glVertex3f(0, 3, 0);
-
-    // Z axis - cool blue-cyan
     glColor4f(0.2f, 0.6f, 1.0f, 0.9f);
     glVertex3f(0, 0, 0); glVertex3f(0, 0, 3);
     glEnd();
 
-    glLineWidth(1.0f);  // Reset
+    glLineWidth(1.0f);
     glEnable(GL_LIGHTING);
 }
 

@@ -146,6 +146,9 @@ private:
     AudioParticleSystem fParticleSystem;
     bigtime_t fLastUpdateTime;
 
+    // OpenGL optimization (display lists for static geometry)
+    GLuint fGridDisplayList;
+
     // Private OpenGL helpers
     void DrawAxisLabels();
     Track3D* GetTrackAt(BPoint point);
