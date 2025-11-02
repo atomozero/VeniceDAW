@@ -39,6 +39,11 @@ struct AudioClip {
     bool selected;              // Selection state
     rgb_color color;            // Visual color (from track color)
 
+    // Loop support
+    bool loopEnabled;           // Is this clip looping?
+    int64 loopStart;            // Loop start frame (relative to clip)
+    int64 loopEnd;              // Loop end frame (relative to clip)
+
     AudioClip()
         : startFrame(0)
         , length(0)
@@ -46,6 +51,9 @@ struct AudioClip {
         , gain(1.0f)
         , trackIndex(0)
         , selected(false)
+        , loopEnabled(false)
+        , loopStart(0)
+        , loopEnd(0)
     {
         color = {180, 180, 180, 255};
     }
@@ -113,6 +121,8 @@ public:
 
 private:
     void DrawClip(const AudioClip& clip, BRect clipRect);
+    void DrawRealWaveform(const AudioClip& clip, BRect clipRect, rgb_color waveColor);
+    void DrawLoopMarkers(const AudioClip& clip, BRect clipRect);
     BRect GetClipRect(const AudioClip& clip) const;
     int FindClipAtPoint(BPoint point) const;
 
