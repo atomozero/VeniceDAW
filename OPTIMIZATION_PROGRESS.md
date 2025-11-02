@@ -34,7 +34,7 @@ void SetPixelsPerSecond(float pps) {
 }
 ```
 
-### ✅ Commit 2: Cache Rendering Implementation (completato ora)
+### ✅ Commit 2: Cache Rendering Implementation (8c78206)
 **Tipo**: perf
 **Cosa**: Implementazione rendering effettivo con cache nel Draw()
 **Codice aggiunto**:
@@ -72,7 +72,7 @@ draw_playhead:
 - Slow path automatico se creazione cache fallisce
 - Rendering playhead sempre aggiornato (non cachato)
 
-### ✅ Commit 3: Adaptive Quality System (completato ora)
+### ✅ Commit 3: Adaptive Quality System (13f9413)
 **Tipo**: perf
 **Cosa**: Sistema di qualità a 3 livelli basato su zoom
 **Codice aggiunto**:
@@ -106,25 +106,79 @@ if (quality == RenderQuality::LOW) {
 - HIGH: Qualità completa per zoom ravvicinati
 - Transizioni automatiche basate su zoom level
 
+### ✅ Commit 4: Bugfix Cache Temporaneo (1c6ec16)
+**Tipo**: fix
+**Cosa**: Disabilitazione temporanea cache per risolvere bug rendering incompleto
+**Problema rilevato**: Cache mostrava solo placeholder senza nomi tracce e waveform
+**Fix applicato**:
+```cpp
+// TEMPORARY: Cache disabled until RenderTracksToView() is fully implemented
+if (false && !playheadOnly && !fWaveformCacheValid) {
+    RebuildWaveformCache();
+}
+if (false && fWaveformCacheValid && fWaveformCacheBitmap && !playheadOnly) {
+    // Fast path disabled
+}
+```
+**Risultato**: Ripristinato rendering completo e funzionante (confermato dall'utente)
+
+### ✅ Commit 5: Completamento Cache con Hybrid Rendering (5f8b9cb)
+**Tipo**: perf
+**Cosa**: Implementazione completa RenderTracksToView() e riattivazione cache
+**Codice aggiunto**:
+```cpp
+void RenderTracksToView(BView* targetView, BRect bounds) {
+    // Track name rendering con truncation automatica
+    targetView->SetFont(be_plain_font);
+    BString trackName = track->TrackName();
+    if (trackName.Length() == 0) {
+        trackName = "Track ";
+        trackName << (i + 1);
+    }
+
+    // Truncate se troppo lungo
+    if (be_plain_font->StringWidth(trackName.String()) > trackNameWidth - 10) {
+        do {
+            trackName.Truncate(trackName.Length() - 1);
+            testStr = trackName;
+            testStr << "...";
+        } while (be_plain_font->StringWidth(testStr.String()) > trackNameWidth - 10);
+        trackName = testStr;
+    }
+
+    targetView->DrawString(trackName.String(), ...);
+
+    // Lane separators
+    targetView->SetHighColor(25, 25, 30);
+    targetView->StrokeLine(BPoint(0, y + laneHeight - 1), ...);
+}
+```
+**Strategia Hybrid Rendering**:
+- Elementi statici (background, nomi tracce, separatori) → cachati in BBitmap
+- Waveform → renderizzate normalmente su top per accuratezza
+- Cache ricostruita solo su cambio zoom
+- Fast path con DrawBitmap() per elementi cachati
+**Benefici**:
+- Riduzione CPU su rendering elementi statici UI
+- Mantenimento accuratezza waveform
+- Fallback automatico se creazione cache fallisce
+- Track names con auto-truncation per nomi lunghi
+- Indicatori colore basati su posizione 3D
+
 ## COMMITS IN CORSO
+
+Nessuno - cache completata!
 
 ## COMMITS PIANIFICATI
 
-### Commit 4: OpenGL Batch Rendering
-**Tipo**: perf
-**Cosa**: Qualità adaptive basata su zoom e risorse sistema
-- Low quality: solo colored blocks (< 3 px/sec)
-- Medium quality: waveform downsampled 4x
-- High quality: waveform completa
-
-### Commit 4: OpenGL Batch Rendering
+### Commit 6: OpenGL Batch Rendering
 **Tipo**: perf
 **Cosa**: Ottimizzazione 3D view con batch rendering
 - Display list caching per geometrie statiche
 - Frustum culling (non disegna fuori schermo)
 - LOD per cubi (geometria semplificata da lontano)
 
-### Commit 5: Lazy Audio Loading
+### Commit 7: Lazy Audio Loading
 **Tipo**: perf
 **Cosa**: Caricamento lazy delle tracce audio
 - Carica solo tracce visibili
@@ -132,7 +186,7 @@ if (quality == RenderQuality::LOW) {
 - LRU eviction policy
 - **Riduzione RAM stimata**: 70-90% per progetti grandi
 
-### Commit 6: Performance Settings UI
+### Commit 8: Performance Settings UI
 **Tipo**: feat
 **Cosa**: Interfaccia qualità e auto-detection capacità
 - Auto-detect CPU/RAM disponibili
@@ -144,12 +198,12 @@ if (quality == RenderQuality::LOW) {
 ### Sistema Basso (512MB RAM, Pentium 4)
 - **Ora**: Inutilizzabile, > 90% CPU, lag pesante
 - **Target**: 15 FPS rendering, < 5% dropout audio
-- **Status**: In progresso (50% implementato - cache attiva!)
+- **Status**: In progresso (cache 100% implementata + adaptive quality)
 
 ### Sistema Medio (2GB RAM, Core 2 Duo)
 - **Ora**: Usabile ma lag visibile
 - **Target**: 30 FPS smooth, 0% dropout
-- **Status**: In progresso (50% implementato - cache attiva!)
+- **Status**: In progresso (cache 100% implementata + adaptive quality)
 
 ### Sistema Alto (4GB+ RAM, Core i3+)
 - **Ora**: Funziona bene
@@ -189,27 +243,30 @@ g++ -o demo_3dmix_viewer src/demo_3dmix_viewer.cpp \
 ./demo_3dmix_viewer "/path/to/project.3dmix"
 # ✅ Funziona, transport controls operativi
 # ✅ Loop region markers visibili
-# ✅ Cache waveform ATTIVA! (fast path con DrawBitmap)
-# 🎯 Aspettati 60-80% riduzione CPU in rendering timeline
+# ✅ Cache waveform ATTIVA! (hybrid rendering completato)
+# ✅ Adaptive quality implementata (LOW/MEDIUM/HIGH)
+# ✅ Track names con auto-truncation
+# 🎯 Cache riduce CPU rendering elementi statici UI
 ```
 
 ## PROSSIMI PASSI
 
-1. ✅ **COMPLETATO: Cache rendering implementata** (commit 2)
-   - BBitmap creata con offscreen rendering
+1. ✅ **COMPLETATO: Cache waveform con hybrid rendering** (commits 1-5)
+   - BBitmap cache per elementi statici UI
+   - RenderTracksToView() con track names e separatori
    - Fast path con DrawBitmap() quando cache valida
-   - Slow path automatico se creazione fallisce
+   - Adaptive quality system (LOW/MEDIUM/HIGH)
+   - Gestione fallback automatica
 
-2. **Test performance reali** (prossimo)
-   - Misurare CPU usage prima/dopo con test reali
+2. **Test performance reali** (opzionale)
+   - Misurare CPU usage prima/dopo su sistemi reali
    - Verificare assenza memory leak
-   - Testare su progetto complesso
+   - Testare su progetti complessi
 
-3. **Continuare con commit 3-6**
-   - Commit 3: Adaptive quality (prossimo!)
-   - Commit 4: OpenGL batch rendering
-   - Commit 5: Lazy audio loading
-   - Commit 6: Settings UI
+3. **Continuare con ottimizzazioni pianificate** (commit 6-8)
+   - Commit 6: OpenGL batch rendering (3D view)
+   - Commit 7: Lazy audio loading (memoria)
+   - Commit 8: Settings UI (quality presets)
 
 ## NOTE TECNICHE
 
