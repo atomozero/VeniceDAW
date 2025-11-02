@@ -44,7 +44,8 @@ GUI_SOURCES = $(GUI_SRC)/Mixer3DWindow.cpp \
               $(GUI_SRC)/KeyboardShortcuts.cpp \
               $(GUI_SRC)/3DMixImportDialog.cpp \
               $(GUI_SRC)/AudioPreviewPanel.cpp \
-              $(GUI_SRC)/VeniceTheme.cpp
+              $(GUI_SRC)/VeniceTheme.cpp \
+              $(GUI_SRC)/PerformanceSettingsWindow.cpp
 
 # Test sources
 TEST_SOURCES = $(TEST_SRC)/SpatialAudioTest.cpp
