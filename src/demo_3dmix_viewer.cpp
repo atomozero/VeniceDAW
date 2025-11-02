@@ -1610,13 +1610,16 @@ public:
         // This dramatically reduces CPU usage by avoiding re-rendering every frame
         bool playheadOnly = (updateRect.Width() < 30);
 
-        if (!playheadOnly && !fWaveformCacheValid) {
+        // TEMPORARY: Disable cache rebuilding until implementation is complete
+        if (false && !playheadOnly && !fWaveformCacheValid) {
             // Cache invalid, rebuild it (happens on zoom changes or first draw)
             RebuildWaveformCache();
         }
 
+        // TEMPORARY: Cache disabled until RenderTracksToView() is fully implemented
+        // TODO: Complete RenderTracksToView() with track names and waveforms
         // If cache is valid and we're doing full redraw, use it!
-        if (fWaveformCacheValid && fWaveformCacheBitmap && !playheadOnly) {
+        if (false && fWaveformCacheValid && fWaveformCacheBitmap && !playheadOnly) {
             // FAST PATH: Just blit the cached bitmap
             DrawBitmap(fWaveformCacheBitmap, BPoint(0, 0));
 
