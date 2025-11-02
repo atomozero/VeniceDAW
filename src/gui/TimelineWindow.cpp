@@ -425,7 +425,7 @@ void TrackLaneView::DrawLoopMarkers(const AudioClip& clip, BRect clipRect)
 TimelineView::TimelineView(BRect frame, SimpleHaikuEngine* engine)
     : BView(frame, "timeline_view", B_FOLLOW_ALL, B_WILL_DRAW | B_FRAME_EVENTS)
     , fEngine(engine)
-    , fPixelsPerSecond(100.0f)
+    , fPixelsPerSecond(500.0f)  // CHANGED from 100.0f for better clip visibility
     , fPlayheadFrame(0)
     , fSampleRate(44100.0f)
 {
@@ -603,7 +603,7 @@ void TimelineWindow::CreateTransportBar()
 
     // Zoom slider
     fZoomSlider = new BSlider("zoom", "Zoom", nullptr, 10, 500, B_HORIZONTAL);
-    fZoomSlider->SetValue(100);
+    fZoomSlider->SetValue(500);  // CHANGED from 100 to match default zoom level
     fZoomSlider->SetHashMarks(B_HASH_MARKS_BOTTOM);
     fZoomSlider->SetHashMarkCount(10);
     fZoomSlider->SetLimitLabels("10%", "500%");
