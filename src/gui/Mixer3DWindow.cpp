@@ -636,6 +636,37 @@ void Mixer3DView::DrawTrack3D(const Track3D& track)
     // Scale based on volume
     float scale = 0.6f + track.scale * 0.4f;
 
+    // === ADAPTIVE LOD SYSTEM: Calculate distance from camera ===
+    // Reduces geometry complexity for distant tracks to improve performance
+    float dx = track.x - fCachedCameraX;
+    float dy = track.y - fCachedCameraY;
+    float dz = track.z - fCachedCameraZ;
+    float distanceFromCamera = sqrt(dx*dx + dy*dy + dz*dz);
+
+    // Determine LOD level based on distance
+    // LOD 0 (Close): < 15 units - Full quality (32x32 sphere, all effects)
+    // LOD 1 (Medium): 15-25 units - Medium quality (20x20 sphere, reduced effects)
+    // LOD 2 (Far): > 25 units - Low quality (12x12 sphere, minimal effects)
+    int lodLevel = 0;
+    int sphereSlices = 32;  // Default high quality
+    int sphereStacks = 32;
+    bool enableGlow = true;
+    bool enableDetails = true;
+
+    if (distanceFromCamera > 25.0f) {
+        lodLevel = 2;  // Far
+        sphereSlices = 12;
+        sphereStacks = 12;
+        enableGlow = false;
+        enableDetails = false;
+    } else if (distanceFromCamera > 15.0f) {
+        lodLevel = 1;  // Medium
+        sphereSlices = 20;
+        sphereStacks = 20;
+        enableGlow = false;  // Skip glow for medium distance
+        enableDetails = true;
+    }
+
     // Determine track state and colors
     bool isMuted = (track.track && track.track->IsMuted());
     float baseColor[3];
@@ -678,7 +709,8 @@ void Mixer3DView::DrawTrack3D(const Track3D& track)
     }
 
     // === OUTER GLOW HALO (3dmix signature effect) ===
-    if (!isMuted && glowIntensity > 0.05f) {
+    // LOD Optimization: Skip glow for medium/far distances to save GPU
+    if (!isMuted && glowIntensity > 0.05f && enableGlow) {
         glDisable(GL_LIGHTING);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);  // Additive blending for glow
@@ -722,18 +754,22 @@ void Mixer3DView::DrawTrack3D(const Track3D& track)
     glMaterialfv(GL_FRONT, GL_SPECULAR, matSpecular);
     glMaterialfv(GL_FRONT, GL_SHININESS, matShininess);
 
-    // Draw main sphere (high quality - 3dmix signature)
+    // Draw main sphere with LOD-based tessellation
+    // LOD 0 (close): 32x32 triangles (high detail)
+    // LOD 1 (medium): 20x20 triangles (medium detail)
+    // LOD 2 (far): 12x12 triangles (low detail)
     GLUquadric* quadric = gluNewQuadric();
     gluQuadricDrawStyle(quadric, GLU_FILL);
     gluQuadricNormals(quadric, GLU_SMOOTH);
     gluQuadricTexture(quadric, GL_FALSE);
-    gluSphere(quadric, 1.0, 32, 32);  // High detail for beauty
+    gluSphere(quadric, 1.0, sphereSlices, sphereStacks);  // Adaptive LOD tessellation
     gluDeleteQuadric(quadric);
 
     glPopMatrix();
 
     // === EQUATOR RING (visual detail) ===
-    if (!isMuted) {
+    // LOD Optimization: Skip equator ring for far distances
+    if (!isMuted && enableDetails) {
         glDisable(GL_LIGHTING);
         glLineWidth(2.0f);
         glColor4f(baseColor[0] * 1.2f, baseColor[1] * 1.2f, baseColor[2] * 1.2f, 0.6f);
@@ -755,7 +791,8 @@ void Mixer3DView::DrawTrack3D(const Track3D& track)
     }
 
     // === VERTICAL LEVEL INDICATOR (3dmix style) ===
-    if (!isMuted && track.levelHeight > 0.1f) {
+    // LOD Optimization: Skip level indicator for far distances
+    if (!isMuted && track.levelHeight > 0.1f && enableDetails) {
         glDisable(GL_LIGHTING);
         glEnable(GL_BLEND);
 
@@ -813,6 +850,18 @@ void Mixer3DView::DrawTrack3D(const Track3D& track)
         glLineWidth(1.0f);
         glEnable(GL_LIGHTING);
     }
+
+    // LOD debug output (optional, only print occasionally for performance monitoring)
+    #ifdef DEBUG_LOD_STATS
+    static int lodFrameCount = 0;
+    if (lodLevel > 0 && (lodFrameCount++ % 180 == 0)) {
+        const char* lodNames[] = {"High (32x32)", "Medium (20x20)", "Low (12x12)"};
+        printf("[Adaptive LOD] Track at distance %.1f using LOD %d (%s)%s%s\n",
+               distanceFromCamera, lodLevel, lodNames[lodLevel],
+               enableGlow ? "" : ", glow disabled",
+               enableDetails ? "" : ", details disabled");
+    }
+    #endif
 
     glPopMatrix();
 }
