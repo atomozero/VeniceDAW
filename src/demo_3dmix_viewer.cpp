@@ -1376,6 +1376,24 @@ private:
     float fLoopOutPoint;
 };
 
+// PERFORMANCE: Adaptive quality levels for low-end systems
+enum class RenderQuality {
+    LOW,     // Colored blocks only (< 3 px/sec) - minimal CPU
+    MEDIUM,  // Downsampled waveform (3-20 px/sec) - balanced
+    HIGH     // Full quality waveform (> 20 px/sec) - best quality
+};
+
+// Determine rendering quality based on zoom level
+inline RenderQuality GetRenderQuality(float pixelsPerSecond) {
+    if (pixelsPerSecond < 3.0f) {
+        return RenderQuality::LOW;   // Too zoomed out - blocks only
+    } else if (pixelsPerSecond < 20.0f) {
+        return RenderQuality::MEDIUM;  // Medium zoom - downsampled
+    } else {
+        return RenderQuality::HIGH;    // Zoomed in - full quality
+    }
+}
+
 // Track Lane View - Shows individual tracks as horizontal lanes
 class TrackLanesView : public BView {
 public:
@@ -1620,9 +1638,9 @@ public:
         font_height fh;
         be_plain_font->GetHeight(&fh);
 
-        // ULTRA-SIMPLE MODE: colored blocks only when zoomed WAY out
-        // With zoom-independent rendering, we can show waveforms even at very low zoom!
-        bool simpleMode = (fPixelsPerSecond < 3.0f);
+        // PERFORMANCE: Adaptive quality based on zoom level
+        // LOW: blocks only, MEDIUM: downsampled waveform, HIGH: full quality
+        RenderQuality quality = GetRenderQuality(fPixelsPerSecond);
 
         // When updating only playhead, we still need to redraw the lanes it crosses
         // but we can skip track names and other static elements
@@ -1781,8 +1799,8 @@ public:
                 const AudioSampleCache* audioCache = nullptr;
 
                 // Try to get audio file path
-                // OPTIMIZATION: Skip waveform loading entirely in simple mode!
-                if (!simpleMode) {
+                // PERFORMANCE: Skip waveform loading in LOW quality mode
+                if (quality != RenderQuality::LOW) {
                     BString audioPath = track->AudioFilePath();
 
                     if (audioPath.Length() > 0 && widthPixels > 0) {
@@ -1827,11 +1845,13 @@ public:
                     }
                 }
 
-                // ULTRA-FAST: simple colored block when zoomed way out
-                if (simpleMode) {
+                // PERFORMANCE: Render based on quality level
+                if (quality == RenderQuality::LOW) {
+                    // LOW: Simple colored block only (minimal CPU)
                     SetHighColor(trackColor.red * 0.85, trackColor.green * 0.85, trackColor.blue * 0.85, 180);
                     FillRect(blockRect);
                 } else if (audioCache && audioCache->isValid) {
+                    // MEDIUM/HIGH: Draw waveform (detail varies by quality)
                     // Draw real waveform using R6-style on-the-fly GetSample() (FAST!)
                     float centerY = y + laneHeight / 2;
                     float maxHeight = (laneHeight - 12) * 0.5f;
@@ -1914,8 +1934,8 @@ public:
                             currentLoopTime += loopLength;
                         }
                     }
-                } else if (!simpleMode) {
-                    // Fallback: pseudo-random waveform (only in detailed mode)
+                } else if (quality != RenderQuality::LOW) {
+                    // Fallback: pseudo-random waveform (MEDIUM/HIGH quality)
                     SetHighColor(trackColor.red * 0.8, trackColor.green * 0.8, trackColor.blue * 0.8, 200);
                     float centerY = y + laneHeight / 2;
 
@@ -2024,8 +2044,8 @@ public:
                         FillRect(updateBlockRect);
 
                         // Redraw waveform in the update area
-                        if (simpleMode) {
-                            // Just the colored block - already filled above
+                        if (quality == RenderQuality::LOW) {
+                            // LOW quality: Just the colored block - already filled above
                         } else {
                             // Redraw waveform for the section that intersects updateRect
                             // Get audio file path and resolve it

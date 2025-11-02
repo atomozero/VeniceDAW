@@ -72,11 +72,45 @@ draw_playhead:
 - Slow path automatico se creazione cache fallisce
 - Rendering playhead sempre aggiornato (non cachato)
 
+### ✅ Commit 3: Adaptive Quality System (completato ora)
+**Tipo**: perf
+**Cosa**: Sistema di qualità a 3 livelli basato su zoom
+**Codice aggiunto**:
+```cpp
+// Enum per quality levels
+enum class RenderQuality {
+    LOW,     // Colored blocks only (< 3 px/sec)
+    MEDIUM,  // Downsampled waveform (3-20 px/sec)
+    HIGH     // Full quality waveform (> 20 px/sec)
+};
+
+// Determina quality in base allo zoom
+inline RenderQuality GetRenderQuality(float pixelsPerSecond) {
+    if (pixelsPerSecond < 3.0f) return RenderQuality::LOW;
+    else if (pixelsPerSecond < 20.0f) return RenderQuality::MEDIUM;
+    else return RenderQuality::HIGH;
+}
+
+// Uso nel rendering
+RenderQuality quality = GetRenderQuality(fPixelsPerSecond);
+if (quality == RenderQuality::LOW) {
+    // Solo blocchi colorati - CPU minima
+} else if (quality != RenderQuality::LOW) {
+    // Waveform con dettaglio variabile
+}
+```
+**Benefici**:
+- 3 livelli di qualità chiari e documentati
+- LOW: Skip completo del waveform rendering (massimo risparmio)
+- MEDIUM: Waveform con downsampling per zoom intermedi
+- HIGH: Qualità completa per zoom ravvicinati
+- Transizioni automatiche basate su zoom level
+
 ## COMMITS IN CORSO
 
 ## COMMITS PIANIFICATI
 
-### Commit 3: Adaptive Quality System
+### Commit 4: OpenGL Batch Rendering
 **Tipo**: perf
 **Cosa**: Qualità adaptive basata su zoom e risorse sistema
 - Low quality: solo colored blocks (< 3 px/sec)
