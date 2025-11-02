@@ -273,11 +273,30 @@ void Mixer3DView::RenderScene()
     // Animate and draw tracks
     AnimateScene();
     int trackIndex = 0;
+    int culledTracks = 0;  // Performance metric
     for (const Track3D& track : f3DTracks) {
+        // Frustum culling optimization: Skip tracks outside view frustum
+        // Sphere radius = track scale (0.6-1.0) + animation float (0.15) + glow margin (0.5)
+        float trackRadius = 1.0f + track.scale + 0.65f;  // Conservative estimate
+
+        if (!IsTrackVisible(track.x, track.y, track.z, trackRadius)) {
+            culledTracks++;
+            trackIndex++;
+            continue;  // Skip rendering, track is outside frustum
+        }
+
         DrawTrack3D(track);
         // Draw track number next to sphere (1-based for user display)
         DrawTrackNumber(trackIndex + 1, track.x, track.y, track.z);
         trackIndex++;
+    }
+
+    // Performance debug info (only print occasionally to avoid spam)
+    static int frameCount = 0;
+    if (culledTracks > 0 && (frameCount++ % 120 == 0)) {
+        printf("[Frustum Culling] Skipped %d/%d tracks this frame (%.1f%% saved)\n",
+               culledTracks, (int)f3DTracks.size(),
+               (culledTracks * 100.0f) / f3DTracks.size());
     }
 
     // Update and render particle system
@@ -418,6 +437,69 @@ void Mixer3DView::DrawGrid()
 
     glLineWidth(1.0f);
     glEnable(GL_LIGHTING);
+}
+
+// Frustum culling optimization: Test if track sphere is visible
+bool Mixer3DView::IsTrackVisible(float x, float y, float z, float radius) const
+{
+    // Calculate vector from camera to track
+    float dx = x - fCachedCameraX;
+    float dy = y - fCachedCameraY;
+    float dz = z - fCachedCameraZ;
+    float distanceSquared = dx*dx + dy*dy + dz*dz;
+
+    // Far plane culling: Skip objects too far from camera
+    // Maximum distance = camera distance + generous margin
+    float maxDistance = fCameraDistance * 2.5f;
+    if (distanceSquared > maxDistance * maxDistance) {
+        return false;  // Too far, not visible
+    }
+
+    // Near plane culling: Skip objects too close
+    float minDistance = 0.5f;
+    if (distanceSquared < minDistance * minDistance) {
+        return false;  // Too close, not visible
+    }
+
+    // Simplified frustum test: Check if track is roughly within view cone
+    // FOV is approximately 45 degrees, use cosine for angle test
+    float distance = sqrt(distanceSquared);
+
+    // Direction from camera to track (normalized)
+    float dirX = dx / distance;
+    float dirY = dy / distance;
+    float dirZ = dz / distance;
+
+    // Camera forward direction (from gluLookAt setup)
+    float camDirX = fCameraTarget[0] - fCachedCameraX;
+    float camDirY = fCameraTarget[1] - fCachedCameraY;
+    float camDirZ = fCameraTarget[2] - fCachedCameraZ;
+    float camDirLength = sqrt(camDirX*camDirX + camDirY*camDirY + camDirZ*camDirZ);
+
+    if (camDirLength < 0.001f) {
+        return true;  // Degenerate case, render to be safe
+    }
+
+    camDirX /= camDirLength;
+    camDirY /= camDirLength;
+    camDirZ /= camDirLength;
+
+    // Dot product to find angle between camera direction and track direction
+    float dotProduct = dirX * camDirX + dirY * camDirY + dirZ * camDirZ;
+
+    // cos(70°) ≈ 0.34 - generous frustum cone (wider than actual 45° FOV)
+    // This ensures we don't accidentally cull visible objects at screen edges
+    float minCosAngle = 0.25f;  // Very generous cone
+
+    // Account for sphere radius in frustum test
+    float sinHalfAngle = radius / distance;
+    float adjustedMinCosAngle = minCosAngle - sinHalfAngle;
+
+    if (dotProduct < adjustedMinCosAngle) {
+        return false;  // Outside frustum cone
+    }
+
+    return true;  // Track is visible, render it
 }
 
 void Mixer3DView::DrawTrackNumber(int trackNumber, float x, float y, float z)

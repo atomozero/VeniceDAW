@@ -131,6 +131,9 @@ protected:
     // Drawing helpers (protected for SpatialMixer3DView access)
     void DrawGrid();
 
+    // Frustum culling optimization
+    bool IsTrackVisible(float x, float y, float z, float radius) const;
+
 private:
     // Mouse interaction (private)
     BPoint fLastMousePos;
