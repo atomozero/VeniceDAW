@@ -1,28 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pkgman install:*)",
-      "Bash(make:*)",
-      "Bash(git pull:*)",
-      "Bash(git commit:*)",
-      "Bash(git reset:*)",
-      "Bash(git fetch:*)",
-      "Bash(git add:*)",
-      "Bash(git rebase:*)",
-      "Bash(git push:*)",
-      "Read(//boot/home/Desktop/3D_Mixes/she-loves-it/she-loves-it-3dmix/**)",
-      "Read(//boot/home/Desktop/3D_Mixes/**)",
-      "Read(//boot/home/Telegram Desktop/R6 Source/src/apps/3d_mixer/**)",
-      "Bash(./demo_3dmix_viewer:*)",
-      "Bash(./analyze_3dmix_bmessage:*)",
-      "Bash(python3:*)",
-      "Bash(./test_3dmix_parser:*)",
-      "Bash(git restore:*)",
-      "Bash(g++:*)",
-      "Bash(./diagnose_track_loop:*)",
-      "Bash(for file in \"/boot/home/Desktop/3D_Mixes/the-lynx/the-lynx-3dmix\"/{epiano-left,bass,drums,kickcrash})",
-      "Bash(do echo \"\" ./diagnose_track_loop \"$file\")",
-      "Bash(ls:*)"
+      "Bash(for:*)",
+      "Bash(xargs perl:*)"
     ],
     "deny": [],
     "ask": []
