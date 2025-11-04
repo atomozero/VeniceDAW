@@ -3230,11 +3230,18 @@ public:
             // In BeOS 3D Mixer: Y is depth, X is left/right, Z is height
             float distance = sqrt(pos.x * pos.x + pos.y * pos.y);
 
-            // Volume attenuation based on distance
-            // Closer sources are louder, distant sources are quieter
-            const float minDistance = 1.0f;  // Prevent division by zero
-            const float attenuationFactor = 0.15f;  // How quickly sound fades with distance
-            float distanceGain = 1.0f / (1.0f + (fmax(distance, minDistance) - minDistance) * attenuationFactor);
+            // === QUADRATIC DISTANCE ATTENUATION ===
+            // BeOS 3D Mixer algorithm from sound_view.cpp lines 4798-4801, 4908-4911
+            // Uses Y-position for depth, with QUADRATIC falloff (inverse-square law)
+            // Formula: gain = ((pos_y + 150) / 200) ^ 2
+            // This mimics natural acoustic attenuation more accurately than linear
+
+            // BeOS uses Y-only distance with offset and scaling
+            float normalizedDistance = (pos.y + 150.0f) / 200.0f;
+            if (normalizedDistance < 0.0f) normalizedDistance = 0.0f;
+
+            // Quadratic attenuation (inverse-square law approximation)
+            float distanceGain = normalizedDistance * normalizedDistance;
 
             // Pan calculation based on X position
             // X: negative = left, positive = right
