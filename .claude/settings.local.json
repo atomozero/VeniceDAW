@@ -21,7 +21,8 @@
       "Bash(g++:*)",
       "Bash(./diagnose_track_loop:*)",
       "Bash(for file in \"/boot/home/Desktop/3D_Mixes/the-lynx/the-lynx-3dmix\"/{epiano-left,bass,drums,kickcrash})",
-      "Bash(do echo \"\" ./diagnose_track_loop \"$file\")"
+      "Bash(do echo \"\" ./diagnose_track_loop \"$file\")",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []
