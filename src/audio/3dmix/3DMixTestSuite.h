@@ -6,11 +6,11 @@
 #ifndef THREEDMIX_TEST_SUITE_H
 #define THREEDMIX_TEST_SUITE_H
 
-#include "3DMixFormat.h"
-#include "3DMixParser.h"
-#include "CoordinateSystemMapper.h"
-#include "AudioPathResolver.h"
-#include "3DMixProjectImporter.h"
+#include <lib3dmix/3DMixFormat.h>
+#include <lib3dmix/3DMixParser.h>
+#include <lib3dmix/CoordinateSystemMapper.h>
+#include <lib3dmix/AudioPathResolver.h>
+#include <lib3dmix/3DMixProjectImporter.h>
 #include <support/String.h>
 #include <vector>
 
