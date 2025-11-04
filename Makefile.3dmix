@@ -4,21 +4,16 @@
 # Compiler and flags
 CXX = g++
 CXXFLAGS = -std=c++11 -Wall -Wextra -O2
-INCLUDES = -I. -I/boot/system/headers -I/boot/system/headers/cpp
-LIBS = -lbe -lmedia -ltracker -lroot -ltranslation
+INCLUDES = -I. -I/boot/system/headers -I/boot/system/headers/cpp -I../lib3dmix/include
+LIBS = -lbe -lmedia -ltracker -lroot -ltranslation -L../lib3dmix/lib -l3dmix
 
 # Source directories
 3DMIX_DIR = src/audio/3dmix
 GUI_DIR = src/gui
 AUDIO_DIR = src/audio
 
-# 3dmix core source files
+# 3dmix core source files (now using external lib3dmix)
 3DMIX_SOURCES = \
-	$(3DMIX_DIR)/3DMixFormat.cpp \
-	$(3DMIX_DIR)/3DMixParser.cpp \
-	$(3DMIX_DIR)/CoordinateSystemMapper.cpp \
-	$(3DMIX_DIR)/AudioPathResolver.cpp \
-	$(3DMIX_DIR)/3DMixProjectImporter.cpp \
 	$(3DMIX_DIR)/3DMixTestSuite.cpp
 
 # GUI integration source files

@@ -3,8 +3,8 @@
 
 CXX = g++
 CXXFLAGS = -std=c++11 -Wall -O2 -DHAIKU_NATIVE
-INCLUDES = -I. -Isrc -I/boot/system/develop/headers -I/boot/system/develop/headers/os
-LIBS = -lbe -lmedia -ltracker -lroot -lGL -lGLU -ltranslation
+INCLUDES = -I. -Isrc -I/boot/system/develop/headers -I/boot/system/develop/headers/os -I../lib3dmix/include
+LIBS = -lbe -lmedia -ltracker -lroot -lGL -lGLU -ltranslation -L../lib3dmix/lib -l3dmix
 
 # Source directories
 AUDIO_SRC = src/audio
@@ -23,12 +23,7 @@ AUDIO_SOURCES = $(AUDIO_SRC)/SimpleHaikuEngine.cpp \
                 $(AUDIO_SRC)/AudioLogging.cpp \
                 $(AUDIO_SRC)/MemoryMonitor.cpp \
                 $(AUDIO_SRC)/AudioBufferPool.cpp \
-                $(AUDIO_SRC)/VeniceAudioInputNode.cpp \
-                $(AUDIO_SRC)/3dmix/3DMixProjectImporter.cpp \
-                $(AUDIO_SRC)/3dmix/3DMixParser.cpp \
-                $(AUDIO_SRC)/3dmix/3DMixFormat.cpp \
-                $(AUDIO_SRC)/3dmix/AudioPathResolver.cpp \
-                $(AUDIO_SRC)/3dmix/CoordinateSystemMapper.cpp
+                $(AUDIO_SRC)/VeniceAudioInputNode.cpp
 
 # GUI sources
 GUI_SOURCES = $(GUI_SRC)/Mixer3DWindow.cpp \
