@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(for:*)",
-      "Bash(xargs perl:*)"
+      "Bash(xargs perl:*)",
+      "Bash(killall:*)",
+      "Bash(/tmp/old_$file.cpp)"
     ],
     "deny": [],
     "ask": []

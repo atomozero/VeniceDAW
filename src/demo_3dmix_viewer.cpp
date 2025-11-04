@@ -3245,6 +3245,26 @@ public:
             float leftGain = cos((pan + 1.0f) * M_PI / 4.0f) * distanceGain;
             float rightGain = sin((pan + 1.0f) * M_PI / 4.0f) * distanceGain;
 
+            // === ITD (Interaural Time Difference) CALCULATION ===
+            // BeOS 3D Mixer algorithm from sound_view.cpp lines 4314-4322
+            // Creates realistic spatial audio by delaying one ear based on X position
+            int32 delayLeft = 0;
+            int32 delayRight = 0;
+
+            // Calculate delay in samples based on X position
+            // Formula: delay = pos_x / 3.5 (from BeOS original)
+            int32 baseDelay = (int32)(pos.x / 3.5f);
+
+            if (baseDelay < 0) {
+                // Source on the left: delay RIGHT ear
+                delayRight = -baseDelay;
+                delayLeft = 0;
+            } else {
+                // Source on the right: delay LEFT ear
+                delayLeft = baseDelay;
+                delayRight = 0;
+            }
+
             // Master volume scaling
             const float masterVolume = 0.8f;
             leftGain *= masterVolume;
@@ -3298,13 +3318,47 @@ public:
                 rmsSum += sample * sample;
                 sampleCount++;
 
-                // Mix into output with 3D spatial positioning
+                // Mix into output with 3D spatial positioning AND ITD delays
                 if (format.channel_count >= 2) {
-                    // Stereo output: apply pan and distance
-                    buffer[frame * format.channel_count + 0] += sample * leftGain;   // Left
-                    buffer[frame * format.channel_count + 1] += sample * rightGain;  // Right
+                    // === Apply ITD (Interaural Time Difference) ===
+                    // BeOS algorithm from sound_view.cpp lines 4333-4350
+                    // Delayed samples create realistic head-shadow effect
+
+                    // Calculate delayed sample indices
+                    int64 leftSrcIdx = srcIdx - delayRight;   // Left ear with right delay
+                    int64 rightSrcIdx = srcIdx - delayLeft;   // Right ear with left delay
+
+                    // Get left channel sample (with right delay applied)
+                    float leftSample = sample;  // Default to current sample
+                    if (delayRight > 0 && leftSrcIdx >= 0 && leftSrcIdx < (int64)audioCache->samples.size()) {
+                        // Apply delay: fetch earlier sample
+                        if (leftSrcIdx + 1 < (int64)audioCache->samples.size()) {
+                            float frac = (srcPosition - delayRight) - (int64)(srcPosition - delayRight);
+                            leftSample = audioCache->samples[leftSrcIdx] +
+                                        frac * (audioCache->samples[leftSrcIdx + 1] - audioCache->samples[leftSrcIdx]);
+                        } else {
+                            leftSample = audioCache->samples[leftSrcIdx];
+                        }
+                    }
+
+                    // Get right channel sample (with left delay applied)
+                    float rightSample = sample;  // Default to current sample
+                    if (delayLeft > 0 && rightSrcIdx >= 0 && rightSrcIdx < (int64)audioCache->samples.size()) {
+                        // Apply delay: fetch earlier sample
+                        if (rightSrcIdx + 1 < (int64)audioCache->samples.size()) {
+                            float frac = (srcPosition - delayLeft) - (int64)(srcPosition - delayLeft);
+                            rightSample = audioCache->samples[rightSrcIdx] +
+                                         frac * (audioCache->samples[rightSrcIdx + 1] - audioCache->samples[rightSrcIdx]);
+                        } else {
+                            rightSample = audioCache->samples[rightSrcIdx];
+                        }
+                    }
+
+                    // Mix with spatial gains
+                    buffer[frame * format.channel_count + 0] += leftSample * leftGain;    // Left with ITD
+                    buffer[frame * format.channel_count + 1] += rightSample * rightGain;  // Right with ITD
                 } else {
-                    // Mono output: use average gain
+                    // Mono output: use average gain (no ITD)
                     float monoGain = (leftGain + rightGain) * 0.5f;
                     buffer[frame * format.channel_count + 0] += sample * monoGain;
                 }
