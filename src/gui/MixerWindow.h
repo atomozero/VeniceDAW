@@ -26,7 +26,7 @@
 #include <vector>
 
 // 3dmix import support
-#include "../audio/3dmix/3DMixProjectImporter.h"
+#include <lib3dmix/3DMixProjectImporter.h>
 
 namespace HaikuDAW {
 

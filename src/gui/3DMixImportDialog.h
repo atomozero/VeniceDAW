@@ -31,7 +31,7 @@
 #include <LayoutBuilder.h>
 #include <Bitmap.h>
 #include <IconUtils.h>
-#include "../audio/3dmix/3DMixProjectImporter.h"
+#include <lib3dmix/3DMixProjectImporter.h>
 #include "../audio/3dmix/3DMixTestSuite.h"
 
 // Forward declarations
