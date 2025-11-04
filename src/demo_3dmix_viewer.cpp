@@ -2715,6 +2715,8 @@ public:
         , fMasterLevelLeft(0.0f)
         , fMasterLevelRight(0.0f)
         , fAnySoloActive(false)
+        , fGlobalGain(1.5f)          // BeOS starts at 1.5 (soft headroom)
+        , fSaturationCounter(0)
     {
         // Initialize track levels to zero
         memset(fTrackLevels, 0, sizeof(fTrackLevels));
@@ -3272,10 +3274,11 @@ public:
                 delayRight = 0;
             }
 
-            // Master volume scaling
-            const float masterVolume = 0.8f;
-            leftGain *= masterVolume;
-            rightGain *= masterVolume;
+            // Master volume scaling with AUTO-GAIN
+            // BeOS uses dynamic fGlobalGain / track_count
+            // We apply fGlobalGain directly (already normalized)
+            leftGain *= fGlobalGain;
+            rightGain *= fGlobalGain;
 
             // Debug: log spatial parameters once per track
             static bool spatialLogged[32] = {false};
@@ -3378,13 +3381,36 @@ public:
             }
         }
 
-        // Calculate master output levels (L/R stereo)
+        // === AUTO-GAIN / LEVELING SYSTEM ===
+        // BeOS 3D Mixer algorithm from sound_view.cpp lines 4705-4711
+        // Monitors clipping and dynamically adjusts global gain
+
+        // Reset saturation counter for this buffer
+        fSaturationCounter = 0;
+
+        // Calculate master output levels AND detect clipping
         float leftRmsSum = 0.0f;
         float rightRmsSum = 0.0f;
         if (format.channel_count >= 2) {
             for (int32 frame = 0; frame < frameCount; frame++) {
                 float leftSample = buffer[frame * format.channel_count + 0];
                 float rightSample = buffer[frame * format.channel_count + 1];
+
+                // Detect saturation (clipping)
+                if (fabs(leftSample) > 1.0f || fabs(rightSample) > 1.0f) {
+                    fSaturationCounter++;
+                }
+
+                // Hard clipping to prevent distortion
+                if (leftSample > 1.0f) leftSample = 1.0f;
+                if (leftSample < -1.0f) leftSample = -1.0f;
+                if (rightSample > 1.0f) rightSample = 1.0f;
+                if (rightSample < -1.0f) rightSample = -1.0f;
+
+                buffer[frame * format.channel_count + 0] = leftSample;
+                buffer[frame * format.channel_count + 1] = rightSample;
+
+                // Accumulate for RMS
                 leftRmsSum += leftSample * leftSample;
                 rightRmsSum += rightSample * rightSample;
             }
@@ -3392,6 +3418,18 @@ public:
                 fMasterLevelLeft = fmin(sqrt(leftRmsSum / frameCount) * 2.0f, 1.0f);
                 fMasterLevelRight = fmin(sqrt(rightRmsSum / frameCount) * 2.0f, 1.0f);
             }
+        }
+
+        // Dynamic gain adjustment based on saturation
+        // BeOS: if (sat > 4) reduce, else gradually increase
+        if (fSaturationCounter > 4) {
+            // Too much clipping: reduce gain by 1%
+            fGlobalGain *= 0.99f;
+        } else {
+            // No/little clipping: gradually increase by 1%
+            fGlobalGain *= 1.01f;
+            // Cap at 3.0 maximum (BeOS limit)
+            if (fGlobalGain > 3.0f) fGlobalGain = 3.0f;
         }
 
         // Update frame position for next callback
@@ -3442,6 +3480,11 @@ private:
     bool fTrackMute[64];     // true = track silenced
     bool fTrackSolo[64];     // true = track solo'd
     bool fAnySoloActive;     // Cache: true if any track has solo
+
+    // Auto-gain/leveling system (BeOS 3D Mixer style)
+    // From sound_view.cpp lines 4705-4711
+    float fGlobalGain;           // Dynamic master gain (auto-adjusted)
+    int32 fSaturationCounter;    // Counts clipping events per buffer
 };
 
 class DemoApp : public BApplication {
