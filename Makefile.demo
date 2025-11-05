@@ -4,7 +4,7 @@
 CXX = g++
 CXXFLAGS = -Wall -Wno-multichar -std=c++17 -pthread -g -O2 -march=native -fPIC
 INCLUDES = -I. -Isrc -I/boot/system/develop/headers -I/boot/system/develop/headers/cpp
-LIBS = -lbe -lroot -lGL -lGLU -lmedia
+LIBS = -lbe -lroot -lGL -lGLU -lmedia -ltracker
 
 # Demo executable
 DEMO = demo_3dmix_viewer

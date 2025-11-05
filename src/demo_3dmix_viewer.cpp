@@ -24,6 +24,10 @@
 #include <Font.h>
 #include <Button.h>
 #include <StringView.h>
+#include <MenuBar.h>
+#include <Menu.h>
+#include <MenuItem.h>
+#include <FilePanel.h>
 
 // Include our 3dmix parser
 #include "audio/3dmix/3DMixFormat.h"
@@ -35,6 +39,7 @@
 #include <MediaTrack.h>
 #include <Path.h>
 #include <Entry.h>
+#include <File.h>
 
 // AudioLogger stub - for 3dmix import system compatibility
 namespace VeniceDAW {
@@ -380,15 +385,15 @@ found_rate:
                     }
 
                     for (int ch = 0; ch < format.channels; ch++) {
-                        // Swap bytes for big-endian to little-endian conversion
+                        // BeOS Track Object files on Intel x86 are ALREADY little-endian
+                        // NO byte swapping needed (files were saved on x86 BeOS)
                         int16 rawValue = samples[ch];
-                        int16 swappedValue = ((rawValue & 0xFF) << 8) | ((rawValue >> 8) & 0xFF);
 
                         if (cache.samples.size() < 5) {
-                            printf("[AudioCache] Channel %d: LE=%d, BE(swapped)=%d\n", ch, rawValue, swappedValue);
+                            printf("[AudioCache] Channel %d: raw value (LE) = %d\n", ch, rawValue);
                         }
 
-                        sample += swappedValue / 32768.0f;
+                        sample += rawValue / 32768.0f;
                     }
                 } else if (format.bitDepth == 8) {
                     for (int ch = 0; ch < format.channels; ch++) {
@@ -1080,12 +1085,6 @@ public:
     }
 
     void DrawProjectInfo() {
-        // Only draw track name if hovering over a track
-        if (fHoveredTrackIndex < 0 || fHoveredTrackIndex >= (int)fSources.size())
-            return;
-
-        const AudioSource& hoveredSource = fSources[fHoveredTrackIndex];
-
         // Switch to 2D overlay mode
         glMatrixMode(GL_PROJECTION);
         glPushMatrix();
@@ -1100,51 +1099,96 @@ public:
 
         glDisable(GL_DEPTH_TEST);
 
-        // Calculate text size (approximate)
-        const char* trackName = hoveredSource.name.String();
-        int textLen = strlen(trackName);
-        float textWidth = textLen * 8.0f + 20.0f;  // Approximate character width
-        float boxHeight = 30.0f;
+        // Draw project name and track count in top-left corner
+        if (fProjectName.Length() > 0) {
+            char infoText[256];
+            snprintf(infoText, sizeof(infoText), "%s - %d tracks",
+                     fProjectName.String(), fTrackCount);
 
-        // Position near mouse cursor
-        float boxX = fMouseX + 15.0f;
-        float boxY = fMouseY - 15.0f;
+            int textLen = strlen(infoText);
+            float textWidth = textLen * 8.0f + 20.0f;
+            float boxHeight = 30.0f;
+            float boxX = 10.0f;
+            float boxY = 10.0f;
 
-        // Keep box within screen bounds
-        if (boxX + textWidth > bounds.Width() - 10)
-            boxX = bounds.Width() - textWidth - 10;
-        if (boxY < 10)
-            boxY = 10;
-        if (boxY + boxHeight > bounds.Height() - 10)
-            boxY = bounds.Height() - boxHeight - 10;
+            // Draw semi-transparent background
+            glColor4f(0.0f, 0.0f, 0.0f, 0.8f);
+            glBegin(GL_QUADS);
+            glVertex2f(boxX, boxY);
+            glVertex2f(boxX + textWidth, boxY);
+            glVertex2f(boxX + textWidth, boxY + boxHeight);
+            glVertex2f(boxX, boxY + boxHeight);
+            glEnd();
 
-        // Draw semi-transparent background
-        glColor4f(0.0f, 0.0f, 0.0f, 0.9f);
-        glBegin(GL_QUADS);
-        glVertex2f(boxX, boxY);
-        glVertex2f(boxX + textWidth, boxY);
-        glVertex2f(boxX + textWidth, boxY + boxHeight);
-        glVertex2f(boxX, boxY + boxHeight);
-        glEnd();
+            // Draw cyan border
+            glLineWidth(2.0f);
+            glColor3f(0.3f, 0.8f, 1.0f);
+            glBegin(GL_LINE_LOOP);
+            glVertex2f(boxX, boxY);
+            glVertex2f(boxX + textWidth, boxY);
+            glVertex2f(boxX + textWidth, boxY + boxHeight);
+            glVertex2f(boxX, boxY + boxHeight);
+            glEnd();
 
-        // Draw colored border
-        glLineWidth(2.0f);
-        glColor3ub(hoveredSource.color.red, hoveredSource.color.green, hoveredSource.color.blue);
-        glBegin(GL_LINE_LOOP);
-        glVertex2f(boxX, boxY);
-        glVertex2f(boxX + textWidth, boxY);
-        glVertex2f(boxX + textWidth, boxY + boxHeight);
-        glVertex2f(boxX, boxY + boxHeight);
-        glEnd();
+            // Draw text
+            glColor3f(1.0f, 1.0f, 1.0f);
+            float charX = boxX + 10.0f;
+            float charY = boxY + 10.0f;
 
-        // Draw text using simple bitmap font
-        glColor3f(1.0f, 1.0f, 1.0f);
-        float charX = boxX + 10.0f;
-        float charY = boxY + 10.0f;
+            for (int i = 0; infoText[i] != '\0'; i++) {
+                DrawChar(charX, charY, infoText[i]);
+                charX += 8.0f;
+            }
+        }
 
-        for (int i = 0; trackName[i] != '\0'; i++) {
-            DrawChar(charX, charY, trackName[i]);
-            charX += 8.0f;
+        // Draw track name if hovering over a track
+        if (fHoveredTrackIndex >= 0 && fHoveredTrackIndex < (int)fSources.size()) {
+            const AudioSource& hoveredSource = fSources[fHoveredTrackIndex];
+            const char* trackName = hoveredSource.name.String();
+            int textLen = strlen(trackName);
+            float textWidth = textLen * 8.0f + 20.0f;
+            float boxHeight = 30.0f;
+
+            // Position near mouse cursor
+            float boxX = fMouseX + 15.0f;
+            float boxY = fMouseY - 15.0f;
+
+            // Keep box within screen bounds
+            if (boxX + textWidth > bounds.Width() - 10)
+                boxX = bounds.Width() - textWidth - 10;
+            if (boxY < 10)
+                boxY = 50;  // Move below the project info box
+            if (boxY + boxHeight > bounds.Height() - 10)
+                boxY = bounds.Height() - boxHeight - 10;
+
+            // Draw semi-transparent background
+            glColor4f(0.0f, 0.0f, 0.0f, 0.9f);
+            glBegin(GL_QUADS);
+            glVertex2f(boxX, boxY);
+            glVertex2f(boxX + textWidth, boxY);
+            glVertex2f(boxX + textWidth, boxY + boxHeight);
+            glVertex2f(boxX, boxY + boxHeight);
+            glEnd();
+
+            // Draw colored border
+            glLineWidth(2.0f);
+            glColor3ub(hoveredSource.color.red, hoveredSource.color.green, hoveredSource.color.blue);
+            glBegin(GL_LINE_LOOP);
+            glVertex2f(boxX, boxY);
+            glVertex2f(boxX + textWidth, boxY);
+            glVertex2f(boxX + textWidth, boxY + boxHeight);
+            glVertex2f(boxX, boxY + boxHeight);
+            glEnd();
+
+            // Draw text
+            glColor3f(1.0f, 1.0f, 1.0f);
+            float charX = boxX + 10.0f;
+            float charY = boxY + 10.0f;
+
+            for (int i = 0; trackName[i] != '\0'; i++) {
+                DrawChar(charX, charY, trackName[i]);
+                charX += 8.0f;
+            }
         }
 
         glEnable(GL_DEPTH_TEST);
@@ -1444,14 +1488,14 @@ public:
 
         BRect bounds = Bounds();
 
-        // Invalidate old playhead position (with margin for anti-aliasing)
+        // Invalidate old playhead position (wider margin to ensure waveforms redraw)
         if (fLastPlayheadX >= 0) {
-            BRect oldRect(fLastPlayheadX - 10, 0, fLastPlayheadX + 10, bounds.bottom);
+            BRect oldRect(fLastPlayheadX - 50, 0, fLastPlayheadX + 50, bounds.bottom);
             Invalidate(oldRect);
         }
 
-        // Invalidate new playhead position
-        BRect newRect(newX - 10, 0, newX + 10, bounds.bottom);
+        // Invalidate new playhead position (wider margin to force full redraw, not playhead-only)
+        BRect newRect(newX - 50, 0, newX + 50, bounds.bottom);
         Invalidate(newRect);
 
         fLastPlayheadX = newX;
@@ -1636,15 +1680,19 @@ public:
         // This dramatically reduces CPU usage by avoiding re-rendering every frame
         bool playheadOnly = (updateRect.Width() < 30);
 
+        // TEMPORARY: Disable waveform cache to force direct rendering with waveforms
+        // TODO: Implement waveform rendering inside RenderTracksToView() for proper caching
+        bool useCacheTemporarilyDisabled = false;  // Set to false to disable cache
+
         // HYBRID APPROACH: Cache renders static elements (backgrounds, track names)
         // while waveforms are drawn on top each frame for accuracy
-        if (!playheadOnly && !fWaveformCacheValid) {
+        if (useCacheTemporarilyDisabled && !playheadOnly && !fWaveformCacheValid) {
             // Cache invalid, rebuild it (happens on zoom changes or first draw)
             RebuildWaveformCache();
         }
 
         // If cache is valid and we're doing full redraw, use it as base layer!
-        if (fWaveformCacheValid && fWaveformCacheBitmap && !playheadOnly) {
+        if (useCacheTemporarilyDisabled && fWaveformCacheValid && fWaveformCacheBitmap && !playheadOnly) {
             // FAST PATH: Just blit the cached bitmap
             DrawBitmap(fWaveformCacheBitmap, BPoint(0, 0));
 
@@ -1669,6 +1717,16 @@ public:
         // PERFORMANCE: Adaptive quality based on zoom level
         // LOW: blocks only, MEDIUM: downsampled waveform, HIGH: full quality
         RenderQuality quality = GetRenderQuality(fPixelsPerSecond);
+
+        // Debug: log quality level once
+        static bool qualityLogged = false;
+        if (!qualityLogged) {
+            const char* qualityStr = (quality == RenderQuality::LOW) ? "LOW" :
+                                     (quality == RenderQuality::MEDIUM) ? "MEDIUM" : "HIGH";
+            printf("[WaveformRender] Quality=%s (pixelsPerSecond=%.1f)\n", qualityStr, fPixelsPerSecond);
+            printf("[WaveformRender] Thresholds: LOW<3, MEDIUM 3-20, HIGH>20\n");
+            qualityLogged = true;
+        }
 
         // When updating only playhead, we still need to redraw the lanes it crosses
         // but we can skip track names and other static elements
@@ -1774,29 +1832,61 @@ public:
             SetFontSize(be_plain_font->Size());
 
             // Track region (audio block representation)
-            // Each track has its own start/end position in samples
-            const VeniceDAW::AudioFormat3DMix& format = track->GetAudioFormat();
-            int32 startSample = track->StartPosition();
-            int32 endSample = track->EndPosition();
+            // For BeOS 3D Mixer: All tracks start at time 0 in the timeline
+            // StartPosition/EndPosition are file offsets, NOT timeline positions
 
-            // Convert samples to seconds
-            // IMPORTANT: StartPosition/EndPosition were calculated at 22050 Hz in parser
-            // (see 3DMixParser.cpp line 850: kOriginalSampleRate = 22050.0f)
-            // We must use the same rate here for correct timeline positioning
             const float kTimelineReferenceRate = 22050.0f;
-            float sampleRate = kTimelineReferenceRate;  // Always use 22050 for timeline positioning
-            float startTime = startSample / sampleRate;
-            float endTime = endSample / sampleRate;
+            float sampleRate = kTimelineReferenceRate;
 
-            // If no explicit end position, calculate from file size
-            if (endSample == 0 && format.fileSize > 0 && format.channels > 0 && format.bitDepth > 0) {
-                int32 bytesPerSample = (format.bitDepth + 7) / 8;
-                int32 totalSamples = format.fileSize / (format.channels * bytesPerSample);
-                endTime = startTime + (totalSamples / sampleRate);
+            // All tracks start at 0 in timeline
+            float startTime = 0.0f;
+            float endTime = 0.0f;
+
+            // Calculate duration from audio cache (most accurate!)
+            // Resolve audio file path
+            BString audioPath = track->AudioFilePath();
+            BString resolvedPath;
+
+            if (audioPath.Length() > 0) {
+                // Extract filename from path
+                BPath pathObj(audioPath.String());
+                const char* filename = pathObj.Leaf();
+                if (filename && fProjectPath.Length() > 0) {
+                    // Get project directory
+                    BPath projectPath(fProjectPath.String());
+                    BPath parentPath;
+                    if (projectPath.GetParent(&parentPath) == B_OK) {
+                        BString projectDir(parentPath.Path());
+                        const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
+                        for (int ext = 0; extensions[ext] != nullptr; ext++) {
+                            BString testPath = projectDir;
+                            testPath << "/" << filename << extensions[ext];
+                            entry_ref ref;
+                            if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
+                                resolvedPath = testPath;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Get audio cache to calculate duration
+                if (resolvedPath.Length() > 0) {
+                    VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
+                    if (audioFormat.sampleRate == 0) {
+                        audioFormat.sampleRate = fProject.ProjectSampleRate();
+                    }
+                    const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
+                    if (audioCache && audioCache->isValid && !audioCache->samples.empty()) {
+                        // Calculate from actual audio samples!
+                        endTime = audioCache->samples.size() / audioCache->sampleRate;
+                        sampleRate = audioCache->sampleRate;
+                    }
+                }
             }
 
-            // If still no end time, use project duration as fallback
-            if (endTime <= startTime) {
+            // Fallback: use project duration if cache not available
+            if (endTime <= 0) {
                 endTime = fProject.CalculateTotalDuration();
             }
 
@@ -1814,12 +1904,12 @@ public:
                 float endX = trackNameWidth + 10 + (endTime * fPixelsPerSecond);
                 BRect blockRect(startX, y + 5, endX, y + laneHeight - 6);
 
-                // Audio block - BRIGHTER colors for visibility
-                SetHighColor(trackColor.red * 0.6, trackColor.green * 0.6, trackColor.blue * 0.6);
+                // Audio block - Bright solid colors (screenshot 50 style)
+                SetHighColor(trackColor.red * 0.85, trackColor.green * 0.85, trackColor.blue * 0.85);
                 FillRect(blockRect);
 
-                // Audio block border - BRIGHT
-                SetHighColor(trackColor.red * 1.0, trackColor.green * 1.0, trackColor.blue * 1.0);
+                // Audio block border - Bright
+                SetHighColor(trackColor.red, trackColor.green, trackColor.blue);
                 StrokeRect(blockRect);
 
                 // Real waveform visualization - R6-style on-the-fly rendering!
@@ -1869,20 +1959,34 @@ public:
                             // R6 approach: Get audio cache (samples loaded once, peaks calculated on-the-fly!)
                             const VeniceDAW::AudioFormat3DMix& audioFormat = track->GetAudioFormat();
                             audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
+
+                            if (i == 0) {  // Log first track only
+                                printf("[WaveformRender] Track '%s': resolved='%s', cache=%p, valid=%d\n",
+                                       track->TrackName().String(), resolvedPath.String(),
+                                       audioCache, audioCache ? audioCache->isValid : 0);
+                            }
+                        } else if (i == 0) {
+                            printf("[WaveformRender] Track '%s': audioPath='%s', filename='%s' - NO RESOLVED PATH!\n",
+                                   track->TrackName().String(), audioPath.String(), filename ? filename : "NULL");
                         }
                     }
                 }
 
-                // PERFORMANCE: Render based on quality level
+                // WAVEFORM RENDERING ENABLED - Classic DAW style with bright colors
                 if (quality == RenderQuality::LOW) {
                     // LOW: Simple colored block only (minimal CPU)
                     SetHighColor(trackColor.red * 0.85, trackColor.green * 0.85, trackColor.blue * 0.85, 180);
                     FillRect(blockRect);
+                    if (i == 0) {
+                        printf("[WaveformRender] Track '%s': Using LOW quality (blocks only, no waveform)\n",
+                               track->TrackName().String());
+                    }
                 } else if (audioCache && audioCache->isValid) {
                     // MEDIUM/HIGH: Draw waveform (detail varies by quality)
                     // Draw real waveform using R6-style on-the-fly GetSample() (FAST!)
                     float centerY = y + laneHeight / 2;
-                    float maxHeight = (laneHeight - 12) * 0.5f;
+                    // Classic DAW style: moderate height for professional look
+                    float maxHeight = (laneHeight - 10) * 0.75f;  // 75% of lane height
 
                     // Adaptive detail
                     int pixelSkip = 1;
@@ -1907,13 +2011,24 @@ public:
                     }
 
                     if (lineCount > 0) {
+                        // IMPORTANT: Constrain drawing to blockRect to prevent waveforms from escaping!
+                        BRegion clipRegion(blockRect);
+                        ConstrainClippingRegion(&clipRegion);
+
                         BeginLineArray(lineCount);
+                        // Pastel waveform colors (classic DAW style)
                         rgb_color waveColor = {
-                            (uint8)(trackColor.red * 0.9),
-                            (uint8)(trackColor.green * 0.9),
-                            (uint8)(trackColor.blue * 0.9),
-                            220
+                            (uint8)(trackColor.red * 0.7),
+                            (uint8)(trackColor.green * 0.7),
+                            (uint8)(trackColor.blue * 0.7),
+                            200  // Slightly transparent for softer look
                         };
+
+                        // Debug: Log waveform rendering for first track
+                        if (i == 0) {
+                            printf("[WaveformRender] Drawing %d waveform lines for track '%s' (widthPixels=%d, skip=%d)\n",
+                                   lineCount, track->TrackName().String(), widthPixels, pixelSkip);
+                        }
 
                         // R6-style rendering: GetSample() called per pixel ON-THE-FLY!
                         float time = 0.0f;  // Start at beginning of audio
@@ -1931,6 +2046,11 @@ public:
                             float minPeak, maxPeak;
                             audioCache->GetSample(sampleTime, secondsPerPixel, &minPeak, &maxPeak);
 
+                            // Moderate amplification for natural look (classic DAW style)
+                            const float amplification = 1.3f;  // Gentle boost for visibility
+                            minPeak = fmax(-1.0f, fmin(1.0f, minPeak * amplification));
+                            maxPeak = fmax(-1.0f, fmin(1.0f, maxPeak * amplification));
+
                             float minY = centerY - (minPeak * maxHeight);
                             float maxY = centerY - (maxPeak * maxHeight);
 
@@ -1939,6 +2059,9 @@ public:
                             time += secondsPerPixel;  // Advance time (like R6: time += zoom)
                         }
                         EndLineArray();
+
+                        // Reset clipping region
+                        ConstrainClippingRegion(NULL);
                     }
 
                     // Draw loop markers (vertical lines showing where loop repeats)
@@ -2695,16 +2818,43 @@ private:
     float fRightLevel;
 };
 
+// Helper function to build window title with filename
+static BString BuildWindowTitle(const char* projectPath) {
+    BString title = "3DMix Viewer - ";
+
+    if (projectPath) {
+        // Extract filename from full path
+        BPath path(projectPath);
+        if (path.InitCheck() == B_OK) {
+            title << path.Leaf();
+        } else {
+            // Fallback: find last slash manually
+            const char* lastSlash = strrchr(projectPath, '/');
+            if (lastSlash) {
+                title << (lastSlash + 1);
+            } else {
+                title << projectPath;
+            }
+        }
+    } else {
+        title << "No File";
+    }
+
+    return title;
+}
+
 class DemoWindow : public BWindow {
 public:
     DemoWindow(const char* projectPath)
-        : BWindow(BRect(100, 100, 900, 700), "3DMix Visualization Demo - Educational Only",
+        : BWindow(BRect(100, 100, 900, 700),
+                  projectPath ? BuildWindowTitle(projectPath).String() : "3DMix Viewer - No File",
                   B_TITLED_WINDOW, B_QUIT_ON_WINDOW_CLOSE)
         , fGLView(nullptr)
         , fUpdateRunner(nullptr)
         , fTimelineWindow(nullptr)
         , fProject(nullptr)
-        , fProjectPath(projectPath)  // Store the project file path
+        , fProjectPath(projectPath ? projectPath : "")  // Store the project file path
+        , fOpenPanel(nullptr)
         , fPlayButton(nullptr)
         , fStopButton(nullptr)
         , fTimeDisplay(nullptr)
@@ -2715,7 +2865,7 @@ public:
         , fMasterLevelLeft(0.0f)
         , fMasterLevelRight(0.0f)
         , fAnySoloActive(false)
-        , fGlobalGain(1.5f)          // BeOS starts at 1.5 (soft headroom)
+        , fGlobalGain(0.8f)          // Increased for audibility (was 0.6 too quiet, 1.5 distorted)
         , fSaturationCounter(0)
     {
         // Initialize track levels to zero
@@ -2727,9 +2877,24 @@ public:
 
         BRect bounds = Bounds();
 
-        // Reserve space at bottom for controls
+        // Create menu bar
+        const float menuHeight = 20;
+        BRect menuRect = bounds;
+        menuRect.bottom = menuRect.top + menuHeight;
+        BMenuBar* menuBar = new BMenuBar(menuRect, "menu_bar");
+
+        BMenu* fileMenu = new BMenu("File");
+        fileMenu->AddItem(new BMenuItem("Open...", new BMessage(MSG_OPEN_FILE), 'O'));
+        fileMenu->AddSeparatorItem();
+        fileMenu->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
+        menuBar->AddItem(fileMenu);
+
+        AddChild(menuBar);
+
+        // Reserve space at bottom for controls and at top for menu
         const float controlHeight = 50;
         BRect glRect = bounds;
+        glRect.top += menuHeight;
         glRect.bottom -= controlHeight;
 
         // Create GL view (reduced height)
@@ -2783,11 +2948,17 @@ public:
         fTimeDisplay->SetFont(be_fixed_font);
         AddChild(fTimeDisplay);
 
-        // Load and parse 3dmix file
-        LoadProject(projectPath);
-
-        // Initialize audio playback
-        InitAudioPlayback();
+        // Load and parse 3dmix file (if provided)
+        if (projectPath && strlen(projectPath) > 0) {
+            LoadProject(projectPath);
+            InitAudioPlayback();
+            // Auto-start playback
+            if (fSoundPlayer && fProject) {
+                TogglePlayback();
+            }
+        } else {
+            printf("No file specified. Use File > Open... to load a 3DMix project.\n");
+        }
 
         // Start animation
         BMessage pulse(MSG_PULSE);
@@ -2804,6 +2975,9 @@ public:
 
         delete fUpdateRunner;
 
+        // Clean up file panel
+        delete fOpenPanel;
+
         // Properly close TimelineWindow if it exists
         if (fTimelineWindow && fTimelineWindow->Lock()) {
             fTimelineWindow->Quit();
@@ -2816,9 +2990,49 @@ public:
     void LoadProject(const char* path) {
         printf("Loading 3DMix project: %s\n", path);
 
+        // Check if this is a "pointer file" (small text file with relative path)
+        BString actualPath = path;
+        BFile checkFile(path, B_READ_ONLY);
+        if (checkFile.InitCheck() == B_OK) {
+            off_t fileSize = 0;
+            checkFile.GetSize(&fileSize);
+
+            // If file is very small (< 256 bytes), it might be a pointer file
+            if (fileSize > 0 && fileSize < 256) {
+                char buffer[256];
+                ssize_t bytesRead = checkFile.Read(buffer, fileSize);
+                if (bytesRead > 0) {
+                    buffer[bytesRead] = '\0';
+
+                    // Remove trailing newlines/whitespace
+                    BString relativePath(buffer);
+                    relativePath.Trim();
+
+                    // Check if it looks like a relative path (no leading /)
+                    if (relativePath.Length() > 0 && relativePath[0] != '/') {
+                        // Resolve relative to the directory of the pointer file
+                        BPath originalPath(path);
+                        if (originalPath.InitCheck() == B_OK) {
+                            BPath parentDir;
+                            originalPath.GetParent(&parentDir);
+
+                            BPath resolvedPath(parentDir.Path(), relativePath.String());
+                            if (resolvedPath.InitCheck() == B_OK) {
+                                printf("→ Pointer file detected, redirecting to: %s\n", resolvedPath.Path());
+                                actualPath = resolvedPath.Path();
+
+                                // Update fProjectPath to use the actual file
+                                fProjectPath = actualPath.String();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         VeniceDAW::Legacy3DMixLoader loader;
 
-        if (loader.LoadProject(path) != B_OK) {
+        if (loader.LoadProject(actualPath.String()) != B_OK) {
             printf("Failed to parse 3DMix file: %s\n", loader.GetLastError().String());
             return;
         }
@@ -2835,13 +3049,29 @@ public:
         printf("Project: %s\n", project.ProjectName().String());
         printf("Tracks: %d\n", (int)project.CountTracks());
 
-        // Set project info for display in 3D view
-        fGLView->SetProjectInfo(project.ProjectName().String(), project.CountTracks());
+        // Extract filename from project path
+        BString fileName = "Unknown";
+        if (fProjectPath) {
+            BPath path(fProjectPath);
+            if (path.InitCheck() == B_OK) {
+                fileName = path.Leaf();
+            } else {
+                const char* lastSlash = strrchr(fProjectPath, '/');
+                if (lastSlash) {
+                    fileName = lastSlash + 1;
+                } else {
+                    fileName = fProjectPath;
+                }
+            }
+        }
+
+        // Set project info for display in 3D view (use filename instead of project name)
+        fGLView->SetProjectInfo(fileName.String(), project.CountTracks());
 
         // Update window title
         char windowTitle[512];
         snprintf(windowTitle, sizeof(windowTitle), "3DMix Viewer - %s (%d tracks)",
-                 project.ProjectName().String(), project.CountTracks());
+                 fileName.String(), project.CountTracks());
         SetTitle(windowTitle);
 
         printf("\n3D Audio Sources (Legend - match #numbers in 3D view):\n");
@@ -2907,6 +3137,60 @@ public:
 
     virtual void MessageReceived(BMessage* message) override {
         switch (message->what) {
+            case MSG_OPEN_FILE: {
+                // Create file panel if it doesn't exist
+                if (!fOpenPanel) {
+                    BMessenger target(this);
+                    fOpenPanel = new BFilePanel(B_OPEN_PANEL, &target);
+                    fOpenPanel->SetButtonLabel(B_DEFAULT_BUTTON, "Open");
+                    fOpenPanel->Window()->SetTitle("Open 3DMix File");
+                }
+                fOpenPanel->Show();
+                break;
+            }
+
+            case B_REFS_RECEIVED: {
+                // User selected a file from the file panel
+                entry_ref ref;
+                if (message->FindRef("refs", &ref) == B_OK) {
+                    BPath path(&ref);
+                    if (path.InitCheck() == B_OK) {
+                        // Stop current playback if any
+                        StopPlayback();
+
+                        // IMPORTANT: Close timeline window BEFORE deleting project
+                        // Timeline holds a reference to fProject, so it must be closed first
+                        if (fTimelineWindow && fTimelineWindow->Lock()) {
+                            fTimelineWindow->Quit();
+                            fTimelineWindow = nullptr;  // Will be recreated when user presses T
+                        }
+
+                        // Clean up old project
+                        if (fProject) {
+                            delete fProject;
+                            fProject = nullptr;
+                        }
+
+                        // Clean up old sound player
+                        if (fSoundPlayer) {
+                            delete fSoundPlayer;
+                            fSoundPlayer = nullptr;
+                        }
+
+                        // Load new project
+                        fProjectPath = path.Path();
+                        LoadProject(path.Path());
+                        InitAudioPlayback();
+
+                        // Auto-start playback
+                        if (fSoundPlayer && fProject) {
+                            TogglePlayback();
+                        }
+                    }
+                }
+                break;
+            }
+
             case MSG_PULSE:
                 if (fGLView) {
                     fGLView->Pulse();
@@ -3023,11 +3307,15 @@ public:
         if (fIsPlaying) {
             fSoundPlayer->Start();
             fSoundPlayer->SetHasData(true);
-            fPlayButton->SetLabel("⏸ Pause");
+            if (fPlayButton) {
+                fPlayButton->SetLabel("⏸ Pause");
+            }
             printf("[3D Audio] Playback STARTED\n");
         } else {
             fSoundPlayer->Stop();
-            fPlayButton->SetLabel("▶ Play");
+            if (fPlayButton) {
+                fPlayButton->SetLabel("▶ Play");
+            }
             printf("[3D Audio] Playback PAUSED\n");
         }
     }
@@ -3042,7 +3330,9 @@ public:
         }
 
         fCurrentFramePosition = 0;
-        fPlayButton->SetLabel("▶ Play");
+        if (fPlayButton) {
+            fPlayButton->SetLabel("▶ Play");
+        }
 
         // Update timeline windows
         if (fTimelineWindow && fTimelineWindow->Lock()) {
@@ -3428,8 +3718,8 @@ public:
         } else {
             // No/little clipping: gradually increase by 1%
             fGlobalGain *= 1.01f;
-            // Cap at 3.0 maximum (BeOS limit)
-            if (fGlobalGain > 3.0f) fGlobalGain = 3.0f;
+            // Cap at 1.0 maximum (reduced for multi-track projects, was 3.0)
+            if (fGlobalGain > 1.0f) fGlobalGain = 1.0f;
         }
 
         // Update frame position for next callback
@@ -3454,11 +3744,14 @@ public:
 
 private:
     static const uint32 MSG_PULSE = 'puls';
+    static const uint32 MSG_OPEN_FILE = 'open';
+
     DemoGL3DView* fGLView;
     BMessageRunner* fUpdateRunner;
     TimelineWindow* fTimelineWindow;
     VeniceDAW::Project3DMix* fProject;
     BString fProjectPath;  // Full path to the .3dmix file
+    BFilePanel* fOpenPanel;
 
     // Audio playback and transport controls
     BButton* fPlayButton;
@@ -3501,18 +3794,10 @@ private:
 };
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        printf("3DMix Visualization Demo - Educational Tool\n");
-        printf("============================================\n\n");
-        printf("Usage: %s <path-to-3dmix-file>\n\n", argv[0]);
-        printf("Example:\n");
-        printf("  %s /boot/home/Desktop/3D_Mixes/she-loves-it/she-loves-it-3dmix/she-loves-it.3dmix\n\n", argv[0]);
-        printf("This is a DIDACTIC DEMONSTRATION that shows 3D spatial audio positioning\n");
-        printf("WITHOUT playing any sound. Perfect for learning about spatial audio!\n");
-        return 1;
-    }
+    // Allow starting without arguments - user can open file from GUI
+    const char* initialFile = (argc >= 2) ? argv[1] : nullptr;
 
-    DemoApp app(argv[1]);
+    DemoApp app(initialFile);
     app.Run();
     return 0;
 }
