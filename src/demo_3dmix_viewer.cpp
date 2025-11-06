@@ -3262,13 +3262,14 @@ public:
                 break;
             }
 
-            case MSG_PULSE:
-                if (fGLView) {
-                    fGLView->Pulse();
-                }
-                // Update time display
-                UpdateTimeDisplay();
-                break;
+            // MSG_PULSE disabled for on-demand rendering
+            // case MSG_PULSE:
+            //     if (fGLView) {
+            //         fGLView->Pulse();
+            //     }
+            //     // Update time display
+            //     UpdateTimeDisplay();
+            //     break;
 
             case 'Play':
                 TogglePlayback();
