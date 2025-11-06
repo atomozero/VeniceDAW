@@ -58,8 +58,9 @@ struct AudioSource {
     float x, y, z;  // 3D position
     rgb_color color;
     float level;     // Current audio level (0.0 to 1.0) for visual pulsing
+    float volume;    // Track volume from 3DMix file (0.0 to 1.0)
 
-    AudioSource() : x(0), y(0), z(0), level(0) {
+    AudioSource() : x(0), y(0), z(0), level(0), volume(1.0f) {
         color.red = color.green = color.blue = 255;
         color.alpha = 255;
     }
@@ -3653,17 +3654,23 @@ public:
             // Master volume scaling with multi-track normalization
             // Divide by sqrt(trackCount) to prevent clipping when many tracks play simultaneously
             // Using sqrt instead of linear division preserves perceived loudness better
-            const float baseVolume = 0.8f;
+            const float baseVolume = 1.5f;  // Increased from 0.8f to improve signal level
             const float trackNormalization = sqrt((float)trackCount);
             const float masterVolume = baseVolume / trackNormalization;
-            leftGain *= masterVolume;
-            rightGain *= masterVolume;
+
+            // Apply per-track volume from 3DMix project (BeOS heritage compatibility)
+            float trackVolume = track->Volume();
+            if (trackVolume < 0.0f) trackVolume = 0.0f;
+            if (trackVolume > 2.0f) trackVolume = 2.0f;  // Allow up to 2x boost
+
+            leftGain *= masterVolume * trackVolume;
+            rightGain *= masterVolume * trackVolume;
 
             // Debug: log spatial parameters once per track
             static bool spatialLogged[32] = {false};
             if (!spatialLogged[i] && i < 32) {
-                printf("[3D Spatial] Track %d ('%s'): pos(%.2f, %.2f, %.2f) dist=%.2f pan=%.2f L=%.2f R=%.2f\n",
-                       i, track->TrackName().String(), pos.x, pos.y, pos.z, distance, pan, leftGain, rightGain);
+                printf("[3D Spatial] Track %d ('%s'): pos(%.2f, %.2f, %.2f) dist=%.2f pan=%.2f vol=%.2f L=%.2f R=%.2f\n",
+                       i, track->TrackName().String(), pos.x, pos.y, pos.z, distance, pan, trackVolume, leftGain, rightGain);
                 spatialLogged[i] = true;
             }
 
