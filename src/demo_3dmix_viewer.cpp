@@ -3816,22 +3816,9 @@ public:
             fGLView->SetTrackLevels(fTrackLevels, trackCount);
         }
 
-        // Update master VU meter
-        if (fMasterVUMeter && LockLooper()) {
-            fMasterVUMeter->SetLevels(fMasterLevelLeft, fMasterLevelRight);
-            UnlockLooper();
-        }
-
-        // Update time display at 15 FPS max (every ~2940 frames at 44100 Hz = ~66ms)
-        if (fCurrentFramePosition - fLastTimeDisplayUpdate > 2940) {
-            if (LockLooper()) {
-                UpdateTimeDisplay();
-                // NOTE: Timeline playhead updates removed from audio thread
-                // Calling BView methods from audio callback causes threading issues
-                fLastTimeDisplayUpdate = fCurrentFramePosition;
-                UnlockLooper();
-            }
-        }
+        // NOTE: VU meter and time display updates REMOVED from audio callback
+        // Calling LockLooper() from real-time audio thread causes distortion/glitches
+        // These updates should be done from a separate timer thread, not here
     }
 
     virtual bool QuitRequested() override {
