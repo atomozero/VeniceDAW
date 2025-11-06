@@ -2730,7 +2730,7 @@ public:
         , fProject(project)
         , fProjectPath(projectFilePath)
         , fContentView(nullptr)
-        , fUpdateRunner(nullptr)
+        // , fUpdateRunner(nullptr)  // DISABLED for on-demand rendering
     {
         fContentView = new TimelineContentView(Bounds(), project, projectFilePath,
                                                 sharedSoundPlayer, sharedFramePosition, sharedIsPlaying,
@@ -2744,25 +2744,26 @@ public:
     virtual void Show() override {
         BWindow::Show();
 
-        // Create animation timer now that window is shown and loop is active
-        if (!fUpdateRunner) {
-            printf("[TimelineWindow] Starting animation timer (30 FPS)\n");
-            BMessage pulse('Tpls');
-            fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 33ms = ~30 FPS
-        }
+        // Animation timer DISABLED for on-demand rendering
+        // if (!fUpdateRunner) {
+        //     printf("[TimelineWindow] Starting animation timer (30 FPS)\n");
+        //     BMessage pulse('Tpls');
+        //     fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 33ms = ~30 FPS
+        // }
     }
 
     ~TimelineWindow() {
-        delete fUpdateRunner;
+        // delete fUpdateRunner;  // DISABLED for on-demand rendering
     }
 
     virtual void MessageReceived(BMessage* message) override {
         switch (message->what) {
-            case 'Tpls':  // Timeline pulse
-                if (fContentView) {
-                    fContentView->UpdatePlayhead(0.033f);  // 33ms in seconds
-                }
-                break;
+            // Timeline pulse DISABLED for on-demand rendering
+            // case 'Tpls':  // Timeline pulse
+            //     if (fContentView) {
+            //         fContentView->UpdatePlayhead(0.033f);  // 33ms in seconds
+            //     }
+            //     break;
 
             case B_KEY_DOWN: {
                 // Intercept keyboard events at window level to handle regardless of focus
@@ -2794,8 +2795,8 @@ public:
     }
 
     void DebugTimerStatus() {
-        printf("[TimelineWindow] Timer status check:\n");
-        printf("  fUpdateRunner: %p\n", fUpdateRunner);
+        printf("[TimelineWindow] On-demand rendering mode (no timer)\n");
+        // printf("  fUpdateRunner: %p\n", fUpdateRunner);  // DISABLED
         printf("  fContentView: %p\n", fContentView);
     }
 
@@ -2815,7 +2816,7 @@ private:
     const VeniceDAW::Project3DMix& fProject;
     BString fProjectPath;  // Full path to the .3dmix file
     TimelineContentView* fContentView;
-    BMessageRunner* fUpdateRunner;
+    // BMessageRunner* fUpdateRunner;  // DISABLED for on-demand rendering
 };
 
 // Master VU Meter View - Shows stereo L/R levels horizontally
