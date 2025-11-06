@@ -322,17 +322,10 @@ found_rate:
                 file.Seek(headerSkip, SEEK_SET);
             }
 
-            // BeOS Track Object files: The header contains the PLAYBACK rate (44100),
-            // but the actual audio data was recorded at HALF that rate (22050).
-            // This is how BeOS 3D Mixer worked - files saved with doubled rate in header.
-            // We must use HALF the detected rate for correct playback.
-            if (detectedRate == 44100.0f) {
-                cache.sampleRate = 22050.0f;  // Use actual recording rate
-                printf("[AudioCache] BeOS Track Object: Header says %.0f Hz, using actual rate %.0f Hz\n",
-                       detectedRate, cache.sampleRate);
-            } else if (detectedRate > 0) {
+            // Use sample rate from header (BeOS original behavior)
+            if (detectedRate > 0) {
                 cache.sampleRate = detectedRate;
-                printf("[AudioCache] BeOS Track Object: Using sample rate from header: %.0f Hz\n", cache.sampleRate);
+                printf("[AudioCache] Using sample rate from header: %.0f Hz\n", cache.sampleRate);
             }
         } else {
             // Pure RAW file, start from beginning
@@ -3651,12 +3644,9 @@ public:
                 delayRight = 0;
             }
 
-            // Master volume scaling with multi-track normalization
-            // Divide by sqrt(trackCount) to prevent clipping when many tracks play simultaneously
-            // Using sqrt instead of linear division preserves perceived loudness better
-            const float baseVolume = 1.5f;  // Increased from 0.8f to improve signal level
-            const float trackNormalization = sqrt((float)trackCount);
-            const float masterVolume = baseVolume / trackNormalization;
+            // Master volume scaling (BeOS original: global_gain/n)
+            const float baseVolume = 0.8f;
+            const float masterVolume = baseVolume / (float)trackCount;
 
             // Apply per-track volume from 3DMix project (BeOS heritage compatibility)
             float trackVolume = track->Volume();
