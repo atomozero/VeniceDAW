@@ -3648,9 +3648,12 @@ public:
                 delayRight = 0;
             }
 
-            // Master volume scaling
-            // Use constant master volume for clean audio (auto-gain caused distortion)
-            const float masterVolume = 0.8f;
+            // Master volume scaling with multi-track normalization
+            // Divide by sqrt(trackCount) to prevent clipping when many tracks play simultaneously
+            // Using sqrt instead of linear division preserves perceived loudness better
+            const float baseVolume = 0.8f;
+            const float trackNormalization = sqrt((float)trackCount);
+            const float masterVolume = baseVolume / trackNormalization;
             leftGain *= masterVolume;
             rightGain *= masterVolume;
 
