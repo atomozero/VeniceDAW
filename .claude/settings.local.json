@@ -4,7 +4,8 @@
       "Bash(for:*)",
       "Bash(xargs perl:*)",
       "Bash(killall:*)",
-      "Bash(/tmp/old_$file.cpp)"
+      "Bash(/tmp/old_$file.cpp)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
