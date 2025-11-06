@@ -67,17 +67,17 @@ struct AudioSource {
 };
 
 // Audio sample cache - stores ALL audio samples (loaded once)
-// Inspired by R6's SampleCache with on-the-fly GetSample() method
+// BeOS R6 original: stereo int16 interleaved format
 struct AudioSampleCache {
-    std::vector<float> samples;      // All audio samples in memory
+    std::vector<int16_t> samples;    // Stereo int16 samples (L,R,L,R,...)
     float sampleRate;                // Sample rate (e.g., 44100)
-    int channels;                    // Number of channels
+    int channels;                    // Number of channels (always 2)
     bool isValid;
 
-    AudioSampleCache() : sampleRate(0.0f), channels(1), isValid(false) {}
+    AudioSampleCache() : sampleRate(0.0f), channels(2), isValid(false) {}
 
     // R6-style GetSample: Calculate min/max ON-THE-FLY for a time range
-    // This is called once per pixel during rendering
+    // Stereo int16: average L+R channels for waveform display
     void GetSample(float time, float duration, float* outMin, float* outMax) const {
         *outMin = 0.0f;
         *outMax = 0.0f;
@@ -86,35 +86,39 @@ struct AudioSampleCache {
             return;
         }
 
-        // Convert time to sample indices
-        int startIdx = (int)(time * sampleRate);
-        int numSamples = (int)(duration * sampleRate);
+        // Convert time to frame indices (1 frame = 2 samples for stereo)
+        int startFrame = (int)(time * sampleRate);
+        int numFrames = (int)(duration * sampleRate);
 
-        if (numSamples == 0) numSamples = 1;
+        if (numFrames == 0) numFrames = 1;
+
+        int startIdx = startFrame * 2;  // Stereo: 2 samples per frame
         if (startIdx >= (int)samples.size()) return;
 
-        int endIdx = startIdx + numSamples;
+        int endIdx = (startFrame + numFrames) * 2;
         if (endIdx > (int)samples.size()) {
             endIdx = samples.size();
         }
 
-        // Adaptive step like R6: step = 1 + (numSamples >> 1) for fast display
-        // This skips samples when zoomed out (many samples per pixel)
-        int step = 1 + (numSamples >> 1);  // Same as R6's fast_display mode
-        if (step < 1) step = 1;
+        // Adaptive step (in frames)
+        int step = (1 + (numFrames >> 1)) * 2;  // *2 for stereo
+        if (step < 2) step = 2;
 
-        float minVal = 0.0f;
-        float maxVal = 0.0f;
+        int16_t minVal = 0;
+        int16_t maxVal = 0;
 
-        // Scan only this pixel's range
-        for (int i = startIdx; i < endIdx && i < (int)samples.size(); i += step) {
-            float v = samples[i];
-            if (v < minVal) minVal = v;
-            if (v > maxVal) maxVal = v;
+        // Scan frames, average L+R for mono waveform display
+        for (int i = startIdx; i < endIdx && i + 1 < (int)samples.size(); i += step) {
+            int16_t left = samples[i];
+            int16_t right = samples[i + 1];
+            int16_t avg = (left + right) / 2;
+            if (avg < minVal) minVal = avg;
+            if (avg > maxVal) maxVal = avg;
         }
 
-        *outMin = minVal;
-        *outMax = maxVal;
+        // Normalize to -1.0 to +1.0
+        *outMin = minVal / 32768.0f;
+        *outMax = maxVal / 32768.0f;
     }
 };
 
@@ -173,32 +177,26 @@ private:
                 }
 
                 if (track) {
-                    // Decode to raw audio
+                    // Decode to raw audio - BeOS R6 format: stereo int16
                     media_format format;
                     format.type = B_MEDIA_RAW_AUDIO;
                     format.u.raw_audio = media_raw_audio_format::wildcard;
-                    format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_FLOAT;
+                    format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
                     format.u.raw_audio.channel_count = 2;
 
                     if (track->DecodedFormat(&format) == B_OK) {
                         int64 frameCount = track->CountFrames();
                         if (frameCount > 0) {
                             cache.sampleRate = format.u.raw_audio.frame_rate;
-                            cache.channels = format.u.raw_audio.channel_count;
+                            cache.channels = 2;  // Always stereo
 
-                            // OPTIMIZATION: For very long files, decimate during loading
-                            // to reduce memory and improve performance
-                            int decimation = 1;
-                            if (frameCount > 5000000) decimation = 2;  // >2min: keep every 2nd sample
-                            if (frameCount > 10000000) decimation = 4; // >4min: keep every 4th sample
+                            // Reserve space for stereo samples (2 samples per frame)
+                            cache.samples.reserve(frameCount * 2);
 
-                            cache.samples.reserve(frameCount / decimation);
-
-                            // Read samples with optional decimation
+                            // Read samples as stereo int16
                             const int bufferSize = 8192;
-                            float buffer[bufferSize * 2];
+                            int16_t buffer[bufferSize * 2];
                             int64 framesRead = 0;
-                            int decimationCounter = 0;
 
                             while (framesRead < frameCount) {
                                 int64 frames = 0;
@@ -206,26 +204,18 @@ private:
                                     break;
                                 }
 
-                                // Convert stereo to mono and store (with decimation)
-                                for (int64 i = 0; i < frames; i++) {
-                                    if (decimationCounter++ % decimation == 0) {
-                                        float mono = (buffer[i * 2] + buffer[i * 2 + 1]) * 0.5f;
-                                        cache.samples.push_back(mono);
-                                    }
+                                // Store stereo samples as-is (L,R,L,R,...)
+                                for (int64 i = 0; i < frames * 2; i++) {
+                                    cache.samples.push_back(buffer[i]);
                                 }
 
                                 framesRead += frames;
                             }
 
-                            // Adjust sample rate if decimated
-                            if (decimation > 1) {
-                                cache.sampleRate /= decimation;
-                            }
-
                             mediaFile.ReleaseTrack(track);
                             cache.isValid = true;
-                            printf("[AudioCache] ✓ Loaded %zu samples at %.0f Hz\n",
-                                   cache.samples.size(), cache.sampleRate);
+                            printf("[AudioCache] ✓ Loaded %zu samples (%zu frames) at %.0f Hz\n",
+                                   cache.samples.size(), cache.samples.size() / 2, cache.sampleRate);
                             return cache;
                         }
                     }
@@ -365,53 +355,24 @@ found_rate:
             for (int i = 0; i < framesInChunk; i++) {
                 uint8* frameData = chunkBuffer + (i * bytesPerFrame);
 
-                // Convert to mono float
-                float sample = 0.0f;
-                if (format.bitDepth == 16) {
-                    // BeOS Track Object files are BIG-ENDIAN!
-                    // Need to swap bytes on little-endian Haiku
+                // Store stereo int16 samples directly (BeOS R6 format)
+                if (format.bitDepth == 16 && format.channels == 2) {
                     int16* samples = (int16*)frameData;
 
-                    // Debug: log first few raw values (BEFORE swap)
-                    if (cache.samples.size() < 5) {
-                        printf("[AudioCache] Sample %zu: raw int16 values (LE) = [", cache.samples.size());
-                        for (int ch = 0; ch < format.channels; ch++) {
-                            printf("%d%s", samples[ch], ch < format.channels-1 ? ", " : "");
-                        }
-                        printf("]\n");
+                    // Debug: log first few raw values
+                    if (cache.samples.size() < 10) {
+                        printf("[AudioCache] Sample %zu: raw int16 values (LE) = [%d, %d]\n",
+                               cache.samples.size() / 2, samples[0], samples[1]);
                     }
 
-                    for (int ch = 0; ch < format.channels; ch++) {
-                        // BeOS Track Object files on Intel x86 are ALREADY little-endian
-                        // NO byte swapping needed (files were saved on x86 BeOS)
-                        int16 rawValue = samples[ch];
-
-                        if (cache.samples.size() < 5) {
-                            printf("[AudioCache] Channel %d: raw value (LE) = %d\n", ch, rawValue);
-                        }
-
-                        sample += rawValue / 32768.0f;
-                    }
-                } else if (format.bitDepth == 8) {
-                    for (int ch = 0; ch < format.channels; ch++) {
-                        sample += (frameData[ch] - 128) / 128.0f;
-                    }
+                    // Store L and R channels as-is (little-endian on x86)
+                    cache.samples.push_back(samples[0]);  // Left
+                    cache.samples.push_back(samples[1]);  // Right
                 } else {
-                    // Unknown bit depth - assume 16-bit
-                    printf("[AudioCache] WARNING: Unknown bitDepth %d, assuming 16-bit\n", format.bitDepth);
-                    int16* samples = (int16*)frameData;
-                    for (int ch = 0; ch < format.channels; ch++) {
-                        sample += samples[ch] / 32768.0f;
-                    }
+                    // Fallback for non-stereo or non-16bit
+                    printf("[AudioCache] WARNING: Unsupported format (bitDepth=%d, channels=%d)\n",
+                           format.bitDepth, format.channels);
                 }
-                sample /= format.channels;
-
-                // Debug: log first few converted values
-                if (cache.samples.size() < 5) {
-                    printf("[AudioCache] Sample %zu: converted float = %.6f\n", cache.samples.size(), sample);
-                }
-
-                cache.samples.push_back(sample);
             }
         }
 
@@ -3669,39 +3630,47 @@ public:
             int32 sampleCount = 0;
 
             // Copy samples from track to output buffer with sample rate conversion and looping
+            // BeOS R6 format: stereo int16 interleaved (L,R,L,R,...)
             for (int32 frame = 0; frame < frameCount; frame++) {
-                // Calculate source sample position (fractional)
-                float srcPosition = relativeTime * audioCache->sampleRate + (frame * sampleRateRatio);
-                int64 srcIdx = (int64)srcPosition;
+                // Calculate source FRAME position (fractional)
+                // Each frame = 2 samples (L+R) in stereo int16 format
+                float srcFramePosition = relativeTime * audioCache->sampleRate + (frame * sampleRateRatio);
+                int64 srcFrame = (int64)srcFramePosition;
 
                 // Apply BeOS-style looping if loop parameters are valid
                 if (loopLength > 0 && loopEnd > loopStart) {
                     // Add trim offset
-                    srcIdx += loopStart;
+                    srcFrame += loopStart;
 
                     // Apply modulo looping when we exceed loop end point
-                    if (srcIdx >= loopEnd) {
-                        int64 offsetFromLoopStart = srcIdx - loopStart;
-                        srcIdx = loopStart + (offsetFromLoopStart % loopLength);
+                    if (srcFrame >= loopEnd) {
+                        int64 offsetFromLoopStart = srcFrame - loopStart;
+                        srcFrame = loopStart + (offsetFromLoopStart % loopLength);
                     }
                 }
 
-                // Safety check: ensure we're within bounds
-                if (srcIdx < 0 || srcIdx >= (int64)audioCache->samples.size()) break;
+                // Convert frame index to sample index (stereo: 2 samples per frame)
+                int64 srcIdx = srcFrame * 2;
+
+                // Safety check: ensure stereo pair is within bounds
+                if (srcIdx < 0 || srcIdx + 1 >= (int64)audioCache->samples.size()) break;
+
+                // Read stereo int16 samples and convert to float (-1.0 to +1.0)
+                float leftSampleFloat = audioCache->samples[srcIdx] / 32768.0f;      // Left channel
+                float rightSampleFloat = audioCache->samples[srcIdx + 1] / 32768.0f;  // Right channel
 
                 // Linear interpolation for smooth sample rate conversion
-                float sample;
-                if (srcIdx + 1 < (int64)audioCache->samples.size()) {
-                    float frac = srcPosition - (int64)srcPosition;
-                    float s1 = audioCache->samples[srcIdx];
-                    float s2 = audioCache->samples[srcIdx + 1];
-                    sample = s1 + frac * (s2 - s1);
-                } else {
-                    sample = audioCache->samples[srcIdx];
+                if (srcIdx + 3 < (int64)audioCache->samples.size()) {
+                    float frac = srcFramePosition - (int64)srcFramePosition;
+                    float nextLeftFloat = audioCache->samples[srcIdx + 2] / 32768.0f;
+                    float nextRightFloat = audioCache->samples[srcIdx + 3] / 32768.0f;
+                    leftSampleFloat = leftSampleFloat + frac * (nextLeftFloat - leftSampleFloat);
+                    rightSampleFloat = rightSampleFloat + frac * (nextRightFloat - rightSampleFloat);
                 }
 
-                // Accumulate for RMS calculation
-                rmsSum += sample * sample;
+                // Average L+R for RMS calculation
+                float monoSample = (leftSampleFloat + rightSampleFloat) * 0.5f;
+                rmsSum += monoSample * monoSample;
                 sampleCount++;
 
                 // Mix into output with 3D spatial positioning AND ITD delays
@@ -3710,43 +3679,35 @@ public:
                     // BeOS algorithm from sound_view.cpp lines 4333-4350
                     // Delayed samples create realistic head-shadow effect
 
-                    // Calculate delayed sample indices
-                    int64 leftSrcIdx = srcIdx - delayRight;   // Left ear with right delay
-                    int64 rightSrcIdx = srcIdx - delayLeft;   // Right ear with left delay
+                    // Calculate delayed FRAME indices
+                    int64 leftDelayedFrame = srcFrame - delayRight;   // Left ear with right delay
+                    int64 rightDelayedFrame = srcFrame - delayLeft;   // Right ear with left delay
 
                     // Get left channel sample (with right delay applied)
-                    float leftSample = sample;  // Default to current sample
-                    if (delayRight > 0 && leftSrcIdx >= 0 && leftSrcIdx < (int64)audioCache->samples.size()) {
-                        // Apply delay: fetch earlier sample
-                        if (leftSrcIdx + 1 < (int64)audioCache->samples.size()) {
-                            float frac = (srcPosition - delayRight) - (int64)(srcPosition - delayRight);
-                            leftSample = audioCache->samples[leftSrcIdx] +
-                                        frac * (audioCache->samples[leftSrcIdx + 1] - audioCache->samples[leftSrcIdx]);
-                        } else {
-                            leftSample = audioCache->samples[leftSrcIdx];
+                    float finalLeftSample = leftSampleFloat;  // Default to current sample
+                    if (delayRight > 0 && leftDelayedFrame >= 0) {
+                        int64 leftDelayedIdx = leftDelayedFrame * 2;
+                        if (leftDelayedIdx + 1 < (int64)audioCache->samples.size()) {
+                            finalLeftSample = audioCache->samples[leftDelayedIdx] / 32768.0f;
                         }
                     }
 
                     // Get right channel sample (with left delay applied)
-                    float rightSample = sample;  // Default to current sample
-                    if (delayLeft > 0 && rightSrcIdx >= 0 && rightSrcIdx < (int64)audioCache->samples.size()) {
-                        // Apply delay: fetch earlier sample
-                        if (rightSrcIdx + 1 < (int64)audioCache->samples.size()) {
-                            float frac = (srcPosition - delayLeft) - (int64)(srcPosition - delayLeft);
-                            rightSample = audioCache->samples[rightSrcIdx] +
-                                         frac * (audioCache->samples[rightSrcIdx + 1] - audioCache->samples[rightSrcIdx]);
-                        } else {
-                            rightSample = audioCache->samples[rightSrcIdx];
+                    float finalRightSample = rightSampleFloat;  // Default to current sample
+                    if (delayLeft > 0 && rightDelayedFrame >= 0) {
+                        int64 rightDelayedIdx = rightDelayedFrame * 2;
+                        if (rightDelayedIdx + 1 < (int64)audioCache->samples.size()) {
+                            finalRightSample = audioCache->samples[rightDelayedIdx + 1] / 32768.0f;
                         }
                     }
 
                     // Mix with spatial gains
-                    buffer[frame * format.channel_count + 0] += leftSample * leftGain;    // Left with ITD
-                    buffer[frame * format.channel_count + 1] += rightSample * rightGain;  // Right with ITD
+                    buffer[frame * format.channel_count + 0] += finalLeftSample * leftGain;    // Left with ITD
+                    buffer[frame * format.channel_count + 1] += finalRightSample * rightGain;  // Right with ITD
                 } else {
                     // Mono output: use average gain (no ITD)
                     float monoGain = (leftGain + rightGain) * 0.5f;
-                    buffer[frame * format.channel_count + 0] += sample * monoGain;
+                    buffer[frame * format.channel_count + 0] += monoSample * monoGain;
                 }
             }
 
