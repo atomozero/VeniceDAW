@@ -743,6 +743,7 @@ public:
             Invalidate();  // Redraw with new position
         } else {
             UpdateHoveredTrack();
+            Invalidate();  // Redraw for hover feedback
         }
     }
 
@@ -762,6 +763,7 @@ public:
                    fDraggedTrackIndex, fSources[fDraggedTrackIndex].name.String(),
                    fDragStartX, fDragStartZ);
         }
+        Invalidate();  // Redraw for visual feedback
     }
 
     virtual void MouseUp(BPoint where) override {
@@ -771,6 +773,7 @@ public:
                    fSources[fDraggedTrackIndex].x, fSources[fDraggedTrackIndex].y);
             fIsDragging = false;
             fDraggedTrackIndex = -1;
+            Invalidate();  // Redraw after drag ends
         }
     }
 
