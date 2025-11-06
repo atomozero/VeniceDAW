@@ -5,7 +5,8 @@
       "Bash(xargs perl:*)",
       "Bash(killall:*)",
       "Bash(/tmp/old_$file.cpp)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(but were originally recorded at 22050 Hz\"\n\nReality:\n- If header says 44100 Hz, the file IS at 44100 Hz\n- No evidence of \"resampling\" in BeOS Track Object format\n- Forcing wrong sample rate destroys audio quality completely\n\nFix: Use detected sample rate from header as-is, no \"correction\"\n\nResult: Audio should now play at correct pitch and speed without distortion\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []

@@ -321,15 +321,10 @@ found_rate:
                 file.Seek(headerSkip, SEEK_SET);
             }
 
-            // BeOS Track Object files were saved with resampled audio at 44100 Hz,
-            // but were originally recorded at 22050 Hz. Force half sample rate for correct playback.
-            // This matches the original BeOS 3D Mixer behavior where it resampled on load.
-            if (detectedRate == 44100.0f) {
-                cache.sampleRate = 22050.0f;
-                printf("[AudioCache] BeOS Track Object: Using corrected sample rate: %.0f Hz (was detecting %.0f Hz)\n",
-                       cache.sampleRate, detectedRate);
-            } else if (detectedRate > 0) {
+            // Use the sample rate detected from the BeOS Track Object header
+            if (detectedRate > 0) {
                 cache.sampleRate = detectedRate;
+                printf("[AudioCache] BeOS Track Object: Using sample rate from header: %.0f Hz\n", cache.sampleRate);
             }
         } else {
             // Pure RAW file, start from beginning
