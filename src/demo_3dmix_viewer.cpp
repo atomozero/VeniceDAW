@@ -312,10 +312,12 @@ found_rate:
                 file.Seek(headerSkip, SEEK_SET);
             }
 
-            // Use sample rate from header (BeOS original behavior)
+            // BeOS Track Object files: header contains 44100 Hz but audio data is at 22050 Hz
+            // This is because the original BeOS mixer played at half speed
             if (detectedRate > 0) {
-                cache.sampleRate = detectedRate;
-                printf("[AudioCache] Using sample rate from header: %.0f Hz\n", cache.sampleRate);
+                cache.sampleRate = detectedRate / 2.0f;  // Correct: 44100 → 22050 Hz
+                printf("[AudioCache] Using sample rate from header: %.0f Hz (corrected from %.0f Hz)\n",
+                       cache.sampleRate, detectedRate);
             }
         } else {
             // Pure RAW file, start from beginning
@@ -359,15 +361,25 @@ found_rate:
                 if (format.bitDepth == 16 && format.channels == 2) {
                     int16* samples = (int16*)frameData;
 
-                    // Debug: log first few raw values
+                    // BeOS Track Object files are stored in BIG-ENDIAN on Intel!
+                    // The original BeOS code does byte swap on Intel:
+                    //   swap((ushort *)samples, size);  // track_obj.cpp line 1960
+                    // We must do the same!
+
+                    // Swap bytes: convert big-endian to little-endian on x86
+                    uint16_t* rawSamples = (uint16_t*)samples;
+                    int16_t leftSwapped = (int16_t)((rawSamples[0] >> 8) | (rawSamples[0] << 8));
+                    int16_t rightSwapped = (int16_t)((rawSamples[1] >> 8) | (rawSamples[1] << 8));
+
+                    // Debug: log first few values BEFORE and AFTER swap
                     if (cache.samples.size() < 10) {
-                        printf("[AudioCache] Sample %zu: raw int16 values (LE) = [%d, %d]\n",
-                               cache.samples.size() / 2, samples[0], samples[1]);
+                        printf("[AudioCache] Sample %zu: BEFORE swap=[%d, %d], AFTER swap=[%d, %d]\n",
+                               cache.samples.size() / 2, samples[0], samples[1], leftSwapped, rightSwapped);
                     }
 
-                    // Store L and R channels as-is (little-endian on x86)
-                    cache.samples.push_back(samples[0]);  // Left
-                    cache.samples.push_back(samples[1]);  // Right
+                    // Store byte-swapped samples
+                    cache.samples.push_back(leftSwapped);   // Left
+                    cache.samples.push_back(rightSwapped);  // Right
                 } else {
                     // Fallback for non-stereo or non-16bit
                     printf("[AudioCache] WARNING: Unsupported format (bitDepth=%d, channels=%d)\n",
