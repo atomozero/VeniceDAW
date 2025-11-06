@@ -817,8 +817,8 @@ public:
         if (fAutoRotate) {
             fRotationY += 0.5f;
             if (fRotationY >= 360.0f) fRotationY -= 360.0f;
+            Invalidate();  // Only redraw if rotation is active
         }
-        Draw(Bounds());
     }
 
     void ZoomIn() { fZoom += 1.0f; if (fZoom > -2.0f) fZoom = -2.0f; }
