@@ -28,6 +28,7 @@
 #include <Menu.h>
 #include <MenuItem.h>
 #include <FilePanel.h>
+#include <ScrollView.h>
 
 // Include our 3dmix parser
 #include "audio/3dmix/3DMixFormat.h"
@@ -1255,6 +1256,9 @@ public:
     }
 
     virtual void Draw(BRect updateRect) override {
+        printf("[TimeRuler] Draw() called - bounds: (%.1f, %.1f, %.1f, %.1f)\n",
+               Bounds().left, Bounds().top, Bounds().right, Bounds().bottom);
+
         BRect bounds = Bounds();
 
         // Background
@@ -1443,7 +1447,7 @@ class TrackLanesView : public BView {
 public:
     TrackLanesView(BRect frame, const VeniceDAW::Project3DMix& project, float pixelsPerSecond, const char* projectFilePath,
                    bool* trackMute, bool* trackSolo, BWindow* parentWindow)
-        : BView(frame, "track_lanes", B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP_BOTTOM, B_WILL_DRAW)
+        : BView(frame, "track_lanes", B_FOLLOW_NONE, B_WILL_DRAW)
         , fProject(project)
         , fProjectPath(projectFilePath)
         , fPixelsPerSecond(pixelsPerSecond)
@@ -2362,20 +2366,50 @@ public:
     {
         SetViewColor(30, 30, 35);
 
-        // Create ruler view
-        BRect rulerFrame = Bounds();
-        rulerFrame.bottom = 40;
-        fRulerView = new TimeRulerView(rulerFrame, project, fPixelsPerSecond);
-        AddChild(fRulerView);
+        // Calculate content size for scrollable area
+        // Width: Calculate based on longest track duration
+        float maxDuration = 0.0f;
+        int trackCount = project.CountTracks();
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = project.TrackAt(i);
+            if (!track) continue;
+            float endTime = track->EndPosition() / 22050.0f;
+            if (endTime > maxDuration) maxDuration = endTime;
+        }
+        float contentWidth = 160.0f + (maxDuration * fPixelsPerSecond) + 100.0f; // trackNameWidth + timeline + margin
+        float contentHeight = trackCount * 60.0f + 20.0f; // laneHeight * tracks + margin
 
-        // Create track lanes view with project file path for audio file resolution
-        BRect lanesFrame = Bounds();
-        lanesFrame.top = 41;
+        // Create track lanes view (this goes INSIDE scroll view)
+        BRect lanesFrame(0, 0, contentWidth, contentHeight);
         fLanesView = new TrackLanesView(lanesFrame, project, fPixelsPerSecond, projectFilePath,
                                         trackMute, trackSolo, parentWindow);
-        AddChild(fLanesView);
+
+        // Wrap ONLY lanes in scroll view (starts below ruler at Y=41)
+        // IMPORTANT: Add scroll view FIRST so it's BEHIND the ruler in Z-order
+        BRect scrollFrame(0, 41, Bounds().Width(), Bounds().Height());
+        fScrollView = new BScrollView("timeline_scroll", fLanesView,
+                                      B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP_BOTTOM, 0,
+                                      true,  // horizontal scrollbar
+                                      true,  // vertical scrollbar
+                                      B_FANCY_BORDER);
+        AddChild(fScrollView);  // Add FIRST (behind in Z-order)
+
+        // Create ruler view FIXED at top (NOT inside scroll view!)
+        // IMPORTANT: Add ruler AFTER scroll view so it's ON TOP in Z-order
+        BRect rulerFrame(0, 0, Bounds().Width(), 40);
+        fRulerView = new TimeRulerView(rulerFrame, project, fPixelsPerSecond);
+        fRulerView->SetViewColor(30, 30, 35);
+        fRulerView->SetFlags(B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP);  // Follow width, stay at top
+        AddChild(fRulerView);  // Add LAST (on top in Z-order)
+        fRulerView->Invalidate();  // Force immediate draw
+        fRulerView->Show();        // Explicitly show the ruler
 
         printf("[Timeline] Using shared audio engine from 3D Mixer window\n");
+        printf("[Timeline] Ruler frame: (%.1f, %.1f, %.1f, %.1f)\n",
+               rulerFrame.left, rulerFrame.top, rulerFrame.right, rulerFrame.bottom);
+        printf("[Timeline] Scroll frame: (%.1f, %.1f, %.1f, %.1f)\n",
+               scrollFrame.left, scrollFrame.top, scrollFrame.right, scrollFrame.bottom);
+        printf("[Timeline] Z-order: ScrollView (back), Ruler (front) - Ruler should be visible!\n");
     }
 
     ~TimelineContentView() {
@@ -2437,6 +2471,40 @@ public:
     void UpdateZoom() {
         fRulerView->SetPixelsPerSecond(fPixelsPerSecond);
         fLanesView->SetPixelsPerSecond(fPixelsPerSecond);
+
+        // Update content size for scrollable area based on new zoom level
+        float maxDuration = 0.0f;
+        int trackCount = fProject.CountTracks();
+        for (int i = 0; i < trackCount; i++) {
+            VeniceDAW::Track3DMix* track = fProject.TrackAt(i);
+            if (!track) continue;
+            float endTime = track->EndPosition() / 22050.0f;
+            if (endTime > maxDuration) maxDuration = endTime;
+        }
+
+        float contentWidth = 160.0f + (maxDuration * fPixelsPerSecond) + 100.0f;
+        float contentHeight = trackCount * 60.0f + 20.0f;
+
+        // Resize track lanes view (the scrollable content)
+        fLanesView->ResizeTo(contentWidth, contentHeight);
+
+        // Update scrollbar ranges
+        BScrollBar* hScroll = fScrollView->ScrollBar(B_HORIZONTAL);
+        BScrollBar* vScroll = fScrollView->ScrollBar(B_VERTICAL);
+        if (hScroll) {
+            BRect scrollBounds = fScrollView->Bounds();
+            float maxH = contentWidth - scrollBounds.Width();
+            if (maxH < 0) maxH = 0;
+            hScroll->SetRange(0, maxH);
+            hScroll->SetProportion(scrollBounds.Width() / contentWidth);
+        }
+        if (vScroll) {
+            BRect scrollBounds = fScrollView->Bounds();
+            float maxV = contentHeight - scrollBounds.Height();
+            if (maxV < 0) maxV = 0;
+            vScroll->SetRange(0, maxV);
+            vScroll->SetProportion(scrollBounds.Height() / contentHeight);
+        }
     }
 
     void TogglePlayback() {
@@ -2548,6 +2616,8 @@ public:
 
         // Auto-fit to show entire song on first open
         FitToWindow();
+
+        printf("[Timeline] AttachedToWindow: Ruler is FIXED at top, always visible\n");
     }
 
     virtual void KeyDown(const char* bytes, int32 numBytes) override {
@@ -2620,8 +2690,9 @@ public:
 private:
     const VeniceDAW::Project3DMix& fProject;
     BString fProjectPath;  // Full path to .3dmix file for audio file resolution
-    TimeRulerView* fRulerView;
-    TrackLanesView* fLanesView;
+    TimeRulerView* fRulerView;  // FIXED at top, always visible
+    TrackLanesView* fLanesView;  // Inside scroll view
+    BScrollView* fScrollView;  // Scroll container for lanes only
     float fPixelsPerSecond;
     float fPlayheadPosition;
 
@@ -2850,7 +2921,7 @@ public:
                   projectPath ? BuildWindowTitle(projectPath).String() : "3DMix Viewer - No File",
                   B_TITLED_WINDOW, B_QUIT_ON_WINDOW_CLOSE)
         , fGLView(nullptr)
-        , fUpdateRunner(nullptr)
+        // , fUpdateRunner(nullptr)  // DISABLED for on-demand rendering
         , fTimelineWindow(nullptr)
         , fProject(nullptr)
         , fProjectPath(projectPath ? projectPath : "")  // Store the project file path
@@ -2960,9 +3031,9 @@ public:
             printf("No file specified. Use File > Open... to load a 3DMix project.\n");
         }
 
-        // Start animation
-        BMessage pulse(MSG_PULSE);
-        fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 30 FPS
+        // Start animation - DISABLED for performance (on-demand rendering)
+        // BMessage pulse(MSG_PULSE);
+        // fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 30 FPS
     }
 
     ~DemoWindow() {
@@ -2973,7 +3044,7 @@ public:
             fSoundPlayer = nullptr;
         }
 
-        delete fUpdateRunner;
+        // delete fUpdateRunner;  // DISABLED for on-demand rendering
 
         // Clean up file panel
         delete fOpenPanel;
@@ -3747,7 +3818,7 @@ private:
     static const uint32 MSG_OPEN_FILE = 'open';
 
     DemoGL3DView* fGLView;
-    BMessageRunner* fUpdateRunner;
+    // BMessageRunner* fUpdateRunner;  // DISABLED for on-demand rendering
     TimelineWindow* fTimelineWindow;
     VeniceDAW::Project3DMix* fProject;
     BString fProjectPath;  // Full path to the .3dmix file
