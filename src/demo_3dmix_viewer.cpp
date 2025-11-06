@@ -3826,11 +3826,8 @@ public:
         if (fCurrentFramePosition - fLastTimeDisplayUpdate > 2940) {
             if (LockLooper()) {
                 UpdateTimeDisplay();
-                // Update timeline playhead if window exists
-                if (fTimelineWindow) {
-                    float currentTime = fCurrentFramePosition / format.frame_rate;
-                    fTimelineWindow->SetPlayheadPosition(currentTime);
-                }
+                // NOTE: Timeline playhead updates removed from audio thread
+                // Calling BView methods from audio callback causes threading issues
                 fLastTimeDisplayUpdate = fCurrentFramePosition;
                 UnlockLooper();
             }
