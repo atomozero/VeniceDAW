@@ -2945,6 +2945,7 @@ public:
         , fSoundPlayer(nullptr)
         , fCurrentFramePosition(0)
         , fIsPlaying(false)
+        , fLastTimeDisplayUpdate(0)
         , fMasterLevelLeft(0.0f)
         , fMasterLevelRight(0.0f)
         , fAnySoloActive(false)
@@ -3819,6 +3820,20 @@ public:
             fMasterVUMeter->SetLevels(fMasterLevelLeft, fMasterLevelRight);
             UnlockLooper();
         }
+
+        // Update time display at 15 FPS max (every ~2940 frames at 44100 Hz = ~66ms)
+        if (fCurrentFramePosition - fLastTimeDisplayUpdate > 2940) {
+            if (LockLooper()) {
+                UpdateTimeDisplay();
+                // Update timeline playhead if window exists
+                if (fTimelineWindow) {
+                    float currentTime = fCurrentFramePosition / format.frame_rate;
+                    fTimelineWindow->SetPlayheadPosition(currentTime);
+                }
+                fLastTimeDisplayUpdate = fCurrentFramePosition;
+                UnlockLooper();
+            }
+        }
     }
 
     virtual bool QuitRequested() override {
@@ -3845,6 +3860,7 @@ private:
     BSoundPlayer* fSoundPlayer;
     int64 fCurrentFramePosition;
     bool fIsPlaying;
+    int64 fLastTimeDisplayUpdate;  // For throttling time display updates
 
     // Track levels for visual feedback (RMS level 0.0-1.0)
     float fTrackLevels[64];  // Max 64 tracks
