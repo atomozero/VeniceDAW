@@ -824,8 +824,17 @@ public:
         }
     }
 
-    void ZoomIn() { fZoom += 1.0f; if (fZoom > -2.0f) fZoom = -2.0f; }
-    void ZoomOut() { fZoom -= 1.0f; if (fZoom < -30.0f) fZoom = -30.0f; }
+    void ZoomIn() {
+        fZoom += 1.0f;
+        if (fZoom > -2.0f) fZoom = -2.0f;
+        Invalidate();  // Redraw with new zoom level
+    }
+
+    void ZoomOut() {
+        fZoom -= 1.0f;
+        if (fZoom < -30.0f) fZoom = -30.0f;
+        Invalidate();  // Redraw with new zoom level
+    }
 
     void DrawChar(float x, float y, char c) {
         // Simple bitmap font using lines (7x12 pixel grid)
