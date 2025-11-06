@@ -321,8 +321,15 @@ found_rate:
                 file.Seek(headerSkip, SEEK_SET);
             }
 
-            // Use the sample rate detected from the BeOS Track Object header
-            if (detectedRate > 0) {
+            // BeOS Track Object files: The header contains the PLAYBACK rate (44100),
+            // but the actual audio data was recorded at HALF that rate (22050).
+            // This is how BeOS 3D Mixer worked - files saved with doubled rate in header.
+            // We must use HALF the detected rate for correct playback.
+            if (detectedRate == 44100.0f) {
+                cache.sampleRate = 22050.0f;  // Use actual recording rate
+                printf("[AudioCache] BeOS Track Object: Header says %.0f Hz, using actual rate %.0f Hz\n",
+                       detectedRate, cache.sampleRate);
+            } else if (detectedRate > 0) {
                 cache.sampleRate = detectedRate;
                 printf("[AudioCache] BeOS Track Object: Using sample rate from header: %.0f Hz\n", cache.sampleRate);
             }
