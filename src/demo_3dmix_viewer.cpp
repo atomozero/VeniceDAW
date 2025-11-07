@@ -3861,8 +3861,9 @@ public:
             }
 
             // Scale peaks for VU meter display (compensate for low normalization)
-            // With trackCount normalization, peaks are very low, so multiply by 10-15x
-            const float vuScale = 12.0f;  // Adjust based on typical track count
+            // Adaptive scaling based on actual track count: more tracks = more gain needed
+            // But cap at 6x to avoid constant red zone (was 12x - too aggressive)
+            float vuScale = trackCount > 0 ? fmin((float)trackCount, 6.0f) : 3.0f;
             fMasterLevelLeft = fmin(leftPeak * vuScale, 1.0f);
             fMasterLevelRight = fmin(rightPeak * vuScale, 1.0f);
         }
