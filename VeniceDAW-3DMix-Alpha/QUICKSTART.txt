@@ -1,0 +1,135 @@
+╔════════════════════════════════════════════════════════════════╗
+║       VeniceDAW 3DMix Viewer - Quick Start Guide              ║
+║                  Alpha 0.1 "Floppy Disk Edition"               ║
+╚════════════════════════════════════════════════════════════════╝
+
+█ INSTALLATION (1 second)
+─────────────────────────────────────────────────────────────────
+
+  1. Extract this ZIP to anywhere on your Haiku system
+  2. Done!
+
+  (No installation needed, just run the binary)
+
+
+█ RUNNING THE VIEWER
+─────────────────────────────────────────────────────────────────
+
+  Open Terminal and type:
+
+    cd /path/to/VeniceDAW-3DMix-Alpha/bin
+    ./demo_3dmix_viewer /path/to/your/project.3dmix
+
+  Example:
+
+    ./demo_3dmix_viewer ~/Desktop/my-mix.3dmix
+
+
+█ KEYBOARD SHORTCUTS
+─────────────────────────────────────────────────────────────────
+
+  SPACE     Play / Pause
+  S         Stop (reset to beginning)
+  T         Open Timeline window
+  +         Zoom in (3D view)
+  -         Zoom out (3D view)
+  R         Reset camera
+  Q         Quit
+
+
+█ MOUSE CONTROLS
+─────────────────────────────────────────────────────────────────
+
+  Left Click + Drag    Rotate 3D view
+  Right Click          Context menu (if available)
+  Hover over track     Show track name tooltip
+
+
+█ WHAT YOU'LL SEE
+─────────────────────────────────────────────────────────────────
+
+  • 3D visualization of audio sources (colored spheres)
+  • Yellow disk at center = You (the listener)
+  • Colored poles = Audio tracks in 3D space
+  • Master VU meter (bottom left)
+  • Transport controls (Play/Pause/Stop)
+  • Master volume slider
+
+  Press 'T' to open the Timeline window with:
+  • Waveform visualization for each track
+  • Mute/Solo controls (M/S buttons on left)
+  • Playhead following playback
+  • Time ruler
+
+
+█ TROUBLESHOOTING
+─────────────────────────────────────────────────────────────────
+
+  "Cannot find audio files"
+  → Make sure audio files are in same directory as .3dmix file
+  → Or in a subdirectory with same name as project
+
+  "White noise / distorted audio"
+  → This might be a sample rate issue
+  → Check terminal output for sample rate detection logs
+
+  "Slow performance / low FPS"
+  → This is normal with software rendering (llvmpipe)
+  → We're working on hardware acceleration
+
+  "Timeline shows wrong positions"
+  → Some .3dmix files may have non-standard formatting
+  → Report this as a bug with your .3dmix file
+
+
+█ FILE LOCATIONS
+─────────────────────────────────────────────────────────────────
+
+  Your .3dmix file should be structured like:
+
+    my-project.3dmix           ← Project file
+    my-project/                ← Audio directory (optional)
+      drums
+      bass
+      guitar
+      vocals
+      ...
+
+  Or simply:
+
+    my-project.3dmix
+    drums                      ← In same directory
+    bass
+    guitar
+    ...
+
+
+█ NEED HELP?
+─────────────────────────────────────────────────────────────────
+
+  Read:   README_EN.md (English) or README_IT.md (Italian)
+  Check:  CHANGELOG.md for known issues
+  Report: Open issue on GitHub (link in README)
+
+  Always include:
+  - Your .3dmix file (if shareable)
+  - Complete terminal output
+  - Description of what went wrong
+  - Haiku OS version
+
+
+█ HAVE FUN!
+─────────────────────────────────────────────────────────────────
+
+  This is alpha software, so expect quirks. But it works!
+
+  If you find a bug, report it.
+  If it works, tell everyone!
+  If you're impressed, buy us a coffee ☕
+
+
+═══════════════════════════════════════════════════════════════════
+
+  "Works On My Machine™"
+
+  Made with ❤️, ☕, and hex editors in Italy 🇮🇹

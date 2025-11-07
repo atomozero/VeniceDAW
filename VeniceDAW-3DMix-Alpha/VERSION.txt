@@ -1,0 +1,34 @@
+VeniceDAW 3DMix Viewer
+=======================
+
+Version: Alpha 0.1 "CD-ROM Edition"
+Build Date: November 7, 2025
+Platform: Haiku OS (x86_64)
+Architecture: Native Haiku BeAPI
+
+Component Versions:
+------------------
+- 3DMix Parser: 1.0-alpha (BMessage format decoder)
+- Audio Engine: BSoundPlayer-based (22050/44100 Hz)
+- 3D Renderer: OpenGL with llvmpipe fallback
+- Timeline: Waveform on-the-fly rendering
+- VU Meter: Peak detection with adaptive scaling
+
+Known Formats:
+-------------
+- .3dmix: BeOS R5 3D Mixer project files (1998-2001)
+- Audio: RAW PCM big-endian int16 stereo @ 22050 Hz
+- Coordinates: Custom 3D float format (reverse engineered)
+
+Build Flags:
+-----------
+- Compiler: GCC 13.3.0 (Haiku)
+- Optimization: -O2 -march=native
+- Libraries: libbe, libmedia, libGL, libGLU, libtranslation
+
+Status: ALPHA - Expect bugs, crashes, and strange behavior
+License: Educational reverse engineering project
+
+WARNING: This is pre-alpha software. Use at your own risk.
+         Always backup your .3dmix files before opening them.
+         Some features may not work as in the original BeOS mixer.

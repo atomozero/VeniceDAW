@@ -1,0 +1,45 @@
+MIT License
+
+Copyright (c) 2025 VeniceDAW Project
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+DISCLAIMER FOR REVERSE ENGINEERING:
+
+This software is a clean-room reverse engineering implementation of the BeOS
+3D Mixer file format (.3dmix). No original source code from Be Inc. was used
+or referenced in the development of this software.
+
+All functionality was reconstructed through:
+- Binary file format analysis
+- Public documentation fragments from Internet Archive
+- Haiku BeAPI documentation (open source)
+- Independent testing and validation
+
+The .3dmix file format is believed to be part of BeOS R5 (1995-2001), which
+is now effectively abandonware. Be Inc. was acquired by Palm Inc. in 2001,
+and BeOS was discontinued.
+
+This implementation is provided for educational and archival purposes,
+to preserve compatibility with historical BeOS audio projects.
+
+If you are a rights holder and have concerns about this software,
+please contact us immediately.
