@@ -2921,6 +2921,7 @@ public:
         , fMasterLevelLeft(0.0f)
         , fMasterLevelRight(0.0f)
         , fAnySoloActive(false)
+        , fFrameCounter(0)
     {
         // Initialize track levels to zero
         memset(fTrackLevels, 0, sizeof(fTrackLevels));
@@ -3265,14 +3266,15 @@ public:
             case MSG_PULSE:
                 if (fGLView) {
                     fGLView->Pulse();
-                    // Force redraw for 3D VU meters (even without auto-rotate)
-                    if (fIsPlaying) {
+                    // Throttle 3D view updates to reduce CPU usage with software rendering
+                    // Update 3D VU meters at 10 FPS (every 3rd frame) instead of 30 FPS
+                    fFrameCounter++;
+                    if (fIsPlaying && (fFrameCounter % 3 == 0)) {
                         fGLView->Invalidate();
                     }
                 }
-                // Update time display
+                // Update time display and 2D VU meter at full 30 FPS (lightweight)
                 UpdateTimeDisplay();
-                // Update VU meter with current audio levels
                 if (fMasterVUMeter) {
                     fMasterVUMeter->SetLevels(fMasterLevelLeft, fMasterLevelRight);
                 }
@@ -3843,6 +3845,9 @@ private:
     bool fTrackMute[64];     // true = track silenced
     bool fTrackSolo[64];     // true = track solo'd
     bool fAnySoloActive;     // Cache: true if any track has solo
+
+    // Frame counter for throttling 3D view updates
+    int32 fFrameCounter;     // Incremented each MSG_PULSE
 };
 
 class DemoApp : public BApplication {
