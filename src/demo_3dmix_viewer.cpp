@@ -2871,6 +2871,123 @@ private:
     float fRightLevel;
 };
 
+// Forward declaration
+class MasterVUMeterView;
+
+// Control Bar View - Professional transport controls (Haiku MediaPlayer style)
+class ControlBarView : public BView {
+public:
+    ControlBarView(BRect frame)
+        : BView(frame, "control_bar", B_FOLLOW_BOTTOM | B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW)
+    {
+        SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+
+        const float margin = 8;
+        const float spacing = 6;
+        const float buttonHeight = 32;
+        const float topMargin = 6;
+
+        // Calculate centered position for transport controls
+        float centerY = (frame.Height() - buttonHeight) / 2;
+        float xPos = margin;
+
+        // === SECTION 1: VU METER (left) ===
+        BRect vuRect(xPos, topMargin + 4, xPos + 180, frame.Height() - topMargin - 4);
+        fVUMeter = new MasterVUMeterView(vuRect);
+        AddChild(fVUMeter);
+        xPos += 180 + spacing * 3;
+
+        // Separator line
+        DrawSeparatorLine(xPos);
+        xPos += spacing * 2;
+
+        // === SECTION 2: TRANSPORT CONTROLS (center-left) ===
+        // Stop button
+        BRect stopRect(xPos, centerY, xPos + 60, centerY + buttonHeight);
+        fStopButton = new BButton(stopRect, "stop", "■", new BMessage('Stop'));
+        fStopButton->SetTarget(NULL);  // Will be set by parent
+        AddChild(fStopButton);
+        xPos += 60 + spacing;
+
+        // Play/Pause button (larger, primary action)
+        BRect playRect(xPos, centerY, xPos + 80, centerY + buttonHeight);
+        fPlayButton = new BButton(playRect, "play", "▶ Play", new BMessage('Play'));
+        fPlayButton->SetTarget(NULL);  // Will be set by parent
+        fPlayButton->MakeDefault(true);  // Primary button
+        AddChild(fPlayButton);
+        xPos += 80 + spacing * 3;
+
+        // Separator line
+        DrawSeparatorLine(xPos);
+        xPos += spacing * 2;
+
+        // === SECTION 3: TIME DISPLAY (center) ===
+        BRect timeRect(xPos, centerY + 6, xPos + 140, centerY + buttonHeight - 6);
+        fTimeDisplay = new BStringView(timeRect, "time", "0:00.0 / 0:00.0");
+        fTimeDisplay->SetAlignment(B_ALIGN_CENTER);
+        fTimeDisplay->SetFont(be_fixed_font);
+        fTimeDisplay->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), B_DARKEN_1_TINT));
+        AddChild(fTimeDisplay);
+        xPos += 140 + spacing * 3;
+
+        // Separator line
+        DrawSeparatorLine(xPos);
+        xPos += spacing * 2;
+
+        // === SECTION 4: MASTER VOLUME (right) ===
+        // Volume label
+        BRect volLabelRect(xPos, topMargin, xPos + 50, topMargin + 14);
+        BStringView* volLabel = new BStringView(volLabelRect, "vol_label", "Volume");
+        volLabel->SetFont(be_plain_font);
+        volLabel->SetFontSize(9);
+        volLabel->SetAlignment(B_ALIGN_CENTER);
+        AddChild(volLabel);
+
+        // Volume slider
+        BRect sliderRect(xPos, topMargin + 16, xPos + 50, frame.Height() - topMargin - 2);
+        fVolumeSlider = new BSlider(sliderRect, "volume", nullptr,
+                                    new BMessage('MstV'), 0, 200, B_TRIANGLE_THUMB);
+        fVolumeSlider->SetModificationMessage(new BMessage('MstV'));
+        fVolumeSlider->SetValue(100);
+        fVolumeSlider->SetHashMarks(B_HASH_MARKS_RIGHT);
+        fVolumeSlider->SetHashMarkCount(3);
+        fVolumeSlider->SetLimitLabels("0", "200");
+        fVolumeSlider->SetTarget(NULL);  // Will be set by parent
+        AddChild(fVolumeSlider);
+    }
+
+    virtual void Draw(BRect updateRect) override {
+        BView::Draw(updateRect);
+
+        // Draw top border line
+        SetHighColor(tint_color(ViewColor(), B_DARKEN_2_TINT));
+        StrokeLine(BPoint(0, 0), BPoint(Bounds().right, 0));
+
+        // Draw bottom shadow
+        SetHighColor(tint_color(ViewColor(), B_LIGHTEN_MAX_TINT));
+        StrokeLine(BPoint(0, 1), BPoint(Bounds().right, 1));
+    }
+
+    void DrawSeparatorLine(float x) {
+        // Add visual separator (will be drawn in Draw())
+        // Store positions for drawing
+    }
+
+    // Accessors for parent window
+    BButton* PlayButton() const { return fPlayButton; }
+    BButton* StopButton() const { return fStopButton; }
+    BStringView* TimeDisplay() const { return fTimeDisplay; }
+    MasterVUMeterView* VUMeter() const { return fVUMeter; }
+    BSlider* VolumeSlider() const { return fVolumeSlider; }
+
+private:
+    BButton* fPlayButton;
+    BButton* fStopButton;
+    BStringView* fTimeDisplay;
+    MasterVUMeterView* fVUMeter;
+    BSlider* fVolumeSlider;
+};
+
 // Helper function to build window title with filename
 static BString BuildWindowTitle(const char* projectPath) {
     BString title = "3DMix Viewer - ";
@@ -2908,6 +3025,7 @@ public:
         , fProject(nullptr)
         , fProjectPath(projectPath ? projectPath : "")  // Store the project file path
         , fOpenPanel(nullptr)
+        , fControlBar(nullptr)
         , fPlayButton(nullptr)
         , fStopButton(nullptr)
         , fTimeDisplay(nullptr)
@@ -2956,69 +3074,22 @@ public:
         fGLView = new DemoGL3DView(glRect, "gl_view");
         AddChild(fGLView);
 
-        // === CONTROL BAR LAYOUT (left to right) ===
-        const float margin = 10;
-        const float spacing = 8;
-        float xPos = margin;
+        // Create professional control bar (Haiku MediaPlayer style)
+        BRect controlBarRect(0, bounds.bottom - controlHeight,
+                            bounds.right, bounds.bottom);
+        fControlBar = new ControlBarView(controlBarRect);
+        AddChild(fControlBar);
 
-        // 1. Master VU Meter (left)
-        BRect vuRect(xPos, bounds.bottom - controlHeight + margin,
-                     xPos + 200, bounds.bottom - margin);
-        fMasterVUMeter = new MasterVUMeterView(vuRect);
-        AddChild(fMasterVUMeter);
-        xPos += 200 + spacing * 2;
+        // Get control references and set targets
+        fPlayButton = fControlBar->PlayButton();
+        fStopButton = fControlBar->StopButton();
+        fTimeDisplay = fControlBar->TimeDisplay();
+        fMasterVUMeter = fControlBar->VUMeter();
+        fMasterVolumeSlider = fControlBar->VolumeSlider();
 
-        // 2. Stop button
-        BRect stopRect(xPos, bounds.bottom - controlHeight + margin,
-                       xPos + 70, bounds.bottom - margin);
-        fStopButton = new BButton(stopRect, "stop_button", "⏹ Stop",
-                                  new BMessage('Stop'));
-        fStopButton->SetTarget(this);
-        AddChild(fStopButton);
-        xPos += 70 + spacing;
-
-        // 3. Play/Pause button
-        BRect playRect(xPos, bounds.bottom - controlHeight + margin,
-                       xPos + 100, bounds.bottom - margin);
-        fPlayButton = new BButton(playRect, "play_button", "▶ Play",
-                                  new BMessage('Play'));
         fPlayButton->SetTarget(this);
-        AddChild(fPlayButton);
-        xPos += 100 + spacing * 2;
-
-        // 4. Time display
-        BRect timeRect(xPos, bounds.bottom - controlHeight + margin,
-                       xPos + 150, bounds.bottom - margin);
-        fTimeDisplay = new BStringView(timeRect, "time_display", "0:00.0 / 0:00.0");
-        fTimeDisplay->SetAlignment(B_ALIGN_LEFT);
-        fTimeDisplay->SetFont(be_fixed_font);
-        AddChild(fTimeDisplay);
-        xPos += 150 + spacing * 3;
-
-        // 5. Master Volume Label
-        BRect volLabelRect(xPos, bounds.bottom - controlHeight + margin,
-                           xPos + 60, bounds.bottom - controlHeight + margin + 15);
-        BStringView* volumeLabel = new BStringView(volLabelRect, "vol_label", "Master");
-        volumeLabel->SetAlignment(B_ALIGN_CENTER);
-        volumeLabel->SetFontSize(10);
-        AddChild(volumeLabel);
-
-        // 6. Master Volume Fader (vertical slider)
-        BRect sliderRect(xPos, bounds.bottom - controlHeight + margin + 18,
-                         xPos + 60, bounds.bottom - margin);
-        fMasterVolumeSlider = new BSlider(sliderRect, "master_volume",
-                                          nullptr,  // No label on slider itself
-                                          new BMessage('MstV'),
-                                          0, 200,  // 0 to 200 (represents 0% to 200%)
-                                          B_TRIANGLE_THUMB,
-                                          B_FOLLOW_BOTTOM | B_FOLLOW_LEFT);
-        fMasterVolumeSlider->SetModificationMessage(new BMessage('MstV'));
-        fMasterVolumeSlider->SetValue(100);  // Default 100% (unity gain)
-        fMasterVolumeSlider->SetHashMarks(B_HASH_MARKS_RIGHT);
-        fMasterVolumeSlider->SetHashMarkCount(5);  // 0%, 50%, 100%, 150%, 200%
-        fMasterVolumeSlider->SetLimitLabels("0%", "200%");
+        fStopButton->SetTarget(this);
         fMasterVolumeSlider->SetTarget(this);
-        AddChild(fMasterVolumeSlider);
 
         // Load and parse 3dmix file (if provided)
         if (projectPath && strlen(projectPath) > 0) {
@@ -3825,7 +3896,10 @@ private:
     BString fProjectPath;  // Full path to the .3dmix file
     BFilePanel* fOpenPanel;
 
-    // Audio playback and transport controls
+    // Control bar (contains all transport controls)
+    ControlBarView* fControlBar;
+
+    // Control references (owned by fControlBar)
     BButton* fPlayButton;
     BButton* fStopButton;
     BStringView* fTimeDisplay;
