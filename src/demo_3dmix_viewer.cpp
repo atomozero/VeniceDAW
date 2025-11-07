@@ -2713,26 +2713,25 @@ public:
     virtual void Show() override {
         BWindow::Show();
 
-        // Animation timer DISABLED for on-demand rendering
-        // if (!fUpdateRunner) {
-        //     printf("[TimelineWindow] Starting animation timer (30 FPS)\n");
-        //     BMessage pulse('Tpls');
-        //     fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 33ms = ~30 FPS
-        // }
+        // Animation timer at 30 FPS
+        if (!fUpdateRunner) {
+            printf("[TimelineWindow] Starting animation timer (30 FPS)\n");
+            BMessage pulse('Tpls');
+            fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 33ms = ~30 FPS
+        }
     }
 
     ~TimelineWindow() {
-        // delete fUpdateRunner;  // DISABLED for on-demand rendering
+        delete fUpdateRunner;
     }
 
     virtual void MessageReceived(BMessage* message) override {
         switch (message->what) {
-            // Timeline pulse DISABLED for on-demand rendering
-            // case 'Tpls':  // Timeline pulse
-            //     if (fContentView) {
-            //         fContentView->UpdatePlayhead(0.033f);  // 33ms in seconds
-            //     }
-            //     break;
+            case 'Tpls':  // Timeline pulse (30 FPS)
+                if (fContentView) {
+                    fContentView->UpdatePlayhead(0.033f);  // 33ms in seconds
+                }
+                break;
 
             case B_KEY_DOWN: {
                 // Intercept keyboard events at window level to handle regardless of focus
@@ -2785,7 +2784,7 @@ private:
     const VeniceDAW::Project3DMix& fProject;
     BString fProjectPath;  // Full path to the .3dmix file
     TimelineContentView* fContentView;
-    // BMessageRunner* fUpdateRunner;  // DISABLED for on-demand rendering
+    BMessageRunner* fUpdateRunner;
 };
 
 // Master VU Meter View - Shows stereo L/R levels horizontally
@@ -3012,9 +3011,9 @@ public:
             printf("No file specified. Use File > Open... to load a 3DMix project.\n");
         }
 
-        // Start animation - DISABLED for performance (on-demand rendering)
-        // BMessage pulse(MSG_PULSE);
-        // fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 30 FPS
+        // Start animation timer at 30 FPS
+        BMessage pulse(MSG_PULSE);
+        fUpdateRunner = new BMessageRunner(this, &pulse, 33333);  // 33ms = ~30 FPS
     }
 
     ~DemoWindow() {
@@ -3025,7 +3024,7 @@ public:
             fSoundPlayer = nullptr;
         }
 
-        // delete fUpdateRunner;  // DISABLED for on-demand rendering
+        delete fUpdateRunner;
 
         // Clean up file panel
         delete fOpenPanel;
@@ -3243,14 +3242,13 @@ public:
                 break;
             }
 
-            // MSG_PULSE disabled for on-demand rendering
-            // case MSG_PULSE:
-            //     if (fGLView) {
-            //         fGLView->Pulse();
-            //     }
-            //     // Update time display
-            //     UpdateTimeDisplay();
-            //     break;
+            case MSG_PULSE:
+                if (fGLView) {
+                    fGLView->Pulse();
+                }
+                // Update time display
+                UpdateTimeDisplay();
+                break;
 
             case 'Play':
                 TogglePlayback();
@@ -3771,7 +3769,7 @@ private:
     static const uint32 MSG_OPEN_FILE = 'open';
 
     DemoGL3DView* fGLView;
-    // BMessageRunner* fUpdateRunner;  // DISABLED for on-demand rendering
+    BMessageRunner* fUpdateRunner;
     TimelineWindow* fTimelineWindow;
     VeniceDAW::Project3DMix* fProject;
     BString fProjectPath;  // Full path to the .3dmix file
