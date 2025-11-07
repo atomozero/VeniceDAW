@@ -2700,7 +2700,7 @@ public:
         , fProject(project)
         , fProjectPath(projectFilePath)
         , fContentView(nullptr)
-        // , fUpdateRunner(nullptr)  // DISABLED for on-demand rendering
+        , fUpdateRunner(nullptr)
     {
         fContentView = new TimelineContentView(Bounds(), project, projectFilePath,
                                                 sharedSoundPlayer, sharedFramePosition, sharedIsPlaying,
@@ -2723,7 +2723,10 @@ public:
     }
 
     ~TimelineWindow() {
-        delete fUpdateRunner;
+        if (fUpdateRunner) {
+            delete fUpdateRunner;
+            fUpdateRunner = nullptr;
+        }
     }
 
     virtual void MessageReceived(BMessage* message) override {
