@@ -24,6 +24,7 @@
 #include <Font.h>
 #include <Button.h>
 #include <StringView.h>
+#include <Slider.h>
 #include <MenuBar.h>
 #include <Menu.h>
 #include <MenuItem.h>
@@ -2911,7 +2912,9 @@ public:
         , fStopButton(nullptr)
         , fTimeDisplay(nullptr)
         , fMasterVUMeter(nullptr)
+        , fMasterVolumeSlider(nullptr)
         , fSoundPlayer(nullptr)
+        , fMasterVolume(1.0f)  // Unity gain (100%)
         , fCurrentFramePosition(0)
         , fIsPlaying(false)
         , fLastTimeDisplayUpdate(0)
@@ -2952,52 +2955,69 @@ public:
         fGLView = new DemoGL3DView(glRect, "gl_view");
         AddChild(fGLView);
 
-        // Create Master VU Meter (left of Play button)
-        BRect vuRect = bounds;
-        vuRect.top = vuRect.bottom - controlHeight + 10;
-        vuRect.bottom = vuRect.bottom - 10;
-        vuRect.left = (bounds.Width() / 2) - 250;
-        vuRect.right = vuRect.left + 180;
+        // === CONTROL BAR LAYOUT (left to right) ===
+        const float margin = 10;
+        const float spacing = 8;
+        float xPos = margin;
 
+        // 1. Master VU Meter (left)
+        BRect vuRect(xPos, bounds.bottom - controlHeight + margin,
+                     xPos + 200, bounds.bottom - margin);
         fMasterVUMeter = new MasterVUMeterView(vuRect);
         AddChild(fMasterVUMeter);
+        xPos += 200 + spacing * 2;
 
-        // Create transport controls at bottom center
-        // Stop button
-        BRect stopRect = bounds;
-        stopRect.top = stopRect.bottom - controlHeight + 10;
-        stopRect.bottom = stopRect.bottom - 10;
-        stopRect.left = (bounds.Width() / 2) - 130;
-        stopRect.right = stopRect.left + 60;
-
+        // 2. Stop button
+        BRect stopRect(xPos, bounds.bottom - controlHeight + margin,
+                       xPos + 70, bounds.bottom - margin);
         fStopButton = new BButton(stopRect, "stop_button", "⏹ Stop",
                                   new BMessage('Stop'));
         fStopButton->SetTarget(this);
         AddChild(fStopButton);
+        xPos += 70 + spacing;
 
-        // Play/Pause button
-        BRect buttonRect = bounds;
-        buttonRect.top = buttonRect.bottom - controlHeight + 10;
-        buttonRect.bottom = buttonRect.bottom - 10;
-        buttonRect.left = (bounds.Width() / 2) - 60;
-        buttonRect.right = buttonRect.left + 120;
-
-        fPlayButton = new BButton(buttonRect, "play_button", "▶ Play",
+        // 3. Play/Pause button
+        BRect playRect(xPos, bounds.bottom - controlHeight + margin,
+                       xPos + 100, bounds.bottom - margin);
+        fPlayButton = new BButton(playRect, "play_button", "▶ Play",
                                   new BMessage('Play'));
         fPlayButton->SetTarget(this);
         AddChild(fPlayButton);
+        xPos += 100 + spacing * 2;
 
-        // Time display (right of Play button)
-        BRect timeRect = bounds;
-        timeRect.top = timeRect.bottom - controlHeight + 10;
-        timeRect.bottom = timeRect.bottom - 10;
-        timeRect.left = (bounds.Width() / 2) + 70;
-        timeRect.right = timeRect.left + 140;
-
+        // 4. Time display
+        BRect timeRect(xPos, bounds.bottom - controlHeight + margin,
+                       xPos + 150, bounds.bottom - margin);
         fTimeDisplay = new BStringView(timeRect, "time_display", "0:00.0 / 0:00.0");
         fTimeDisplay->SetAlignment(B_ALIGN_LEFT);
         fTimeDisplay->SetFont(be_fixed_font);
         AddChild(fTimeDisplay);
+        xPos += 150 + spacing * 3;
+
+        // 5. Master Volume Label
+        BRect volLabelRect(xPos, bounds.bottom - controlHeight + margin,
+                           xPos + 60, bounds.bottom - controlHeight + margin + 15);
+        BStringView* volumeLabel = new BStringView(volLabelRect, "vol_label", "Master");
+        volumeLabel->SetAlignment(B_ALIGN_CENTER);
+        volumeLabel->SetFontSize(10);
+        AddChild(volumeLabel);
+
+        // 6. Master Volume Fader (vertical slider)
+        BRect sliderRect(xPos, bounds.bottom - controlHeight + margin + 18,
+                         xPos + 60, bounds.bottom - margin);
+        fMasterVolumeSlider = new BSlider(sliderRect, "master_volume",
+                                          nullptr,  // No label on slider itself
+                                          new BMessage('MstV'),
+                                          0, 200,  // 0 to 200 (represents 0% to 200%)
+                                          B_TRIANGLE_THUMB,
+                                          B_FOLLOW_BOTTOM | B_FOLLOW_LEFT);
+        fMasterVolumeSlider->SetModificationMessage(new BMessage('MstV'));
+        fMasterVolumeSlider->SetValue(100);  // Default 100% (unity gain)
+        fMasterVolumeSlider->SetHashMarks(B_HASH_MARKS_RIGHT);
+        fMasterVolumeSlider->SetHashMarkCount(5);  // 0%, 50%, 100%, 150%, 200%
+        fMasterVolumeSlider->SetLimitLabels("0%", "200%");
+        fMasterVolumeSlider->SetTarget(this);
+        AddChild(fMasterVolumeSlider);
 
         // Load and parse 3dmix file (if provided)
         if (projectPath && strlen(projectPath) > 0) {
@@ -3261,6 +3281,15 @@ public:
             case 'Stop':
                 StopPlayback();
                 break;
+
+            case 'MstV': {  // Master Volume slider
+                if (fMasterVolumeSlider) {
+                    int32 value = fMasterVolumeSlider->Value();
+                    fMasterVolume = value / 100.0f;  // 0-200 -> 0.0-2.0
+                    printf("[MasterVolume] Set to %.0f%% (gain=%.2f)\n", value, fMasterVolume);
+                }
+                break;
+            }
 
             case B_KEY_DOWN: {
                 const char* bytes;
@@ -3732,7 +3761,15 @@ public:
             }
         }
 
-        // Calculate master output levels (RMS) for VU meters
+        // Apply master volume to final mix
+        if (format.channel_count >= 2) {
+            for (int32 frame = 0; frame < frameCount; frame++) {
+                buffer[frame * format.channel_count + 0] *= fMasterVolume;  // Left
+                buffer[frame * format.channel_count + 1] *= fMasterVolume;  // Right
+            }
+        }
+
+        // Calculate master output levels (RMS) for VU meters (after master volume)
         float leftRmsSum = 0.0f;
         float rightRmsSum = 0.0f;
         if (format.channel_count >= 2) {
@@ -3784,7 +3821,9 @@ private:
     BButton* fStopButton;
     BStringView* fTimeDisplay;
     MasterVUMeterView* fMasterVUMeter;
+    BSlider* fMasterVolumeSlider;
     BSoundPlayer* fSoundPlayer;
+    float fMasterVolume;  // 0.0 to 2.0 (100% = 1.0, 200% = 2.0)
     int64 fCurrentFramePosition;
     bool fIsPlaying;
     int64 fLastTimeDisplayUpdate;  // For throttling time display updates
