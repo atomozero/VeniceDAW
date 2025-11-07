@@ -3248,6 +3248,10 @@ public:
                 }
                 // Update time display
                 UpdateTimeDisplay();
+                // Update VU meter with current audio levels
+                if (fMasterVUMeter) {
+                    fMasterVUMeter->SetLevels(fMasterLevelLeft, fMasterLevelRight);
+                }
                 break;
 
             case 'Play':
