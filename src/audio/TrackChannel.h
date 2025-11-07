@@ -13,6 +13,7 @@
 #define TRACK_CHANNEL_H
 
 #include "BiquadFilter.h"
+#include "SpatialReverb.h"
 #include <String.h>
 
 namespace VeniceDAW {
@@ -108,6 +109,7 @@ private:
     bool fFilterEnabled;
     HaikuDAW::BiquadFilter fFilter;
     float fReverbLevel;
+    SpatialReverb fReverb;
 
     // Level metering
     float fCurrentLevel;

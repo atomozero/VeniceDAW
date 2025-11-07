@@ -41,6 +41,12 @@ TrackChannel::TrackChannel()
     fFilter.SetMode(HaikuDAW::BiquadFilter::LOW_PASS);
     fFilter.SetFrequency(20000.0f);  // Passthrough by default
     fFilter.SetQ(0.707f);
+
+    // Initialize reverb with medium room settings
+    fReverb.SetSampleRate(fSampleRate);
+    fReverb.SetRoomSize(0.7f);
+    fReverb.SetDamping(0.5f);
+    fReverb.SetWidth(1.0f);
 }
 
 TrackChannel::~TrackChannel()
@@ -62,6 +68,7 @@ void TrackChannel::SetSampleRate(float sampleRate)
     if (fSampleRate != sampleRate) {
         fSampleRate = sampleRate;
         fFilter.SetSampleRate(sampleRate);
+        fReverb.SetSampleRate(sampleRate);
     }
 }
 
@@ -117,6 +124,7 @@ void TrackChannel::SetReverbLevel(float level)
 void TrackChannel::Reset()
 {
     fFilter.Reset();
+    fReverb.Reset();
     fCurrentLevel = 0.0f;
 }
 
@@ -162,10 +170,13 @@ void TrackChannel::ProcessAndMix(float* outputBuffer, int frameCount, float curr
         return;
     }
 
-    // Temporary buffer for processing
-    float tempBuffer[2048];  // Stereo interleaved
-    int maxFrames = std::min(frameCount, 1024);
+    // Temporary buffers for processing and reverb
+    float reverbInputLeft[1024];
+    float reverbInputRight[1024];
+    float reverbOutputLeft[1024];
+    float reverbOutputRight[1024];
 
+    int processedFrames = 0;
     float peakLevel = 0.0f;
 
     // Process audio in chunks
@@ -189,6 +200,13 @@ void TrackChannel::ProcessAndMix(float* outputBuffer, int frameCount, float curr
             rightSample = fFilter.Process(rightSample);
         }
 
+        // Store samples for reverb send (pre-gain)
+        if (frame < 1024) {
+            reverbInputLeft[frame] = leftSample;
+            reverbInputRight[frame] = rightSample;
+            processedFrames = frame + 1;
+        }
+
         // Apply stereo gains (includes 3D positioning and pan)
         float outputLeft = leftSample * leftGain;
         float outputRight = rightSample * rightGain;
@@ -205,6 +223,41 @@ void TrackChannel::ProcessAndMix(float* outputBuffer, int frameCount, float curr
         // Advance sample position
         samplePosition += fAudioCache->sampleRate / sampleRate;
         sampleIndex = (int)samplePosition;
+    }
+
+    // Process reverb if enabled and we have processed frames
+    if (fReverbLevel > 0.0f && processedFrames > 0) {
+        // Calculate distance from listener to track position
+        float dx = fPosition3D[0] - (listenerPos ? listenerPos[0] : 0.0f);
+        float dy = fPosition3D[1] - (listenerPos ? listenerPos[1] : 0.0f);
+        float dz = fPosition3D[2] - (listenerPos ? listenerPos[2] : 0.0f);
+        float distance = sqrtf(dx * dx + dy * dy + dz * dz);
+
+        // Calculate distance-based wet amount and scale by reverb level
+        float wetAmount = fReverb.CalculateWetAmount(distance) * fReverbLevel;
+
+        if (wetAmount > 0.0f) {
+            // Clear output buffers
+            memset(reverbOutputLeft, 0, processedFrames * sizeof(float));
+            memset(reverbOutputRight, 0, processedFrames * sizeof(float));
+
+            // Process through reverb
+            fReverb.ProcessStereo(reverbInputLeft, reverbInputRight,
+                                  reverbOutputLeft, reverbOutputRight,
+                                  processedFrames, wetAmount);
+
+            // Mix reverb output into final output buffer
+            for (int i = 0; i < processedFrames; i++) {
+                int outputIdx = i * 2;
+                outputBuffer[outputIdx] += reverbOutputLeft[i];
+                outputBuffer[outputIdx + 1] += reverbOutputRight[i];
+
+                // Update peak level with reverb contribution
+                float level = std::max(std::abs(reverbOutputLeft[i]),
+                                      std::abs(reverbOutputRight[i]));
+                if (level > peakLevel) peakLevel = level;
+            }
+        }
     }
 
     fCurrentLevel = peakLevel;
