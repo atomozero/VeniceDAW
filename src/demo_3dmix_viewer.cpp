@@ -3775,22 +3775,25 @@ public:
             }
         }
 
-        // Calculate master output levels (RMS) for VU meters (after master volume)
-        float leftRmsSum = 0.0f;
-        float rightRmsSum = 0.0f;
+        // Calculate master output levels for VU meters (after master volume)
+        // Use peak detection for more responsive VU meters
+        float leftPeak = 0.0f;
+        float rightPeak = 0.0f;
         if (format.channel_count >= 2) {
             for (int32 frame = 0; frame < frameCount; frame++) {
-                float leftSample = buffer[frame * format.channel_count + 0];
-                float rightSample = buffer[frame * format.channel_count + 1];
+                float leftSample = fabs(buffer[frame * format.channel_count + 0]);
+                float rightSample = fabs(buffer[frame * format.channel_count + 1]);
 
-                // Accumulate for RMS calculation
-                leftRmsSum += leftSample * leftSample;
-                rightRmsSum += rightSample * rightSample;
+                // Track peak values
+                if (leftSample > leftPeak) leftPeak = leftSample;
+                if (rightSample > rightPeak) rightPeak = rightSample;
             }
-            if (frameCount > 0) {
-                fMasterLevelLeft = fmin(sqrt(leftRmsSum / frameCount) * 2.0f, 1.0f);
-                fMasterLevelRight = fmin(sqrt(rightRmsSum / frameCount) * 2.0f, 1.0f);
-            }
+
+            // Scale peaks for VU meter display (compensate for low normalization)
+            // With trackCount normalization, peaks are very low, so multiply by 10-15x
+            const float vuScale = 12.0f;  // Adjust based on typical track count
+            fMasterLevelLeft = fmin(leftPeak * vuScale, 1.0f);
+            fMasterLevelRight = fmin(rightPeak * vuScale, 1.0f);
         }
 
         // Update frame position for next callback
