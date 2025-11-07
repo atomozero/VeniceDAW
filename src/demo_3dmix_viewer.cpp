@@ -3265,6 +3265,10 @@ public:
             case MSG_PULSE:
                 if (fGLView) {
                     fGLView->Pulse();
+                    // Force redraw for 3D VU meters (even without auto-rotate)
+                    if (fIsPlaying) {
+                        fGLView->Invalidate();
+                    }
                 }
                 // Update time display
                 UpdateTimeDisplay();
