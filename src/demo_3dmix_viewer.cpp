@@ -1818,15 +1818,17 @@ public:
             SetFontSize(be_plain_font->Size());
 
             // Track region (audio block representation)
-            // For BeOS 3D Mixer: All tracks start at time 0 in the timeline
-            // StartPosition/EndPosition are file offsets, NOT timeline positions
+            // IMPORTANT: StartPosition/EndPosition define timeline position in samples @ 22050 Hz
+            // Each track can start at different time in the mix!
 
             const float kTimelineReferenceRate = 22050.0f;
             float sampleRate = kTimelineReferenceRate;
 
-            // All tracks start at 0 in timeline
-            float startTime = 0.0f;
-            float endTime = 0.0f;
+            // Get track's timeline position from StartPosition (in samples)
+            int32 startSample = track->StartPosition();
+            int32 endSample = track->EndPosition();
+            float startTime = startSample / kTimelineReferenceRate;
+            float endTime = endSample / kTimelineReferenceRate;
 
             // Calculate duration from audio cache (most accurate!)
             // Resolve audio file path
@@ -1856,7 +1858,7 @@ public:
                     }
                 }
 
-                // Get audio cache to calculate duration
+                // Get audio cache - only use it if EndPosition is not set
                 if (resolvedPath.Length() > 0) {
                     VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
                     if (audioFormat.sampleRate == 0) {
@@ -1864,24 +1866,33 @@ public:
                     }
                     const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
                     if (audioCache && audioCache->isValid && !audioCache->samples.empty()) {
-                        // Calculate from actual audio samples!
-                        endTime = audioCache->samples.size() / audioCache->sampleRate;
                         sampleRate = audioCache->sampleRate;
+
+                        // Only override endTime if it wasn't set from EndPosition
+                        if (endSample == 0 || endTime <= startTime) {
+                            // Calculate end time from audio file length (stereo samples / 2)
+                            float audioDuration = (audioCache->samples.size() / 2.0f) / audioCache->sampleRate;
+                            endTime = startTime + audioDuration;
+                        }
                     }
                 }
             }
 
-            // Fallback: use project duration if cache not available
-            if (endTime <= 0) {
-                endTime = fProject.CalculateTotalDuration();
+            // Fallback: use project duration if still not set
+            if (endTime <= startTime) {
+                float projectDuration = fProject.CalculateTotalDuration();
+                endTime = startTime + projectDuration;
             }
 
             float trackDuration = endTime - startTime;
 
-            // Debug logging on first track only
-            if (i == 0) {
-                printf("[TrackLanes] Track '%s': start=%.2fs, end=%.2fs, duration=%.2fs, BlockWidth=%.1fpx\n",
-                       track->TrackName().String(), startTime, endTime, trackDuration, trackDuration * fPixelsPerSecond);
+            // Debug logging for ALL tracks to check positioning
+            static bool tracksPrinted = false;
+            if (!tracksPrinted) {
+                printf("[TrackLanes] Track #%d '%s': StartPos=%d (%.2fs), EndPos=%d (%.2fs), duration=%.2fs, BlockX=%.1f-%.1fpx\n",
+                       i, track->TrackName().String(), startSample, startTime, endSample, endTime, trackDuration,
+                       trackNameWidth + 10 + (startTime * fPixelsPerSecond), trackNameWidth + 10 + (endTime * fPixelsPerSecond));
+                if (i == trackCount - 1) tracksPrinted = true;  // Print once on last track
             }
 
             if (trackDuration > 0) {
