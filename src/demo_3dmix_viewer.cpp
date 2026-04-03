@@ -19,6 +19,7 @@
 #include <String.h>
 #include <vector>
 #include <map>
+#include <atomic>
 #include <Bitmap.h>
 #include <View.h>
 #include <Font.h>
@@ -28,13 +29,16 @@
 #include <MenuBar.h>
 #include <Menu.h>
 #include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <FilePanel.h>
 #include <ScrollView.h>
+#include <Screen.h>
 
 // Include our 3dmix parser
 #include "audio/3dmix/3DMixFormat.h"
 #include "audio/3dmix/3DMixParser.h"
 #include "audio/3dmix/AudioPathResolver.h"
+#include "audio/BiquadFilter.h"
 #include <MediaFile.h>
 #include <SoundPlayer.h>
 #include <MediaDefs.h>
@@ -42,6 +46,8 @@
 #include <Path.h>
 #include <Entry.h>
 #include <File.h>
+#include <Alert.h>
+#include <FindDirectory.h>
 
 // AudioLogger stub - for 3dmix import system compatibility
 namespace VeniceDAW {
@@ -54,6 +60,9 @@ namespace VeniceDAW {
     };
 }
 
+// Precomputed reciprocal for int16→float conversion (multiply is faster than divide)
+static const float kInt16ToFloat = 1.0f / 32768.0f;
+
 struct AudioSource {
     BString name;
     float x, y, z;  // 3D position
@@ -64,6 +73,52 @@ struct AudioSource {
     AudioSource() : x(0), y(0), z(0), level(0), volume(1.0f) {
         color.red = color.green = color.blue = 255;
         color.alpha = 255;
+    }
+};
+
+// Filter chain entry - represents one filter in a track's processing chain
+// Uses separate L/R filter instances to avoid stereo crosstalk (shared coefficients, independent state)
+struct FilterInChain {
+    HaikuDAW::BiquadFilter filterL;  // Left channel filter instance
+    HaikuDAW::BiquadFilter filterR;  // Right channel filter instance
+    int mode;                        // FilterMode enum value (LOW_PASS, HIGH_PASS, etc.)
+    float frequency;                 // Filter frequency in Hz
+    float Q;                         // Filter Q factor
+    float gainDB;                    // Gain in dB (for peaking/shelf filters)
+
+    FilterInChain()
+        : mode(HaikuDAW::BiquadFilter::LOW_PASS)
+        , frequency(1000.0f)
+        , Q(0.707f)
+        , gainDB(0.0f)
+    {
+        // Initialize both L/R filters with identical parameters
+        filterL.SetMode(HaikuDAW::BiquadFilter::LOW_PASS);
+        filterL.SetSampleRate(44100.0f);
+        filterL.SetFrequency(frequency);
+        filterL.SetQ(Q);
+        filterL.SetGain(gainDB);
+        filterR.SetMode(HaikuDAW::BiquadFilter::LOW_PASS);
+        filterR.SetSampleRate(44100.0f);
+        filterR.SetFrequency(frequency);
+        filterR.SetQ(Q);
+        filterR.SetGain(gainDB);
+    }
+
+    // Helper to set parameters on both L/R consistently
+    void SetParams(int newMode, float freq, float q, float gain) {
+        mode = newMode;
+        frequency = freq;
+        Q = q;
+        gainDB = gain;
+        filterL.SetMode((HaikuDAW::BiquadFilter::FilterMode)newMode);
+        filterL.SetFrequency(freq);
+        filterL.SetQ(q);
+        filterL.SetGain(gain);
+        filterR.SetMode((HaikuDAW::BiquadFilter::FilterMode)newMode);
+        filterR.SetFrequency(freq);
+        filterR.SetQ(q);
+        filterR.SetGain(gain);
     }
 };
 
@@ -101,9 +156,12 @@ struct AudioSampleCache {
             endIdx = samples.size();
         }
 
-        // Adaptive step (in frames)
-        int step = (1 + (numFrames >> 1)) * 2;  // *2 for stereo
-        if (step < 2) step = 2;
+        // Adaptive step: examine at least ~256 sample points for accurate min/max
+        int step = 2;  // Default: every frame (2 samples for stereo)
+        if (numFrames > 256) {
+            step = (numFrames / 256) * 2;  // *2 for stereo
+            if (step < 2) step = 2;
+        }
 
         int16_t minVal = 0;
         int16_t maxVal = 0;
@@ -118,8 +176,8 @@ struct AudioSampleCache {
         }
 
         // Normalize to -1.0 to +1.0
-        *outMin = minVal / 32768.0f;
-        *outMax = maxVal / 32768.0f;
+        *outMin = minVal * kInt16ToFloat;
+        *outMax = maxVal * kInt16ToFloat;
     }
 };
 
@@ -413,6 +471,7 @@ public:
     DemoGL3DView(BRect frame, const char* name)
         : BGLView(frame, name, B_FOLLOW_ALL, B_WILL_DRAW | B_FRAME_EVENTS,
                   BGL_RGB | BGL_DOUBLE | BGL_DEPTH)
+        , fProject(nullptr)
         , fRotationY(180.0f)  // Rotate 180 degrees
         , fZoom(-25.0f)  // Increased zoom to see all tracks
         , fProjectName("")
@@ -425,14 +484,23 @@ public:
         , fDraggedTrackIndex(-1)
         , fDragStartX(0.0f)
         , fDragStartZ(0.0f)
+        , fQuadric(nullptr)
     {
         SetEventMask(B_POINTER_EVENTS, 0);
+    }
+
+    ~DemoGL3DView() {
+        if (fQuadric) {
+            gluDeleteQuadric(fQuadric);
+            fQuadric = nullptr;
+        }
     }
 
     virtual void AttachedToWindow() override {
         BGLView::AttachedToWindow();
         LockGL();
         InitGL();
+        fQuadric = gluNewQuadric();
         UnlockGL();
     }
 
@@ -460,6 +528,18 @@ public:
         glLoadIdentity();
         gluPerspective(45.0, width / height, 0.1, 100.0);
         glMatrixMode(GL_MODELVIEW);
+    }
+
+    void SetProject(VeniceDAW::Project3DMix* project) {
+        fProject = project;
+    }
+
+    void ClearSources() {
+        fSources.clear();
+        fHoveredTrackIndex = -1;
+        fIsDragging = false;
+        fDraggedTrackIndex = -1;
+        Invalidate();
     }
 
     void AddAudioSource(const char* name, float x, float y, float z) {
@@ -555,10 +635,9 @@ public:
         glColor3f(1.0f, 1.0f, 0.0f);
 
         // Draw main circle for head (top view)
-        GLUquadric* quad = gluNewQuadric();
         glPushMatrix();
         glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
-        gluDisk(quad, 0.0, 0.5, 20, 1);
+        gluDisk(fQuadric, 0.0, 0.5, 20, 1);
         glPopMatrix();
 
         // Draw "ears" as small cylinders
@@ -566,16 +645,14 @@ public:
         glPushMatrix();
         glTranslatef(-0.5f, 0.0f, 0.0f);
         glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
-        gluCylinder(quad, 0.15, 0.15, 0.3, 12, 1);
+        gluCylinder(fQuadric, 0.15, 0.15, 0.3, 12, 1);
         glPopMatrix();
 
         glPushMatrix();
         glTranslatef(0.2f, 0.0f, 0.0f);
         glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
-        gluCylinder(quad, 0.15, 0.15, 0.3, 12, 1);
+        gluCylinder(fQuadric, 0.15, 0.15, 0.3, 12, 1);
         glPopMatrix();
-
-        gluDeleteQuadric(quad);
         glPopMatrix();
     }
 
@@ -589,11 +666,10 @@ public:
 
         // Draw vertical cylinder/pole
         glColor3ub(source.color.red, source.color.green, source.color.blue);
-        GLUquadric* quad = gluNewQuadric();
 
         glPushMatrix();
         glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);  // Point cylinder upward
-        gluCylinder(quad, 0.1, 0.1, 0.8, 12, 1);  // Thin pole
+        gluCylinder(fQuadric, 0.1, 0.1, 0.8, 12, 1);  // Thin pole
         glPopMatrix();
 
         // Draw sphere on top of pole with audio-reactive pulsing
@@ -608,9 +684,8 @@ public:
         // Scale sphere based on audio level
         glPushMatrix();  // Push before scaling so we can pop back to unscaled position
         glScalef(pulseScale, pulseScale, pulseScale);
-        gluSphere(quad, 0.3, 16, 16);
+        gluSphere(fQuadric, 0.3, 16, 16);
         glPopMatrix();  // Pop scaling - back to (source.x, 0.8, source.y)
-        gluDeleteQuadric(quad);
 
         // === VU METER ===
         // Draw VU meter above the sphere (we're at source.x, 0.8, source.y)
@@ -696,7 +771,9 @@ public:
             // Convert screen delta to 3D world delta
             // Simple approximation: scale by zoom distance
             float scaleFactor = fabs(fZoom) / 800.0f;  // Empirical scaling
-            float worldDX = dx * scaleFactor;
+
+            // Account for 180° camera rotation: X axis is inverted
+            float worldDX = -dx * scaleFactor;  // Negate X because camera is rotated 180°
             float worldDZ = -dy * scaleFactor;  // Invert Y (screen Y goes down, world Z goes up)
 
             // Update track position with constraints (±10 units like BeOS ±250)
@@ -709,6 +786,14 @@ public:
             if (track.x < -10.0f) track.x = -10.0f;
             if (track.y > 10.0f) track.y = 10.0f;
             if (track.y < -10.0f) track.y = -10.0f;
+
+            // Update project track position for real-time audio spatialization
+            if (fProject && fDraggedTrackIndex < fProject->CountTracks()) {
+                VeniceDAW::Track3DMix* projectTrack = fProject->TrackAt(fDraggedTrackIndex);
+                if (projectTrack) {
+                    projectTrack->SetPosition(track.x, track.y, track.z);
+                }
+            }
 
             Invalidate();  // Redraw with new position
         } else {
@@ -1184,6 +1269,7 @@ public:
 
 private:
     std::vector<AudioSource> fSources;
+    VeniceDAW::Project3DMix* fProject;  // Pointer to project for real-time position updates
     float fRotationY;
     float fZoom;
     BString fProjectName;
@@ -1198,6 +1284,9 @@ private:
     int fDraggedTrackIndex;
     BPoint fDragStartMouse;
     float fDragStartX, fDragStartZ;  // Original track position
+
+    // Cached GLU quadric (avoid alloc/free per frame)
+    GLUquadric* fQuadric;
 };
 
 // ============================================================================
@@ -1218,6 +1307,18 @@ public:
         , fLoopOutPoint(0.0f)
     {
         SetViewColor(45, 45, 50);
+    }
+
+    virtual void AttachedToWindow() override {
+        BView::AttachedToWindow();
+        printf("[TimeRuler] AttachedToWindow() - forcing initial draw\n");
+        Invalidate();
+    }
+
+    virtual void FrameResized(float width, float height) override {
+        BView::FrameResized(width, height);
+        printf("[TimeRuler] FrameResized(%.1f, %.1f)\n", width, height);
+        Invalidate();
     }
 
     void SetPixelsPerSecond(float pps) {
@@ -1428,7 +1529,9 @@ inline RenderQuality GetRenderQuality(float pixelsPerSecond) {
 class TrackLanesView : public BView {
 public:
     TrackLanesView(BRect frame, const VeniceDAW::Project3DMix& project, float pixelsPerSecond, const char* projectFilePath,
-                   bool* trackMute, bool* trackSolo, BWindow* parentWindow)
+                   bool* trackMute, bool* trackSolo, bool* filterEnabled, int* filterMode,
+                   std::vector<FilterInChain>* filterChains, BWindow* parentWindow,
+                   BSoundPlayer* sharedSoundPlayer = nullptr, std::atomic<int64>* sharedFramePosition = nullptr)
         : BView(frame, "track_lanes", B_FOLLOW_NONE, B_WILL_DRAW)
         , fProject(project)
         , fProjectPath(projectFilePath)
@@ -1437,7 +1540,12 @@ public:
         , fLastPlayheadX(-1.0f)
         , fTrackMute(trackMute)
         , fTrackSolo(trackSolo)
+        , fFilterEnabled(filterEnabled)
+        , fFilterMode(filterMode)
+        , fFilterChains(filterChains)
         , fParentWindow(parentWindow)
+        , fSharedSoundPlayer(sharedSoundPlayer)
+        , fSharedFramePosition(sharedFramePosition)
         , fWaveformCacheValid(false)
         , fCachedZoom(-1.0f)
         , fWaveformCacheBitmap(nullptr)
@@ -1487,7 +1595,56 @@ public:
         fLastPlayheadX = newX;
     }
 
+    void ShowAddFilterMenu(BPoint where, int trackIndex) {
+        BPopUpMenu* menu = new BPopUpMenu("add_filter_menu", false, false);
+        menu->SetFont(be_plain_font);
+
+        // Create filter type options
+        menu->AddItem(new BMenuItem("Low-Pass Filter", new BMessage(MSG_ADD_FILTER)));
+        menu->AddItem(new BMenuItem("High-Pass Filter", new BMessage(MSG_ADD_FILTER + 1)));
+        menu->AddItem(new BMenuItem("Band-Pass Filter", new BMessage(MSG_ADD_FILTER + 2)));
+        menu->AddItem(new BMenuItem("Notch Filter", new BMessage(MSG_ADD_FILTER + 3)));
+        menu->AddItem(new BMenuItem("Peaking EQ", new BMessage(MSG_ADD_FILTER + 4)));
+        menu->AddItem(new BMenuItem("Low-Shelf EQ", new BMessage(MSG_ADD_FILTER + 5)));
+        menu->AddItem(new BMenuItem("High-Shelf EQ", new BMessage(MSG_ADD_FILTER + 6)));
+
+        // Store track index in each menu item's message
+        for (int32 i = 0; i < menu->CountItems(); i++) {
+            BMenuItem* item = menu->ItemAt(i);
+            if (item && item->Message()) {
+                item->Message()->AddInt32("track_index", trackIndex);
+            }
+        }
+
+        // Set target to parent window (DemoWindow)
+        menu->SetTargetForItems(fParentWindow);
+
+        // Convert to screen coordinates
+        ConvertToScreen(&where);
+        menu->Go(where, true, true, true);
+    }
+
+    void ShowRemoveFilterMenu(BPoint where, int trackIndex, int filterIndex) {
+        BPopUpMenu* menu = new BPopUpMenu("remove_filter_menu", false, false);
+        menu->SetFont(be_plain_font);
+
+        BMessage* removeMsg = new BMessage(MSG_REMOVE_FILTER);
+        removeMsg->AddInt32("track_index", trackIndex);
+        removeMsg->AddInt32("filter_index", filterIndex);
+
+        menu->AddItem(new BMenuItem("Remove Filter", removeMsg));
+
+        // Set target to parent window (DemoWindow)
+        menu->SetTargetForItems(fParentWindow);
+
+        // Convert to screen coordinates
+        ConvertToScreen(&where);
+        menu->Go(where, true, true, true);
+    }
+
 private:
+    static const uint32 MSG_ADD_FILTER = 'addf';
+    static const uint32 MSG_REMOVE_FILTER = 'rmvf';
     // PERFORMANCE: Build offscreen waveform cache to avoid re-rendering every frame
     void RebuildWaveformCache() {
         BRect bounds = Bounds();
@@ -1611,13 +1768,61 @@ private:
 public:
 
     virtual void MouseDown(BPoint where) override {
-        // Check if click is on a Mute/Solo widget
+        // Check if click is on filter chain widgets or Mute/Solo widgets
         int trackCount = fProject.CountTracks();
         float laneHeight = 60.0f;
         float trackNameWidth = 150.0f;
 
         for (int i = 0; i < trackCount; i++) {
             float y = i * laneHeight;
+
+            // === FILTER CHAIN HANDLING ===
+            if (fFilterChains && i < 64) {
+                const float widgetWidth = 20.0f;
+                const float filterWidth = 22.0f;
+                const float filterHeight = 24.0f;
+                const float filterSpacing = 2.0f;
+
+                float widgetTop = y + 8;
+                float widgetRight = trackNameWidth - 10;
+                float widgetLeft = widgetRight - widgetWidth;
+                float filterLeft = widgetLeft - 26;
+
+                const std::vector<FilterInChain>& chain = fFilterChains[i];
+
+                // Check click on existing filters
+                for (size_t filterIdx = 0; filterIdx < chain.size(); filterIdx++) {
+                    float xPos = filterLeft - (filterIdx * (filterWidth + filterSpacing));
+                    BRect filterRect(xPos, widgetTop, xPos + filterWidth, widgetTop + filterHeight);
+
+                    if (filterRect.Contains(where)) {
+                        uint32 buttons = 0;
+                        BMessage* msg = Window()->CurrentMessage();
+                        if (msg) msg->FindInt32("buttons", (int32*)&buttons);
+
+                        if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+                            ShowRemoveFilterMenu(where, i, filterIdx);
+                        } else {
+                            printf("[FilterChain] Clicked filter %zu on track %d (parameters edit - TODO)\n",
+                                   filterIdx, i);
+                        }
+                        return;
+                    }
+                }
+
+                // Check click on "+ Add Filter" button
+                if (chain.size() < 8) {
+                    float addBtnX = filterLeft - (chain.size() * (filterWidth + filterSpacing));
+                    BRect addBtnRect(addBtnX, widgetTop, addBtnX + filterWidth, widgetTop + filterHeight);
+
+                    if (addBtnRect.Contains(where)) {
+                        ShowAddFilterMenu(where, i);
+                        return;
+                    }
+                }
+            }
+
+            // === MUTE/SOLO HANDLING ===
             float widgetLeft = trackNameWidth - 24;
             float widgetTop = y + (laneHeight - 24) / 2;
             BRect muteSoloRect(widgetLeft, widgetTop, widgetLeft + 12, widgetTop + 24);
@@ -1656,7 +1861,92 @@ public:
             }
         }
 
+        // Click on timeline area: check if clicking on an audio block (drag) or empty space (seek)
+        if (where.x > trackNameWidth + 10) {
+            const float kTimelineReferenceRate = 22050.0f;
+
+            // Check if click hits an audio block
+            for (int i = 0; i < trackCount; i++) {
+                VeniceDAW::Track3DMix* track = fProject.TrackAt(i);
+                if (!track) continue;
+
+                float y = i * laneHeight;
+                float startTime = track->StartPosition() / kTimelineReferenceRate;
+                float endTime = track->EndPosition() / kTimelineReferenceRate;
+
+                // Fallback duration if EndPosition not set
+                if (endTime <= startTime) {
+                    endTime = startTime + fProject.CalculateTotalDuration();
+                }
+
+                float startX = trackNameWidth + 10 + (startTime * fPixelsPerSecond);
+                float endX = trackNameWidth + 10 + (endTime * fPixelsPerSecond);
+                BRect blockRect(startX, y + 5, endX, y + laneHeight - 6);
+
+                if (blockRect.Contains(where)) {
+                    // Start dragging this audio block
+                    fDraggingBlock = true;
+                    fDragBlockTrackIndex = i;
+                    fDragBlockStartMouseX = where.x;
+                    fDragBlockOriginalStart = track->StartPosition();
+                    printf("[BlockDrag] Started dragging track %d '%s'\n", i, track->TrackName().String());
+                    return;
+                }
+            }
+
+            // Click on empty space = seek
+            if (fSharedFramePosition && fSharedSoundPlayer) {
+                float clickedTime = (where.x - trackNameWidth - 10) / fPixelsPerSecond;
+                if (clickedTime >= 0) {
+                    media_raw_audio_format fmt = fSharedSoundPlayer->Format();
+                    fSharedFramePosition->store((int64)(clickedTime * fmt.frame_rate));
+                    SetPlayheadPosition(clickedTime);
+                    printf("[Seek] Jumped to %.2fs\n", clickedTime);
+                }
+            }
+            return;
+        }
+
         BView::MouseDown(where);
+    }
+
+    virtual void MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage) override {
+        if (fDraggingBlock && fDragBlockTrackIndex >= 0) {
+            float deltaX = where.x - fDragBlockStartMouseX;
+            float deltaTime = deltaX / fPixelsPerSecond;
+            const float kTimelineReferenceRate = 22050.0f;
+            int32 deltaSamples = (int32)(deltaTime * kTimelineReferenceRate);
+
+            int32 newStart = fDragBlockOriginalStart + deltaSamples;
+            if (newStart < 0) newStart = 0;
+
+            VeniceDAW::Track3DMix* track = fProject.TrackAt(fDragBlockTrackIndex);
+            if (track) {
+                // Calculate duration to maintain block length
+                int32 originalDuration = track->EndPosition() - track->StartPosition();
+                track->SetStartPosition(newStart);
+                track->SetEndPosition(newStart + originalDuration);
+            }
+
+            // Invalidate waveform cache and redraw
+            fWaveformCacheValid = false;
+            Invalidate();
+        }
+        BView::MouseMoved(where, code, dragMessage);
+    }
+
+    virtual void MouseUp(BPoint where) override {
+        if (fDraggingBlock && fDragBlockTrackIndex >= 0) {
+            VeniceDAW::Track3DMix* track = fProject.TrackAt(fDragBlockTrackIndex);
+            if (track) {
+                const float kTimelineReferenceRate = 22050.0f;
+                printf("[BlockDrag] Finished: track %d now starts at %.2fs\n",
+                       fDragBlockTrackIndex, track->StartPosition() / kTimelineReferenceRate);
+            }
+            fDraggingBlock = false;
+            fDragBlockTrackIndex = -1;
+        }
+        BView::MouseUp(where);
     }
 
     virtual void Draw(BRect updateRect) override {
@@ -1816,6 +2106,100 @@ public:
 
             // Reset font size
             SetFontSize(be_plain_font->Size());
+
+            // Filter chain indicators - show ALL filters in the chain
+            if (fFilterChains && i < 64) {
+                const std::vector<FilterInChain>& chain = fFilterChains[i];
+
+                // Draw each filter in the chain as a small colored box
+                float filterLeft = widgetLeft - 26;  // Start left of M/S widget
+                const float filterWidth = 22.0f;
+                const float filterHeight = 24.0f;
+                const float filterSpacing = 2.0f;  // Gap between filter boxes
+
+                for (size_t filterIdx = 0; filterIdx < chain.size(); filterIdx++) {
+                    const FilterInChain& filter = chain[filterIdx];
+
+                    // Calculate position (stack horizontally to the left)
+                    float xPos = filterLeft - (filterIdx * (filterWidth + filterSpacing));
+                    BRect filterRect(xPos, widgetTop, xPos + filterWidth, widgetTop + filterHeight);
+
+                    // Background color based on filter type
+                    switch (filter.mode) {
+                        case 0:  // LOW_PASS
+                            SetHighColor(80, 150, 255);  // Blue
+                            break;
+                        case 1:  // HIGH_PASS
+                            SetHighColor(255, 150, 80);  // Orange
+                            break;
+                        case 2:  // BAND_PASS
+                            SetHighColor(255, 200, 80);  // Yellow
+                            break;
+                        case 3:  // NOTCH
+                            SetHighColor(200, 80, 200);  // Purple
+                            break;
+                        case 4:  // PEAKING
+                            SetHighColor(80, 255, 150);  // Green
+                            break;
+                        case 5:  // LOW_SHELF
+                            SetHighColor(100, 180, 255);  // Light Blue
+                            break;
+                        case 6:  // HIGH_SHELF
+                            SetHighColor(255, 180, 100);  // Light Orange
+                            break;
+                        default:
+                            SetHighColor(150, 150, 150);  // Gray for unknown
+                            break;
+                    }
+                    FillRect(filterRect);
+
+                    // Draw filter type label
+                    SetFontSize(7);
+                    SetHighColor(20, 20, 20);  // Dark text
+                    SetDrawingMode(B_OP_OVER);
+                    const char* filterLabel = "";
+                    switch (filter.mode) {
+                        case 0: filterLabel = "LP"; break;  // Low-Pass
+                        case 1: filterLabel = "HP"; break;  // High-Pass
+                        case 2: filterLabel = "BP"; break;  // Band-Pass
+                        case 3: filterLabel = "NT"; break;  // Notch
+                        case 4: filterLabel = "PK"; break;  // Peaking
+                        case 5: filterLabel = "LS"; break;  // Low-Shelf
+                        case 6: filterLabel = "HS"; break;  // High-Shelf
+                        default: filterLabel = "??"; break;
+                    }
+                    DrawString(filterLabel, BPoint(xPos + 3, widgetTop + 14));
+                    SetDrawingMode(B_OP_COPY);
+
+                    // Border
+                    SetHighColor(80, 80, 80);
+                    StrokeRect(filterRect);
+                }
+
+                // Draw "+ Add Filter" button if chain is not full (max 8 filters)
+                if (chain.size() < 8) {
+                    float addBtnX = filterLeft - (chain.size() * (filterWidth + filterSpacing));
+                    BRect addBtnRect(addBtnX, widgetTop, addBtnX + filterWidth, widgetTop + filterHeight);
+
+                    // Subtle background for add button
+                    SetHighColor(60, 60, 65);
+                    FillRect(addBtnRect);
+
+                    // Draw "+" symbol
+                    SetFontSize(12);
+                    SetHighColor(150, 150, 150);
+                    SetDrawingMode(B_OP_OVER);
+                    DrawString("+", BPoint(addBtnX + 7, widgetTop + 17));
+                    SetDrawingMode(B_OP_COPY);
+
+                    // Border
+                    SetHighColor(100, 100, 100);
+                    StrokeRect(addBtnRect);
+                }
+
+                // Reset font size
+                SetFontSize(be_plain_font->Size());
+            }
 
             // Track region (audio block representation)
             // IMPORTANT: StartPosition/EndPosition define timeline position in samples @ 22050 Hz
@@ -2015,9 +2399,9 @@ public:
                         BeginLineArray(lineCount);
                         // Pastel waveform colors (classic DAW style)
                         rgb_color waveColor = {
-                            (uint8)(trackColor.red * 0.7),
-                            (uint8)(trackColor.green * 0.7),
-                            (uint8)(trackColor.blue * 0.7),
+                            255,  // White waveform
+                            255,
+                            255,
                             200  // Slightly transparent for softer look
                         };
 
@@ -2331,7 +2715,23 @@ private:
     // Mute/Solo state (pointers to DemoWindow arrays)
     bool* fTrackMute;
     bool* fTrackSolo;
+
+    // Filter state (pointers to DemoWindow arrays)
+    bool* fFilterEnabled;  // LEGACY: Filter enabled for each track (single filter)
+    int* fFilterMode;      // LEGACY: FilterMode enum value for each track (single filter)
+    std::vector<FilterInChain>* fFilterChains;  // NEW: Filter chains for each track (array of 64 vectors)
+
     BWindow* fParentWindow;  // For posting mute/solo change messages
+
+    // Shared audio state for seek/scrub (from DemoWindow via TimelineContentView)
+    BSoundPlayer* fSharedSoundPlayer;
+    std::atomic<int64>* fSharedFramePosition;
+
+    // Block drag state (drag audio blocks in timeline)
+    bool fDraggingBlock = false;
+    int fDragBlockTrackIndex = -1;
+    float fDragBlockStartMouseX = 0.0f;
+    int32 fDragBlockOriginalStart = 0;
 
     // PERFORMANCE: Waveform bitmap cache to avoid redrawing every frame
     BBitmap* fWaveformCacheBitmap;  // Pre-rendered waveforms
@@ -2339,16 +2739,21 @@ private:
     float fCachedZoom;              // Zoom level when cache was created
 };
 
+// Forward declaration for TimelineWindow
+class TimelineWindow;
+
 // Main Timeline Content View - Container for ruler and lanes
 class TimelineContentView : public BView {
 public:
     TimelineContentView(BRect frame, const VeniceDAW::Project3DMix& project, const char* projectFilePath,
-                        BSoundPlayer* sharedSoundPlayer, int64* sharedFramePosition, bool* sharedIsPlaying,
-                        bool* trackMute, bool* trackSolo, BWindow* parentWindow)
-        : BView(frame, "timeline_content", B_FOLLOW_ALL, B_WILL_DRAW)
+                        BSoundPlayer* sharedSoundPlayer, std::atomic<int64>* sharedFramePosition, std::atomic<bool>* sharedIsPlaying,
+                        bool* trackMute, bool* trackSolo, bool* filterEnabled, int* filterMode,
+                        std::vector<FilterInChain>* filterChains, BWindow* parentWindow)
+        : BView(frame, "timeline_content", B_FOLLOW_ALL, 0)
         , fProject(project)
         , fProjectPath(projectFilePath)
         , fPixelsPerSecond(50.0f)  // Initial zoom
+        , fMinPixelsPerSecond(1.0f)  // Will be set by FitToWindow()
         , fPlayheadPosition(0.0f)
         , fLoopEnabled(false)
         , fLoopInPoint(0.0f)
@@ -2357,7 +2762,7 @@ public:
         , fSharedFramePosition(sharedFramePosition)
         , fSharedIsPlaying(sharedIsPlaying)
     {
-        SetViewColor(30, 30, 35);
+        SetViewColor(B_TRANSPARENT_COLOR);  // Transparent so children draw themselves
 
         // Calculate content size for scrollable area
         // Width: Calculate based on longest track duration
@@ -2375,34 +2780,20 @@ public:
         // Create track lanes view (this goes INSIDE scroll view)
         BRect lanesFrame(0, 0, contentWidth, contentHeight);
         fLanesView = new TrackLanesView(lanesFrame, project, fPixelsPerSecond, projectFilePath,
-                                        trackMute, trackSolo, parentWindow);
+                                        trackMute, trackSolo, filterEnabled, filterMode, filterChains, parentWindow,
+                                        sharedSoundPlayer, sharedFramePosition);
 
-        // Wrap ONLY lanes in scroll view (starts below ruler at Y=41)
-        // IMPORTANT: Add scroll view FIRST so it's BEHIND the ruler in Z-order
-        BRect scrollFrame(0, 41, Bounds().Width(), Bounds().Height());
+        // Wrap lanes in scroll view (fills entire content view)
+        BRect scrollFrame = Bounds();
         fScrollView = new BScrollView("timeline_scroll", fLanesView,
-                                      B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP_BOTTOM, 0,
+                                      B_FOLLOW_ALL_SIDES, 0,
                                       true,  // horizontal scrollbar
                                       true,  // vertical scrollbar
                                       B_FANCY_BORDER);
-        AddChild(fScrollView);  // Add FIRST (behind in Z-order)
+        AddChild(fScrollView);
 
-        // Create ruler view FIXED at top (NOT inside scroll view!)
-        // IMPORTANT: Add ruler AFTER scroll view so it's ON TOP in Z-order
-        BRect rulerFrame(0, 0, Bounds().Width(), 40);
-        fRulerView = new TimeRulerView(rulerFrame, project, fPixelsPerSecond);
-        fRulerView->SetViewColor(30, 30, 35);
-        fRulerView->SetFlags(B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP);  // Follow width, stay at top
-        AddChild(fRulerView);  // Add LAST (on top in Z-order)
-        fRulerView->Invalidate();  // Force immediate draw
-        fRulerView->Show();        // Explicitly show the ruler
-
-        printf("[Timeline] Using shared audio engine from 3D Mixer window\n");
-        printf("[Timeline] Ruler frame: (%.1f, %.1f, %.1f, %.1f)\n",
-               rulerFrame.left, rulerFrame.top, rulerFrame.right, rulerFrame.bottom);
-        printf("[Timeline] Scroll frame: (%.1f, %.1f, %.1f, %.1f)\n",
+        printf("[Timeline] Scroll view fills content area: (%.1f, %.1f, %.1f, %.1f)\n",
                scrollFrame.left, scrollFrame.top, scrollFrame.right, scrollFrame.bottom);
-        printf("[Timeline] Z-order: ScrollView (back), Ruler (front) - Ruler should be visible!\n");
     }
 
     ~TimelineContentView() {
@@ -2417,7 +2808,7 @@ public:
 
     void ZoomOut() {
         fPixelsPerSecond /= 1.5f;
-        if (fPixelsPerSecond < 1.0f) fPixelsPerSecond = 1.0f;
+        if (fPixelsPerSecond < fMinPixelsPerSecond) fPixelsPerSecond = fMinPixelsPerSecond;
         UpdateZoom();
     }
 
@@ -2455,14 +2846,22 @@ public:
             if (fPixelsPerSecond < 1.0f) fPixelsPerSecond = 1.0f;
             if (fPixelsPerSecond > 200.0f) fPixelsPerSecond = 200.0f;
 
+            // Save this as the minimum zoom level (can't zoom out beyond initial view)
+            fMinPixelsPerSecond = fPixelsPerSecond;
+
             UpdateZoom();
-            printf("[Timeline] Fit to window: %.1f seconds @ %.1f px/sec\n",
+            printf("[Timeline] Fit to window: %.1f seconds @ %.1f px/sec (min zoom set)\n",
                    maxDuration, fPixelsPerSecond);
         }
     }
 
     void UpdateZoom() {
-        fRulerView->SetPixelsPerSecond(fPixelsPerSecond);
+        // Update ruler at window level via message
+        BMessage msg('TZom');  // Timeline Zoom
+        msg.AddFloat("zoom", fPixelsPerSecond);
+        Window()->PostMessage(&msg);
+
+        // Update lanes
         fLanesView->SetPixelsPerSecond(fPixelsPerSecond);
 
         // Update content size for scrollable area based on new zoom level
@@ -2509,12 +2908,12 @@ public:
                 fSharedSoundPlayer->Start();
                 fSharedSoundPlayer->SetHasData(true);
                 printf("[AudioPlayback] STARTED at position %.2fs (frame %ld)\n",
-                       fPlayheadPosition, *fSharedFramePosition);
+                       fPlayheadPosition, fSharedFramePosition->load());
             } else {
                 // Stop audio playback
                 fSharedSoundPlayer->Stop();
                 printf("[AudioPlayback] PAUSED at position %.2fs (frame %ld)\n",
-                       fPlayheadPosition, *fSharedFramePosition);
+                       fPlayheadPosition, fSharedFramePosition->load());
             }
         }
 
@@ -2561,14 +2960,12 @@ public:
         }
         // Always update playhead display, even when paused
         fLanesView->SetPlayheadPosition(fPlayheadPosition);
-        fRulerView->SetPlayheadPosition(fPlayheadPosition);
     }
 
     void ResetPlayhead() {
         fPlayheadPosition = 0.0f;
         *fSharedFramePosition = 0;
         fLanesView->SetPlayheadPosition(fPlayheadPosition);
-        fRulerView->SetPlayheadPosition(fPlayheadPosition);
         printf("[AudioPlayback] Playhead reset to 0.0s\n");
     }
 
@@ -2599,7 +2996,6 @@ public:
         if (maxDuration > 0) {
             fPlayheadPosition = maxDuration;
             fLanesView->SetPlayheadPosition(fPlayheadPosition);
-            fRulerView->SetPlayheadPosition(fPlayheadPosition);
         }
     }
 
@@ -2649,8 +3045,8 @@ public:
                 if (fLoopOutPoint <= fLoopInPoint) {
                     fLoopOutPoint = fLoopInPoint + 5.0f;  // Default 5 second loop
                 }
-                fRulerView->SetLoopRegion(fLoopInPoint, fLoopOutPoint, fLoopEnabled);
                 fLanesView->Invalidate();
+                SyncLoopToDemoWindow();
                 printf("[Loop] In point set at %.2fs\n", fLoopInPoint);
                 break;
             case 'o':
@@ -2660,16 +3056,16 @@ public:
                 if (fLoopInPoint >= fLoopOutPoint) {
                     fLoopInPoint = fmax(0.0f, fLoopOutPoint - 5.0f);
                 }
-                fRulerView->SetLoopRegion(fLoopInPoint, fLoopOutPoint, fLoopEnabled);
                 fLanesView->Invalidate();
+                SyncLoopToDemoWindow();
                 printf("[Loop] Out point set at %.2fs\n", fLoopOutPoint);
                 break;
             case 'l':
             case 'L':
                 // Toggle loop enabled/disabled
                 fLoopEnabled = !fLoopEnabled;
-                fRulerView->SetLoopRegion(fLoopInPoint, fLoopOutPoint, fLoopEnabled);
                 fLanesView->Invalidate();
+                SyncLoopToDemoWindow();
                 printf("[Loop] Loop %s (%.2fs - %.2fs)\n",
                        fLoopEnabled ? "ENABLED" : "DISABLED",
                        fLoopInPoint, fLoopOutPoint);
@@ -2683,11 +3079,20 @@ public:
 private:
     const VeniceDAW::Project3DMix& fProject;
     BString fProjectPath;  // Full path to .3dmix file for audio file resolution
-    TimeRulerView* fRulerView;  // FIXED at top, always visible
     TrackLanesView* fLanesView;  // Inside scroll view
     BScrollView* fScrollView;  // Scroll container for lanes only
     float fPixelsPerSecond;
+    float fMinPixelsPerSecond;  // Minimum zoom level (set at window creation)
     float fPlayheadPosition;
+
+    // Sync loop region to DemoWindow's audio-thread atomics via BMessage
+    void SyncLoopToDemoWindow() {
+        BMessage msg('LpSy');  // Loop Sync
+        msg.AddBool("enabled", fLoopEnabled);
+        msg.AddFloat("in", fLoopInPoint);
+        msg.AddFloat("out", fLoopOutPoint);
+        Window()->PostMessage(&msg);  // TimelineWindow receives and forwards to DemoWindow
+    }
 
     // Loop region state
     bool fLoopEnabled;
@@ -2696,30 +3101,87 @@ private:
 
     // Shared audio playback system (owned by DemoWindow)
     BSoundPlayer* fSharedSoundPlayer;
-    int64* fSharedFramePosition;
-    bool* fSharedIsPlaying;
+    std::atomic<int64>* fSharedFramePosition;
+    std::atomic<bool>* fSharedIsPlaying;
 };
+
+// Calculate window size based on track count
+static BRect CalculateWindowRect(const VeniceDAW::Project3DMix& project) {
+    int trackCount = project.CountTracks();
+
+    // Get screen dimensions
+    BScreen screen;
+    BRect screenFrame = screen.Frame();
+    float maxScreenHeight = screenFrame.Height() - 100.0f;  // Leave 100px for window title/taskbar
+
+    // Window dimensions
+    const float kWindowLeft = 100.0f;
+    const float kWindowTop = 100.0f;
+    const float kWindowWidth = 1300.0f;  // Fixed width
+
+    // Height calculation
+    const float kRulerHeight = 41.0f;     // Ruler at top
+    const float kLaneHeight = 60.0f;      // Each track lane
+    const float kScrollbarHeight = 15.0f; // Horizontal scrollbar
+    const float kMaxTracks = 15;          // Maximum tracks before scrollbar
+
+    // Calculate how many tracks can fit on screen
+    float maxTracksForScreen = (maxScreenHeight - kRulerHeight - kScrollbarHeight) / kLaneHeight;
+
+    // Exact fit: show exactly as many tracks as present, up to max
+    float visibleTracks = trackCount;
+    if (visibleTracks > kMaxTracks) visibleTracks = kMaxTracks;
+    if (visibleTracks > maxTracksForScreen) visibleTracks = maxTracksForScreen;
+    if (visibleTracks < 1) visibleTracks = 1;  // At least 1 track
+
+    float windowHeight = kRulerHeight + (visibleTracks * kLaneHeight) + kScrollbarHeight;
+
+    printf("[Timeline] Screen height: %.0f, max tracks on screen: %.0f\n", maxScreenHeight, maxTracksForScreen);
+    printf("[Timeline] Window size: %d tracks → %.0f x %.0f pixels (showing %.0f tracks)\n",
+           trackCount, kWindowWidth, windowHeight, visibleTracks);
+
+    return BRect(kWindowLeft, kWindowTop,
+                 kWindowLeft + kWindowWidth,
+                 kWindowTop + windowHeight);
+}
 
 // Timeline visualization window
 class TimelineWindow : public BWindow {
 public:
     TimelineWindow(const VeniceDAW::Project3DMix& project, const char* projectFilePath,
-                   BSoundPlayer* sharedSoundPlayer, int64* sharedFramePosition, bool* sharedIsPlaying,
-                   bool* trackMute, bool* trackSolo, BWindow* parentWindow)
-        : BWindow(BRect(100, 100, 1400, 850), "Timeline View - Modern DAW Style",
-                  B_TITLED_WINDOW, B_NOT_ZOOMABLE | B_ASYNCHRONOUS_CONTROLS)
+                   BSoundPlayer* sharedSoundPlayer, std::atomic<int64>* sharedFramePosition, std::atomic<bool>* sharedIsPlaying,
+                   bool* trackMute, bool* trackSolo, bool* filterEnabled, int* filterMode,
+                   std::vector<FilterInChain>* filterChains, BWindow* parentWindow)
+        : BWindow(CalculateWindowRect(project), "Timeline View - Modern DAW Style",
+                  B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS)
         , fProject(project)
         , fProjectPath(projectFilePath)
         , fContentView(nullptr)
         , fUpdateRunner(nullptr)
+        , fRulerView(nullptr)
+        , fParentDemoWindow(parentWindow)
     {
-        fContentView = new TimelineContentView(Bounds(), project, projectFilePath,
+        BRect bounds = Bounds();
+        const float kRulerHeight = 41.0f;
+
+        // Create ruler DIRECTLY in window (not in content view!)
+        BRect rulerFrame(0, 0, bounds.Width(), kRulerHeight - 1);
+        fRulerView = new TimeRulerView(rulerFrame, project, 50.0f);
+        fRulerView->SetViewColor(45, 45, 50);  // Dark gray background
+        AddChild(fRulerView);
+
+        // Create content view BELOW ruler
+        BRect contentFrame(0, kRulerHeight, bounds.Width(), bounds.Height());
+        fContentView = new TimelineContentView(contentFrame, project, projectFilePath,
                                                 sharedSoundPlayer, sharedFramePosition, sharedIsPlaying,
-                                                trackMute, trackSolo, parentWindow);
+                                                trackMute, trackSolo, filterEnabled, filterMode, filterChains, parentWindow);
         AddChild(fContentView);
 
-        // Timer will be created in Show() to ensure window loop is active
-        printf("[TimelineWindow] Created with shared audio engine\n");
+        printf("[TimelineWindow] Created with ruler at window level\n");
+        printf("[TimelineWindow] Ruler: (%.0f, %.0f, %.0f, %.0f)\n",
+               rulerFrame.left, rulerFrame.top, rulerFrame.right, rulerFrame.bottom);
+        printf("[TimelineWindow] Content: (%.0f, %.0f, %.0f, %.0f)\n",
+               contentFrame.left, contentFrame.top, contentFrame.right, contentFrame.bottom);
     }
 
     virtual void Show() override {
@@ -2747,6 +3209,21 @@ public:
                     fContentView->UpdatePlayhead(0.033f);  // 33ms in seconds
                 }
                 break;
+
+            case 'TZom': {  // Timeline Zoom change
+                float zoom = 50.0f;
+                if (message->FindFloat("zoom", &zoom) == B_OK) {
+                    SetRulerZoom(zoom);
+                }
+                break;
+            }
+
+            case 'LpSy': {  // Loop Sync from TimelineContentView → forward to DemoWindow
+                if (fParentDemoWindow) {
+                    fParentDemoWindow->PostMessage(message);
+                }
+                break;
+            }
 
             case B_KEY_DOWN: {
                 // Intercept keyboard events at window level to handle regardless of focus
@@ -2789,6 +3266,13 @@ public:
         }
     }
 
+    void SetRulerZoom(float pixelsPerSecond) {
+        if (fRulerView) {
+            fRulerView->SetPixelsPerSecond(pixelsPerSecond);
+            fRulerView->Invalidate();
+        }
+    }
+
     virtual bool QuitRequested() override {
         // Don't quit the app, just hide this window
         Hide();
@@ -2799,7 +3283,9 @@ private:
     const VeniceDAW::Project3DMix& fProject;
     BString fProjectPath;  // Full path to the .3dmix file
     TimelineContentView* fContentView;
+    TimeRulerView* fRulerView;  // Ruler at window level
     BMessageRunner* fUpdateRunner;
+    BWindow* fParentDemoWindow;  // DemoWindow for loop sync messages
 };
 
 // Master VU Meter View - Shows stereo L/R levels horizontally
@@ -3053,6 +3539,7 @@ public:
         , fMasterLevelLeft(0.0f)
         , fMasterLevelRight(0.0f)
         , fAnySoloActive(false)
+        , fSelectedTrackIndex(-1)  // No track selected initially
         , fFrameCounter(0)
     {
         // Initialize track levels to zero
@@ -3061,6 +3548,10 @@ public:
         // Initialize mute/solo states (all off by default)
         memset(fTrackMute, 0, sizeof(fTrackMute));
         memset(fTrackSolo, 0, sizeof(fTrackSolo));
+
+        // Initialize filters (all disabled by default)
+        memset(fFilterEnabled, 0, sizeof(fFilterEnabled));
+        memset(fFilterMode, 0, sizeof(fFilterMode));  // All set to LOW_PASS (0) by default
 
         BRect bounds = Bounds();
 
@@ -3072,9 +3563,21 @@ public:
 
         BMenu* fileMenu = new BMenu("File");
         fileMenu->AddItem(new BMenuItem("Open...", new BMessage(MSG_OPEN_FILE), 'O'));
+
+        // Recent Files submenu
+        fRecentFilesMenu = new BMenu("Open Recent");
+        fileMenu->AddItem(fRecentFilesMenu);
+        LoadRecentFiles();
+        UpdateRecentFilesMenu();
+
         fileMenu->AddSeparatorItem();
         fileMenu->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
         menuBar->AddItem(fileMenu);
+
+        // Help menu
+        BMenu* helpMenu = new BMenu("Help");
+        helpMenu->AddItem(new BMenuItem("About VeniceDAW...", new BMessage(MSG_ABOUT)));
+        menuBar->AddItem(helpMenu);
 
         AddChild(menuBar);
 
@@ -3104,6 +3607,13 @@ public:
         fPlayButton->SetTarget(this);
         fStopButton->SetTarget(this);
         fMasterVolumeSlider->SetTarget(this);
+
+        // Initialize master volume from slider value (ensure sync at startup)
+        if (fMasterVolumeSlider) {
+            int32 sliderValue = fMasterVolumeSlider->Value();
+            fMasterVolume = sliderValue / 100.0f;  // Sync internal state with slider
+            printf("[Init] Master volume set to %d%% (gain=%.2f)\n", (int)sliderValue, fMasterVolume);
+        }
 
         // Load and parse 3dmix file (if provided)
         if (projectPath && strlen(projectPath) > 0) {
@@ -3142,6 +3652,132 @@ public:
         }
 
         delete fProject;
+        SaveRecentFiles();
+    }
+
+    // Load recent files from settings
+    void LoadRecentFiles() {
+        BPath settingsPath;
+        find_directory(B_USER_SETTINGS_DIRECTORY, &settingsPath);
+        settingsPath.Append("VeniceDAW_Recent");
+
+        BFile file(settingsPath.Path(), B_READ_ONLY);
+        if (file.InitCheck() == B_OK) {
+            // Read entire file
+            off_t fileSize;
+            file.GetSize(&fileSize);
+            if (fileSize > 0 && fileSize < 10240) {  // Max 10KB
+                char* fileContent = new char[fileSize + 1];
+                ssize_t bytesRead = file.Read(fileContent, fileSize);
+                if (bytesRead > 0) {
+                    fileContent[bytesRead] = '\0';
+
+                    // Parse lines
+                    int index = 0;
+                    char* line = strtok(fileContent, "\n");
+                    while (line != NULL && index < 5) {
+                        if (strlen(line) > 0) {
+                            fRecentFiles[index] = line;
+                            index++;
+                        }
+                        line = strtok(NULL, "\n");
+                    }
+                }
+                delete[] fileContent;
+            }
+        }
+    }
+
+    // Save recent files to settings
+    void SaveRecentFiles() {
+        BPath settingsPath;
+        find_directory(B_USER_SETTINGS_DIRECTORY, &settingsPath);
+        settingsPath.Append("VeniceDAW_Recent");
+
+        BFile file(settingsPath.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+        if (file.InitCheck() == B_OK) {
+            for (int i = 0; i < 5; i++) {
+                if (fRecentFiles[i].Length() > 0) {
+                    file.Write(fRecentFiles[i].String(), fRecentFiles[i].Length());
+                    file.Write("\n", 1);
+                }
+            }
+        }
+    }
+
+    // Add file to recent files list
+    void AddToRecentFiles(const char* path) {
+        BString newFile(path);
+
+        // Check if already in list
+        for (int i = 0; i < 5; i++) {
+            if (fRecentFiles[i] == newFile) {
+                // Move to top
+                for (int j = i; j > 0; j--) {
+                    fRecentFiles[j] = fRecentFiles[j-1];
+                }
+                fRecentFiles[0] = newFile;
+                UpdateRecentFilesMenu();
+                return;
+            }
+        }
+
+        // Shift all down and add to top
+        for (int i = 4; i > 0; i--) {
+            fRecentFiles[i] = fRecentFiles[i-1];
+        }
+        fRecentFiles[0] = newFile;
+        UpdateRecentFilesMenu();
+    }
+
+    // Update recent files menu
+    void UpdateRecentFilesMenu() {
+        // Clear menu
+        while (fRecentFilesMenu->CountItems() > 0) {
+            delete fRecentFilesMenu->RemoveItem((int32)0);
+        }
+
+        // Add recent files
+        int count = 0;
+        for (int i = 0; i < 5; i++) {
+            if (fRecentFiles[i].Length() > 0) {
+                BPath path(fRecentFiles[i].String());
+                BMessage* msg = new BMessage(MSG_RECENT_FILE);
+                msg->AddString("path", fRecentFiles[i].String());
+
+                // Show only filename, not full path
+                BString label;
+                label << (i+1) << ". " << path.Leaf();
+
+                fRecentFilesMenu->AddItem(new BMenuItem(label.String(), msg));
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            fRecentFilesMenu->AddItem(new BMenuItem("(No recent files)", NULL));
+            fRecentFilesMenu->ItemAt(0)->SetEnabled(false);
+        }
+    }
+
+    // Show About window
+    void ShowAbout() {
+        BAlert* about = new BAlert("About VeniceDAW",
+            "VeniceDAW - 3DMix Viewer Alpha\n"
+            "\"CD-ROM Edition\" 🎵\n\n"
+            "A time machine back to 1995-2001\n"
+            "when BeOS was the coolest OS on Earth!\n\n"
+            "Features:\n"
+            "• Plays ancient BeOS 3dmix files from the archives\n"
+            "• 3D spatial audio positioning (feel the 90s!)\n"
+            "• Waveform visualization like it's Y2K\n"
+            "• Compatible with AMD E-Series CPUs from 2011 ⚡\n\n"
+            "Built with ❤️ for Haiku OS\n"
+            "November 2025\n\n"
+            "🎧 Keep the BeOS spirit alive! 🎧",
+            "Cool!", NULL, NULL,
+            B_WIDTH_AS_USUAL, B_INFO_ALERT);
+        about->Go();
     }
 
     void LoadProject(const char* path) {
@@ -3222,8 +3858,12 @@ public:
             }
         }
 
+        // Clear old sources before adding new ones
+        fGLView->ClearSources();
+
         // Set project info for display in 3D view (use filename instead of project name)
         fGLView->SetProjectInfo(fileName.String(), project.CountTracks());
+        fGLView->SetProject(fProject);  // Enable real-time audio spatialization during drag
 
         // Update window title
         char windowTitle[512];
@@ -3281,7 +3921,8 @@ public:
             // Pass project, project path, shared audio engine, and mute/solo state
             fTimelineWindow = new TimelineWindow(*fProject, fProjectPath.String(),
                                                   fSoundPlayer, &fCurrentFramePosition, &fIsPlaying,
-                                                  fTrackMute, fTrackSolo, this);
+                                                  fTrackMute, fTrackSolo, fFilterEnabled, fFilterMode,
+                                                  fTrackFilterChains, this);
             printf("[DemoWindow] Created Timeline window with shared audio engine\n");
         }
 
@@ -3303,6 +3944,50 @@ public:
                     fOpenPanel->Window()->SetTitle("Open 3DMix File");
                 }
                 fOpenPanel->Show();
+                break;
+            }
+
+            case MSG_RECENT_FILE: {
+                // Open a recent file
+                const char* path = NULL;
+                if (message->FindString("path", &path) == B_OK) {
+                    // Stop current playback if any
+                    StopPlayback();
+
+                    // Close timeline window BEFORE deleting project
+                    if (fTimelineWindow && fTimelineWindow->Lock()) {
+                        fTimelineWindow->Quit();
+                        fTimelineWindow = nullptr;
+                    }
+
+                    // Clean up old project and sound player
+                    if (fProject) {
+                        delete fProject;
+                        fProject = nullptr;
+                    }
+                    if (fSoundPlayer) {
+                        delete fSoundPlayer;
+                        fSoundPlayer = nullptr;
+                    }
+
+                    // Load new project
+                    fProjectPath = path;
+                    LoadProject(path);
+                    InitAudioPlayback();
+
+                    // Add to recent files (moves to top)
+                    AddToRecentFiles(path);
+
+                    // Auto-start playback
+                    if (fSoundPlayer && fProject) {
+                        TogglePlayback();
+                    }
+                }
+                break;
+            }
+
+            case MSG_ABOUT: {
+                ShowAbout();
                 break;
             }
 
@@ -3339,6 +4024,9 @@ public:
                         LoadProject(path.Path());
                         InitAudioPlayback();
 
+                        // Add to recent files
+                        AddToRecentFiles(path.Path());
+
                         // Auto-start playback
                         if (fSoundPlayer && fProject) {
                             TogglePlayback();
@@ -3373,6 +4061,20 @@ public:
                 StopPlayback();
                 break;
 
+            case 'LpSy': {  // Loop Sync from TimelineWindow
+                bool enabled = false;
+                float inPt = 0.0f, outPt = 0.0f;
+                message->FindBool("enabled", &enabled);
+                message->FindFloat("in", &inPt);
+                message->FindFloat("out", &outPt);
+                fAudioLoopEnabled.store(enabled, std::memory_order_relaxed);
+                fAudioLoopInTime.store(inPt, std::memory_order_relaxed);
+                fAudioLoopOutTime.store(outPt, std::memory_order_relaxed);
+                printf("[Loop Sync] Audio loop %s (%.2fs - %.2fs)\n",
+                       enabled ? "ENABLED" : "DISABLED", inPt, outPt);
+                break;
+            }
+
             case 'MstV': {  // Master Volume slider
                 if (fMasterVolumeSlider) {
                     int32 value = fMasterVolumeSlider->Value();
@@ -3396,9 +4098,161 @@ public:
                         StopPlayback();
                         return;
                     }
+                    // Track selection (1-9)
+                    else if (key >= '1' && key <= '9') {
+                        fSelectedTrackIndex = key - '1';  // 0-based index
+                        if (fProject && fSelectedTrackIndex < fProject->CountTracks()) {
+                            printf("[Filter] Track %d selected ('%s')\n",
+                                   fSelectedTrackIndex + 1,
+                                   fProject->TrackAt(fSelectedTrackIndex)->TrackName().String());
+                        }
+                        return;
+                    }
+                    // Filter controls (require selected track)
+                    else if (fSelectedTrackIndex >= 0 && fSelectedTrackIndex < 64) {
+                        int idx = fSelectedTrackIndex;
+                        if (key == 'l' || key == 'L') {  // Low-Pass filter
+                            fTrackFilters[idx].SetMode(HaikuDAW::BiquadFilter::LOW_PASS);
+                            fTrackFilters[idx].SetFrequency(1000.0f);
+                            fTrackFilters[idx].SetQ(0.707f);
+                            fTrackFiltersR[idx].SetMode(HaikuDAW::BiquadFilter::LOW_PASS);
+                            fTrackFiltersR[idx].SetFrequency(1000.0f);
+                            fTrackFiltersR[idx].SetQ(0.707f);
+                            fFilterEnabled[idx] = true;
+                            fFilterMode[idx] = HaikuDAW::BiquadFilter::LOW_PASS;
+                            printf("[Filter] LOW-PASS applied to track %d (cutoff=1kHz)\n", idx + 1);
+                            return;
+                        } else if (key == 'h' || key == 'H') {  // High-Pass filter
+                            fTrackFilters[idx].SetMode(HaikuDAW::BiquadFilter::HIGH_PASS);
+                            fTrackFilters[idx].SetFrequency(200.0f);
+                            fTrackFilters[idx].SetQ(0.707f);
+                            fTrackFiltersR[idx].SetMode(HaikuDAW::BiquadFilter::HIGH_PASS);
+                            fTrackFiltersR[idx].SetFrequency(200.0f);
+                            fTrackFiltersR[idx].SetQ(0.707f);
+                            fFilterEnabled[idx] = true;
+                            fFilterMode[idx] = HaikuDAW::BiquadFilter::HIGH_PASS;
+                            printf("[Filter] HIGH-PASS applied to track %d (cutoff=200Hz)\n", idx + 1);
+                            return;
+                        } else if (key == 'n' || key == 'N') {  // Notch filter
+                            fTrackFilters[idx].SetMode(HaikuDAW::BiquadFilter::NOTCH);
+                            fTrackFilters[idx].SetFrequency(1000.0f);
+                            fTrackFilters[idx].SetQ(2.0f);
+                            fTrackFiltersR[idx].SetMode(HaikuDAW::BiquadFilter::NOTCH);
+                            fTrackFiltersR[idx].SetFrequency(1000.0f);
+                            fTrackFiltersR[idx].SetQ(2.0f);
+                            fFilterEnabled[idx] = true;
+                            fFilterMode[idx] = HaikuDAW::BiquadFilter::NOTCH;
+                            printf("[Filter] NOTCH applied to track %d (freq=1kHz)\n", idx + 1);
+                            return;
+                        } else if (key == 'p' || key == 'P') {  // Peaking EQ
+                            fTrackFilters[idx].SetMode(HaikuDAW::BiquadFilter::PEAKING);
+                            fTrackFilters[idx].SetFrequency(500.0f);
+                            fTrackFilters[idx].SetQ(1.0f);
+                            fTrackFilters[idx].SetGain(6.0f);
+                            fTrackFiltersR[idx].SetMode(HaikuDAW::BiquadFilter::PEAKING);
+                            fTrackFiltersR[idx].SetFrequency(500.0f);
+                            fTrackFiltersR[idx].SetQ(1.0f);
+                            fTrackFiltersR[idx].SetGain(6.0f);
+                            fFilterEnabled[idx] = true;
+                            fFilterMode[idx] = HaikuDAW::BiquadFilter::PEAKING;
+                            printf("[Filter] PEAKING EQ applied to track %d (freq=500Hz, gain=+6dB)\n", idx + 1);
+                            return;
+                        } else if (key == 'x' || key == 'X') {  // Disable filter
+                            fFilterEnabled[idx] = false;
+                            fTrackFilters[idx].Reset();
+                            fTrackFiltersR[idx].Reset();
+                            printf("[Filter] Filter DISABLED on track %d\n", idx + 1);
+                            return;
+                        }
+                    }
                 }
                 break;
             }
+
+            // === FILTER CHAIN MANAGEMENT (from timeline UI) ===
+            case 'addf':  // MSG_ADD_FILTER + 0 (LOW_PASS)
+            case 'addf' + 1:  // HIGH_PASS
+            case 'addf' + 2:  // BAND_PASS
+            case 'addf' + 3:  // NOTCH
+            case 'addf' + 4:  // PEAKING
+            case 'addf' + 5:  // LOW_SHELF
+            case 'addf' + 6: {  // HIGH_SHELF
+                int32 trackIndex = -1;
+                if (message->FindInt32("track_index", &trackIndex) == B_OK && trackIndex >= 0 && trackIndex < 64) {
+                    // Determine filter type from message 'what' code
+                    int filterType = message->what - 'addf';  // 0-6
+
+                    // Create new filter with SetParams() to initialize both L/R instances
+                    FilterInChain newFilter;
+                    newFilter.filterL.SetSampleRate(44100.0f);
+                    newFilter.filterR.SetSampleRate(44100.0f);
+
+                    // Set default parameters based on filter type (configures both L/R)
+                    switch (filterType) {
+                        case 0:  // LOW_PASS
+                            newFilter.SetParams(filterType, 1000.0f, 0.707f, 0.0f);
+                            printf("[FilterChain] Added LOW-PASS to track %d (cutoff=1kHz)\n", trackIndex);
+                            break;
+                        case 1:  // HIGH_PASS
+                            newFilter.SetParams(filterType, 200.0f, 0.707f, 0.0f);
+                            printf("[FilterChain] Added HIGH-PASS to track %d (cutoff=200Hz)\n", trackIndex);
+                            break;
+                        case 2:  // BAND_PASS
+                            newFilter.SetParams(filterType, 1000.0f, 1.0f, 0.0f);
+                            printf("[FilterChain] Added BAND-PASS to track %d (center=1kHz)\n", trackIndex);
+                            break;
+                        case 3:  // NOTCH
+                            newFilter.SetParams(filterType, 1000.0f, 2.0f, 0.0f);
+                            printf("[FilterChain] Added NOTCH to track %d (freq=1kHz)\n", trackIndex);
+                            break;
+                        case 4:  // PEAKING
+                            newFilter.SetParams(filterType, 500.0f, 1.0f, 6.0f);
+                            printf("[FilterChain] Added PEAKING EQ to track %d (freq=500Hz, gain=+6dB)\n", trackIndex);
+                            break;
+                        case 5:  // LOW_SHELF
+                            newFilter.SetParams(filterType, 200.0f, 0.707f, 6.0f);
+                            printf("[FilterChain] Added LOW-SHELF to track %d (freq=200Hz, gain=+6dB)\n", trackIndex);
+                            break;
+                        case 6:  // HIGH_SHELF
+                            newFilter.SetParams(filterType, 8000.0f, 0.707f, 6.0f);
+                            printf("[FilterChain] Added HIGH-SHELF to track %d (freq=8kHz, gain=+6dB)\n", trackIndex);
+                            break;
+                    }
+
+                    // Add filter to chain
+                    fTrackFilterChains[trackIndex].push_back(newFilter);
+
+                    // Invalidate timeline window to show new filter indicator
+                    if (fTimelineWindow) {
+                        fTimelineWindow->PostMessage(B_INVALIDATE);
+                    }
+                }
+                break;
+            }
+
+            case 'rmvf': {  // MSG_REMOVE_FILTER
+                int32 trackIndex = -1;
+                int32 filterIndex = -1;
+                if (message->FindInt32("track_index", &trackIndex) == B_OK &&
+                    message->FindInt32("filter_index", &filterIndex) == B_OK &&
+                    trackIndex >= 0 && trackIndex < 64) {
+
+                    std::vector<FilterInChain>& chain = fTrackFilterChains[trackIndex];
+                    if (filterIndex >= 0 && (size_t)filterIndex < chain.size()) {
+                        // Remove filter at index
+                        chain.erase(chain.begin() + filterIndex);
+                        printf("[FilterChain] Removed filter %d from track %d (chain now has %zu filters)\n",
+                               filterIndex, trackIndex, chain.size());
+
+                        // Invalidate timeline window to update display
+                        if (fTimelineWindow) {
+                            fTimelineWindow->PostMessage(B_INVALIDATE);
+                        }
+                    }
+                }
+                break;
+            }
+
             default:
                 BWindow::MessageReceived(message);
         }
@@ -3407,52 +4261,28 @@ public:
     void InitAudioPlayback() {
         if (!fProject) return;
 
-        // Detect sample rate from first valid track
+        // Pre-resolve all track paths and pre-cache audio (removes I/O from audio thread)
         float detectedSampleRate = 44100.0f;  // Default fallback
         int trackCount = fProject->CountTracks();
+        for (int i = 0; i < 64; i++) fResolvedPaths[i] = "";
 
-        for (int i = 0; i < trackCount; i++) {
+        for (int i = 0; i < trackCount && i < 64; i++) {
             VeniceDAW::Track3DMix* track = fProject->TrackAt(i);
             if (!track) continue;
 
-            BString audioPath = track->AudioFilePath();
-            if (audioPath.Length() == 0) continue;
+            fResolvedPaths[i] = ResolveTrackAudioPath(track);
+            if (fResolvedPaths[i].Length() == 0) continue;
 
-            BString resolvedPath;
-            BPath pathObj(audioPath.String());
-            const char* filename = pathObj.Leaf();
-            if (!filename) continue;
-
-            // Try to find the file in project directory
-            BPath projectPath(fProjectPath.String());
-            projectPath.GetParent(&projectPath);
-            BString projectDir(projectPath.Path());
-
-            const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
-            for (int ext = 0; extensions[ext] != nullptr; ext++) {
-                BString testPath = projectDir;
-                testPath << "/" << filename << extensions[ext];
-
-                entry_ref ref;
-                if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
-                    resolvedPath = testPath;
-                    break;
-                }
-            }
-
-            if (resolvedPath.Length() == 0) continue;
-
-            // Get audio cache and check sample rate - use project sample rate if track doesn't have one
+            // Pre-cache audio and detect sample rate
             VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
             if (audioFormat.sampleRate == 0 && fProject) {
                 audioFormat.sampleRate = fProject->ProjectSampleRate();
                 printf("[InitAudio] Track %d: Using project sample rate: %d Hz\n", i, audioFormat.sampleRate);
             }
-            const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(resolvedPath.String(), &audioFormat);
-            if (audioCache && audioCache->isValid && audioCache->sampleRate > 0) {
+            const AudioSampleCache* audioCache = WaveformCache::Instance().GetAudioCache(fResolvedPaths[i].String(), &audioFormat);
+            if (audioCache && audioCache->isValid && audioCache->sampleRate > 0 && detectedSampleRate == 44100.0f) {
                 detectedSampleRate = audioCache->sampleRate;
-                printf("[3D Audio] Detected sample rate from track: %.0f Hz\n", detectedSampleRate);
-                break;  // Use first valid track's rate
+                printf("[3D Audio] Detected sample rate from track %d: %.0f Hz\n", i, detectedSampleRate);
             }
         }
 
@@ -3589,7 +4419,17 @@ public:
         if (trackCount == 0) return;
 
         // Calculate current time position using BSoundPlayer's actual sample rate
-        float currentTime = fCurrentFramePosition / format.frame_rate;
+        float currentTime = (float)fCurrentFramePosition.load() / format.frame_rate;
+
+        // Enforce loop region from audio thread (sample-accurate looping)
+        if (fAudioLoopEnabled.load(std::memory_order_relaxed)) {
+            float loopOut = fAudioLoopOutTime.load(std::memory_order_relaxed);
+            float loopIn = fAudioLoopInTime.load(std::memory_order_relaxed);
+            if (loopOut > loopIn && currentTime >= loopOut) {
+                fCurrentFramePosition.store((int64)(loopIn * format.frame_rate));
+                currentTime = loopIn;
+            }
+        }
 
         // Clear track levels
         memset(fTrackLevels, 0, sizeof(fTrackLevels));
@@ -3617,37 +4457,9 @@ public:
                 if (fAnySoloActive && !fTrackSolo[i]) continue;
             }
 
-            // Get audio file path and resolve it
-            BString audioPath = track->AudioFilePath();
-            if (audioPath.Length() == 0) continue;
-
-            BString resolvedPath;
-            BPath pathObj(audioPath.String());
-            const char* filename = pathObj.Leaf();
-            if (!filename) continue;
-
-            BString projectDir;
-            if (fProjectPath.Length() > 0) {
-                BPath projectPath(fProjectPath.String());
-                BPath parentPath;
-                if (projectPath.GetParent(&parentPath) == B_OK) {
-                    projectDir = parentPath.Path();
-                }
-            }
-
-            const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
-            for (int ext = 0; extensions[ext] != nullptr; ext++) {
-                BString testPath = projectDir;
-                testPath << "/" << filename << extensions[ext];
-
-                entry_ref ref;
-                if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
-                    resolvedPath = testPath;
-                    break;
-                }
-            }
-
-            if (resolvedPath.Length() == 0) continue;
+            // Use pre-resolved audio path (no filesystem I/O in audio thread)
+            if (i >= 64 || fResolvedPaths[i].Length() == 0) continue;
+            const BString& resolvedPath = fResolvedPaths[i];
 
             // Get audio cache - use project sample rate if track doesn't have one
             VeniceDAW::AudioFormat3DMix audioFormat = track->GetAudioFormat();
@@ -3658,15 +4470,17 @@ public:
             if (!audioCache || !audioCache->isValid || audioCache->samples.empty()) continue;
 
             // Debug: log sample rate info once per track
-            static bool logged[32] = {false};
-            if (!logged[i] && i < 32) {
+            static bool logged[64] = {false};
+            if (!logged[i] && i < 64) {
                 printf("[MixTracks] Track %d: file rate=%.0f Hz, playback rate=%.0f Hz, ratio=%.3f\n",
                        i, audioCache->sampleRate, format.frame_rate, audioCache->sampleRate / format.frame_rate);
                 logged[i] = true;
             }
 
             // Calculate track start time
-            float trackStartTime = track->StartPosition() / audioCache->sampleRate;
+            // IMPORTANT: StartPosition() is in samples at 22050 Hz reference rate
+            const float kTimelineReferenceRate = 22050.0f;
+            float trackStartTime = track->StartPosition() / kTimelineReferenceRate;
             float relativeTime = currentTime - trackStartTime;
 
             if (relativeTime < 0) continue;  // Track hasn't started yet
@@ -3678,8 +4492,8 @@ public:
             int64 loopLength = loopEnd - loopStart;
 
             // Debug: log loop info once per track
-            static bool loopLogged[32] = {false};
-            if (!loopLogged[i] && i < 32 && loopLength > 0) {
+            static bool loopLogged[64] = {false};
+            if (!loopLogged[i] && i < 64 && loopLength > 0) {
                 printf("[Loop] Track %d: trim=%.3fs, loop=%.3fs (length=%.3fs)\n",
                        i, loopStart / audioCache->sampleRate, loopEnd / audioCache->sampleRate,
                        loopLength / audioCache->sampleRate);
@@ -3703,11 +4517,15 @@ public:
             // Formula: gain = ((pos_y + 150) / 200) ^ 2
             // This mimics natural acoustic attenuation more accurately than linear
 
-            // BeOS uses Y-only distance with offset and scaling
-            float normalizedDistance = (pos.y + 150.0f) / 200.0f;
-            if (normalizedDistance < 0.0f) normalizedDistance = 0.0f;
+            // Adapted distance attenuation for 3DMix coordinate system (±10 units)
+            // BeOS original used ±250 units, so we scale accordingly
+            // For 3DMix: at distance 0 = full volume, at distance 10 = 25% volume
+            float maxDistance = 15.0f;  // Reference distance for attenuation
+            float normalizedDistance = 1.0f - (distance / maxDistance);
+            if (normalizedDistance < 0.25f) normalizedDistance = 0.25f;  // Minimum 25% volume
+            if (normalizedDistance > 1.0f) normalizedDistance = 1.0f;
 
-            // Quadratic attenuation (inverse-square law approximation)
+            // Quadratic attenuation for natural sound falloff
             float distanceGain = normalizedDistance * normalizedDistance;
 
             // Pan calculation based on X position
@@ -3748,12 +4566,12 @@ public:
             if (trackVolume < 0.0f) trackVolume = 0.0f;
             if (trackVolume > 2.0f) trackVolume = 2.0f;  // Allow up to 2x boost
 
-            leftGain *= masterVolume * trackVolume;
-            rightGain *= masterVolume * trackVolume;
+            leftGain *= masterVolume * trackVolume * fMasterVolume;
+            rightGain *= masterVolume * trackVolume * fMasterVolume;
 
             // Debug: log spatial parameters once per track
-            static bool spatialLogged[32] = {false};
-            if (!spatialLogged[i] && i < 32) {
+            static bool spatialLogged[64] = {false};
+            if (!spatialLogged[i] && i < 64) {
                 printf("[3D Spatial] Track %d ('%s'): pos(%.2f, %.2f, %.2f) dist=%.2f pan=%.2f vol=%.2f L=%.2f R=%.2f\n",
                        i, track->TrackName().String(), pos.x, pos.y, pos.z, distance, pan, trackVolume, leftGain, rightGain);
                 spatialLogged[i] = true;
@@ -3790,14 +4608,14 @@ public:
                 if (srcIdx < 0 || srcIdx + 1 >= (int64)audioCache->samples.size()) break;
 
                 // Read stereo int16 samples and convert to float (-1.0 to +1.0)
-                float leftSampleFloat = audioCache->samples[srcIdx] / 32768.0f;      // Left channel
-                float rightSampleFloat = audioCache->samples[srcIdx + 1] / 32768.0f;  // Right channel
+                float leftSampleFloat = audioCache->samples[srcIdx] * kInt16ToFloat;      // Left channel
+                float rightSampleFloat = audioCache->samples[srcIdx + 1] * kInt16ToFloat;  // Right channel
 
                 // Linear interpolation for smooth sample rate conversion
                 if (srcIdx + 3 < (int64)audioCache->samples.size()) {
                     float frac = srcFramePosition - (int64)srcFramePosition;
-                    float nextLeftFloat = audioCache->samples[srcIdx + 2] / 32768.0f;
-                    float nextRightFloat = audioCache->samples[srcIdx + 3] / 32768.0f;
+                    float nextLeftFloat = audioCache->samples[srcIdx + 2] * kInt16ToFloat;
+                    float nextRightFloat = audioCache->samples[srcIdx + 3] * kInt16ToFloat;
                     leftSampleFloat = leftSampleFloat + frac * (nextLeftFloat - leftSampleFloat);
                     rightSampleFloat = rightSampleFloat + frac * (nextRightFloat - rightSampleFloat);
                 }
@@ -3814,15 +4632,17 @@ public:
                     // Delayed samples create realistic head-shadow effect
 
                     // Calculate delayed FRAME indices
-                    int64 leftDelayedFrame = srcFrame - delayRight;   // Left ear with right delay
-                    int64 rightDelayedFrame = srcFrame - delayLeft;   // Right ear with left delay
+                    // Source left (delayRight>0): right ear is farther, delay right
+                    // Source right (delayLeft>0): left ear is farther, delay left
+                    int64 leftDelayedFrame = srcFrame - delayLeft;    // Left ear delayed by left delay
+                    int64 rightDelayedFrame = srcFrame - delayRight;  // Right ear delayed by right delay
 
                     // Get left channel sample (with right delay applied)
                     float finalLeftSample = leftSampleFloat;  // Default to current sample
                     if (delayRight > 0 && leftDelayedFrame >= 0) {
                         int64 leftDelayedIdx = leftDelayedFrame * 2;
                         if (leftDelayedIdx + 1 < (int64)audioCache->samples.size()) {
-                            finalLeftSample = audioCache->samples[leftDelayedIdx] / 32768.0f;
+                            finalLeftSample = audioCache->samples[leftDelayedIdx] * kInt16ToFloat;
                         }
                     }
 
@@ -3831,13 +4651,44 @@ public:
                     if (delayLeft > 0 && rightDelayedFrame >= 0) {
                         int64 rightDelayedIdx = rightDelayedFrame * 2;
                         if (rightDelayedIdx + 1 < (int64)audioCache->samples.size()) {
-                            finalRightSample = audioCache->samples[rightDelayedIdx + 1] / 32768.0f;
+                            finalRightSample = audioCache->samples[rightDelayedIdx + 1] * kInt16ToFloat;
                         }
                     }
 
+                    // Apply filter chain (multiple filters in cascade) if any filters exist for this track
+                    if (i < 64 && !fTrackFilterChains[i].empty()) {
+                        // Process through all filters in chain sequentially (cascade)
+                        for (size_t filterIdx = 0; filterIdx < fTrackFilterChains[i].size(); filterIdx++) {
+                            FilterInChain& filterInChain = fTrackFilterChains[i][filterIdx];
+
+                            // Initialize filter sample rate on first use
+                            if (filterInChain.filterL.GetSampleRate() != format.frame_rate) {
+                                filterInChain.filterL.SetSampleRate(format.frame_rate);
+                                filterInChain.filterR.SetSampleRate(format.frame_rate);
+                            }
+
+                            // Process L/R through independent filter instances (no crosstalk)
+                            finalLeftSample = filterInChain.filterL.Process(finalLeftSample);
+                            finalRightSample = filterInChain.filterR.Process(finalRightSample);
+                        }
+                    }
+
+                    // LEGACY: Single filter support (kept for backward compatibility during transition)
+                    // This can be removed once UI fully migrates to filter chains
+                    else if (i < 64 && fFilterEnabled[i]) {
+                        // Initialize filter sample rate on first use
+                        if (fTrackFilters[i].GetSampleRate() != format.frame_rate) {
+                            fTrackFilters[i].SetSampleRate(format.frame_rate);
+                            fTrackFiltersR[i].SetSampleRate(format.frame_rate);
+                        }
+                        // Process L/R through independent filter instances (no crosstalk)
+                        finalLeftSample = fTrackFilters[i].Process(finalLeftSample);
+                        finalRightSample = fTrackFiltersR[i].Process(finalRightSample);
+                    }
+
                     // Mix with spatial gains
-                    buffer[frame * format.channel_count + 0] += finalLeftSample * leftGain;    // Left with ITD
-                    buffer[frame * format.channel_count + 1] += finalRightSample * rightGain;  // Right with ITD
+                    buffer[frame * format.channel_count + 0] += finalLeftSample * leftGain;    // Left with ITD + Filter
+                    buffer[frame * format.channel_count + 1] += finalRightSample * rightGain;  // Right with ITD + Filter
                 } else {
                     // Mono output: use average gain (no ITD)
                     float monoGain = (leftGain + rightGain) * 0.5f;
@@ -3852,13 +4703,7 @@ public:
             }
         }
 
-        // Apply master volume to final mix
-        if (format.channel_count >= 2) {
-            for (int32 frame = 0; frame < frameCount; frame++) {
-                buffer[frame * format.channel_count + 0] *= fMasterVolume;  // Left
-                buffer[frame * format.channel_count + 1] *= fMasterVolume;  // Right
-            }
-        }
+        // Master volume is already applied per-track in the mixing loop above
 
         // Calculate master output levels for VU meters (after master volume)
         // Use peak detection for more responsive VU meters
@@ -3880,10 +4725,25 @@ public:
             float vuScale = trackCount > 0 ? fmin((float)trackCount, 6.0f) : 3.0f;
             fMasterLevelLeft = fmin(leftPeak * vuScale, 1.0f);
             fMasterLevelRight = fmin(rightPeak * vuScale, 1.0f);
+
+            // Debug: log VU meter levels periodically (every ~1 second at 44100 Hz)
+            static int32 vuLogCounter = 0;
+            vuLogCounter++;
+            if (vuLogCounter % (int32)(format.frame_rate) == 0) {
+                printf("[VU Meter] L=%.2f R=%.2f (raw peaks: L=%.3f R=%.3f, scale=%.1fx)\n",
+                       fMasterLevelLeft, fMasterLevelRight, leftPeak, rightPeak, vuScale);
+            }
         }
 
         // Update frame position for next callback
         fCurrentFramePosition += frameCount;
+
+        // Auto-loop to start at end of project (prevents infinite silence)
+        float endTime = (float)fCurrentFramePosition.load() / format.frame_rate;
+        float projectDuration = GetProjectDuration();
+        if (projectDuration > 0 && endTime > projectDuration + 0.5f) {
+            fCurrentFramePosition.store(0);
+        }
 
         // Pass track levels to 3D view for visual feedback
         if (fGLView) {
@@ -3903,6 +4763,8 @@ public:
 private:
     static const uint32 MSG_PULSE = 'puls';
     static const uint32 MSG_OPEN_FILE = 'open';
+    static const uint32 MSG_RECENT_FILE = 'recf';
+    static const uint32 MSG_ABOUT = 'abou';
 
     DemoGL3DView* fGLView;
     BMessageRunner* fUpdateRunner;
@@ -3910,6 +4772,44 @@ private:
     VeniceDAW::Project3DMix* fProject;
     BString fProjectPath;  // Full path to the .3dmix file
     BFilePanel* fOpenPanel;
+
+    // Pre-resolved audio file paths (populated during InitAudioPlayback, used by MixTracks)
+    BString fResolvedPaths[64];
+
+    // Resolve audio file path for a track (searches project directory with multiple extensions)
+    BString ResolveTrackAudioPath(VeniceDAW::Track3DMix* track) {
+        if (!track) return BString();
+        BString audioPath = track->AudioFilePath();
+        if (audioPath.Length() == 0) return BString();
+
+        BPath pathObj(audioPath.String());
+        const char* filename = pathObj.Leaf();
+        if (!filename) return BString();
+
+        BString projectDir;
+        if (fProjectPath.Length() > 0) {
+            BPath projPath(fProjectPath.String());
+            BPath parentPath;
+            if (projPath.GetParent(&parentPath) == B_OK) {
+                projectDir = parentPath.Path();
+            }
+        }
+
+        const char* extensions[] = { "", ".wav", ".aiff", ".aif", ".raw", ".mp3", ".ogg", nullptr };
+        for (int ext = 0; extensions[ext] != nullptr; ext++) {
+            BString testPath = projectDir;
+            testPath << "/" << filename << extensions[ext];
+            entry_ref ref;
+            if (get_ref_for_path(testPath.String(), &ref) == B_OK) {
+                return testPath;
+            }
+        }
+        return BString();
+    }
+
+    // Recent files support
+    BMenu* fRecentFilesMenu;
+    BString fRecentFiles[5];  // Store last 5 opened files
 
     // Control bar (contains all transport controls)
     ControlBarView* fControlBar;
@@ -3922,8 +4822,8 @@ private:
     BSlider* fMasterVolumeSlider;
     BSoundPlayer* fSoundPlayer;
     float fMasterVolume;  // 0.0 to 2.0 (100% = 1.0, 200% = 2.0)
-    int64 fCurrentFramePosition;
-    bool fIsPlaying;
+    std::atomic<int64> fCurrentFramePosition;
+    std::atomic<bool> fIsPlaying;
     int64 fLastTimeDisplayUpdate;  // For throttling time display updates
 
     // Track levels for visual feedback (RMS level 0.0-1.0)
@@ -3937,6 +4837,21 @@ private:
     bool fTrackMute[64];     // true = track silenced
     bool fTrackSolo[64];     // true = track solo'd
     bool fAnySoloActive;     // Cache: true if any track has solo
+
+    // Audio filters per track (NEW: Filter chains for multiple filters per track)
+    std::vector<FilterInChain> fTrackFilterChains[64];  // Filter chain for each track (0-N filters)
+
+    // LEGACY: Single filter per track (kept for backward compatibility during transition)
+    HaikuDAW::BiquadFilter fTrackFilters[64];   // Left channel filter per track
+    HaikuDAW::BiquadFilter fTrackFiltersR[64];  // Right channel filter per track
+    bool fFilterEnabled[64];                    // true = filter active for this track
+    int fFilterMode[64];                        // FilterMode enum value for each track
+    int fSelectedTrackIndex;                    // Currently selected track for filter control (-1 = none)
+
+    // Audio-thread loop region (synced from TimelineWindow)
+    std::atomic<bool> fAudioLoopEnabled{false};
+    std::atomic<float> fAudioLoopInTime{0.0f};
+    std::atomic<float> fAudioLoopOutTime{0.0f};
 
     // Frame counter for throttling 3D view updates
     int32 fFrameCounter;     // Incremented each MSG_PULSE
