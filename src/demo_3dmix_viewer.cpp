@@ -4507,35 +4507,46 @@ public:
             // Get track 3D position
             VeniceDAW::Coordinate3D pos = track->Position();
 
+            // NOTE: The 3D view camera is rotated 180°, so visual X is inverted.
+            // The audio pan uses pos.x directly (positive = right in audio)
+            // which matches the 3D view AFTER the 180° rotation is accounted for.
+            // The drag code already negates dx for the camera rotation (line 776).
+
             // Calculate distance from listener (at origin 0,0,0)
-            // In BeOS 3D Mixer: Y is depth, X is left/right, Z is height
             float distance = sqrt(pos.x * pos.x + pos.y * pos.y);
 
-            // === QUADRATIC DISTANCE ATTENUATION ===
-            // BeOS 3D Mixer algorithm from sound_view.cpp lines 4798-4801, 4908-4911
-            // Uses Y-position for depth, with QUADRATIC falloff (inverse-square law)
-            // Formula: gain = ((pos_y + 150) / 200) ^ 2
-            // This mimics natural acoustic attenuation more accurately than linear
-
-            // Adapted distance attenuation for 3DMix coordinate system (±10 units)
-            // BeOS original used ±250 units, so we scale accordingly
-            // For 3DMix: at distance 0 = full volume, at distance 10 = 25% volume
-            float maxDistance = 15.0f;  // Reference distance for attenuation
-            float normalizedDistance = 1.0f - (distance / maxDistance);
-            if (normalizedDistance < 0.25f) normalizedDistance = 0.25f;  // Minimum 25% volume
-            if (normalizedDistance > 1.0f) normalizedDistance = 1.0f;
-
-            // Quadratic attenuation for natural sound falloff
-            float distanceGain = normalizedDistance * normalizedDistance;
+            // === DISTANCE ATTENUATION ===
+            // Linear attenuation with generous minimum floor
+            // At distance 0 = full volume, at distance 15 = 30% volume
+            float maxDistance = 15.0f;
+            float distanceGain = 1.0f - (distance / maxDistance) * 0.7f;
+            if (distanceGain < 0.3f) distanceGain = 0.3f;
+            if (distanceGain > 1.0f) distanceGain = 1.0f;
 
             // Pan calculation based on X position
             // X: negative = left, positive = right
-            const float panRange = 10.0f;  // Typical BeOS range is ±10 units
-            float pan = fmax(-1.0f, fmin(1.0f, pos.x / panRange));  // Clamp to ±1.0
+            const float panRange = 10.0f;
+            float pan = fmax(-1.0f, fmin(1.0f, pos.x / panRange));
+
+            // === FRONT/BACK SPATIAL DEPTH ===
+            // Y axis: positive = in front of listener, negative = behind
+            // Behind the listener: head shadow effect (attenuate high frequencies)
+            // This creates the perception of depth on the 2D plane
+            // depthFactor: 1.0 = fully in front (bright), 0.0 = fully behind (muffled)
+            float depthNorm = fmax(-1.0f, fmin(1.0f, pos.y / panRange));  // -1 to +1
+            float depthFactor = (depthNorm + 1.0f) * 0.5f;  // 0.0 (behind) to 1.0 (front)
+            // Low-pass filter coefficient for head shadow:
+            // alpha=1.0 means no filtering (pass-through), alpha close to 0 = heavy filtering
+            // Front (depthFactor=1.0): alpha=1.0 (no filter)
+            // Behind (depthFactor=0.0): alpha=0.15 (strong low-pass ~1kHz at 22050Hz)
+            float spatialAlpha = 0.15f + depthFactor * 0.85f;  // Range: 0.15 to 1.0
+
+            // Slight volume boost for front sources, reduction for behind (±3dB)
+            float depthGain = 0.8f + depthFactor * 0.4f;  // 0.8 (behind) to 1.2 (front)
 
             // Calculate stereo gains using constant power panning
-            float leftGain = cos((pan + 1.0f) * M_PI / 4.0f) * distanceGain;
-            float rightGain = sin((pan + 1.0f) * M_PI / 4.0f) * distanceGain;
+            float leftGain = cos((pan + 1.0f) * M_PI / 4.0f) * distanceGain * depthGain;
+            float rightGain = sin((pan + 1.0f) * M_PI / 4.0f) * distanceGain * depthGain;
 
             // === ITD (Interaural Time Difference) CALCULATION ===
             // BeOS 3D Mixer algorithm from sound_view.cpp lines 4314-4322
@@ -4569,12 +4580,12 @@ public:
             leftGain *= masterVolume * trackVolume * fMasterVolume;
             rightGain *= masterVolume * trackVolume * fMasterVolume;
 
-            // Debug: log spatial parameters once per track
-            static bool spatialLogged[64] = {false};
-            if (!spatialLogged[i] && i < 64) {
-                printf("[3D Spatial] Track %d ('%s'): pos(%.2f, %.2f, %.2f) dist=%.2f pan=%.2f vol=%.2f L=%.2f R=%.2f\n",
-                       i, track->TrackName().String(), pos.x, pos.y, pos.z, distance, pan, trackVolume, leftGain, rightGain);
-                spatialLogged[i] = true;
+            // Debug: log spatial parameters periodically
+            static int32 spatialLogTimer = 0;
+            if (i == 0) spatialLogTimer++;
+            if (i == 0 && (spatialLogTimer % 100) == 0) {
+                printf("[3D Spatial] T0: pos(%.1f,%.1f) pan=%.2f dist=%.2f depth=%.2f alpha=%.2f L=%.3f R=%.3f\n",
+                       pos.x, pos.y, pan, distanceGain, depthFactor, spatialAlpha, leftGain, rightGain);
             }
 
             // Track level calculation (RMS)
@@ -4686,9 +4697,19 @@ public:
                         finalRightSample = fTrackFiltersR[i].Process(finalRightSample);
                     }
 
-                    // Mix with spatial gains
-                    buffer[frame * format.channel_count + 0] += finalLeftSample * leftGain;    // Left with ITD + Filter
-                    buffer[frame * format.channel_count + 1] += finalRightSample * rightGain;  // Right with ITD + Filter
+                    // 3D Spatial mixing: downmix stereo source to mono, then apply spatial panning
+                    float monoSource = (finalLeftSample + finalRightSample) * 0.5f;
+
+                    // Apply head shadow low-pass filter for behind-listener sources
+                    // 1-pole IIR: y[n] = y[n-1] + alpha * (x[n] - y[n-1])
+                    // alpha=1.0 = pass-through, alpha→0 = heavy low-pass (muffled)
+                    if (spatialAlpha < 0.99f && i < 64) {
+                        monoSource = fSpatialFilterState[i] + spatialAlpha * (monoSource - fSpatialFilterState[i]);
+                        fSpatialFilterState[i] = monoSource;
+                    }
+
+                    buffer[frame * format.channel_count + 0] += monoSource * leftGain;
+                    buffer[frame * format.channel_count + 1] += monoSource * rightGain;
                 } else {
                     // Mono output: use average gain (no ITD)
                     float monoGain = (leftGain + rightGain) * 0.5f;
@@ -4847,6 +4868,9 @@ private:
     bool fFilterEnabled[64];                    // true = filter active for this track
     int fFilterMode[64];                        // FilterMode enum value for each track
     int fSelectedTrackIndex;                    // Currently selected track for filter control (-1 = none)
+
+    // Spatial depth filter state per track (1-pole IIR for head shadow effect)
+    float fSpatialFilterState[64] = {0};
 
     // Audio-thread loop region (synced from TimelineWindow)
     std::atomic<bool> fAudioLoopEnabled{false};
