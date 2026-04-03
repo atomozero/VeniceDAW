@@ -3513,6 +3513,331 @@ static BString BuildWindowTitle(const char* projectPath) {
     return title;
 }
 
+// ============================================================================
+// C64-STYLE DEMO ABOUT WINDOW
+// Raster bars, bouncing sprite, sine scroller - 6510 ASM style
+// ============================================================================
+
+// Commodore 64 palette (16 colors)
+static const rgb_color kC64[] = {
+    {0x00, 0x00, 0x00, 0xFF},  //  0 Black
+    {0xFF, 0xFF, 0xFF, 0xFF},  //  1 White
+    {0x88, 0x39, 0x32, 0xFF},  //  2 Red
+    {0x67, 0xB6, 0xBD, 0xFF},  //  3 Cyan
+    {0x8B, 0x3F, 0x96, 0xFF},  //  4 Purple
+    {0x55, 0xA0, 0x49, 0xFF},  //  5 Green
+    {0x40, 0x31, 0x8D, 0xFF},  //  6 Blue
+    {0xBF, 0xCE, 0x72, 0xFF},  //  7 Yellow
+    {0x8B, 0x54, 0x29, 0xFF},  //  8 Orange/Brown
+    {0x57, 0x42, 0x00, 0xFF},  //  9 Brown
+    {0xB8, 0x69, 0x62, 0xFF},  // 10 Light Red
+    {0x50, 0x50, 0x50, 0xFF},  // 11 Dark Grey
+    {0x78, 0x78, 0x78, 0xFF},  // 12 Medium Grey
+    {0x94, 0xE0, 0x89, 0xFF},  // 13 Light Green
+    {0x78, 0x69, 0xC4, 0xFF},  // 14 Light Blue
+    {0x9F, 0x9F, 0x9F, 0xFF},  // 15 Light Grey
+};
+
+class AboutDemoView : public BView {
+public:
+    AboutDemoView(BRect frame)
+        : BView(frame, "c64_demo", B_FOLLOW_ALL, B_WILL_DRAW | B_PULSE_NEEDED)
+        , fTick(0)
+        , fScrollX(frame.Width() + 100)
+    {
+        SetViewColor(kC64[6]);  // C64 blue
+        // Init starfield
+        srand(1337);
+        for (int i = 0; i < kNumStars; i++) {
+            fStarX[i] = rand() % 400;
+            fStarY[i] = rand() % 440;
+            fStarSpeed[i] = 0.3f + (rand() % 10) * 0.15f;
+            fStarColor[i] = (rand() % 3 == 0) ? 1 : (rand() % 2 == 0) ? 15 : 12;
+        }
+    }
+
+    virtual void AttachedToWindow() override {
+        BView::AttachedToWindow();
+        Window()->SetPulseRate(33333);
+    }
+
+    virtual void Pulse() override {
+        fTick++;
+        fScrollX -= 3.0f;
+        Invalidate();
+    }
+
+    virtual void Draw(BRect) override {
+        BRect bounds = Bounds();
+        float w = bounds.Width();
+        float h = bounds.Height();
+
+        // === C64 BORDER ===
+        SetHighColor(kC64[14]);
+        const float B = 16.0f;
+        FillRect(BRect(0, 0, w, B));
+        FillRect(BRect(0, h - B, w, h));
+        FillRect(BRect(0, 0, B, h));
+        FillRect(BRect(w - B, 0, w, h));
+
+        // Inner screen
+        BRect scr(B, B, w - B, h - B);
+        SetHighColor(kC64[6]);
+        FillRect(scr);
+        float sx = scr.left, sy = scr.top;
+        float sw = scr.Width(), sh = scr.Height();
+
+        // Clip to inner screen
+        BRegion scrClip(scr);
+        ConstrainClippingRegion(&scrClip);
+
+        // === STARFIELD ===
+        for (int i = 0; i < kNumStars; i++) {
+            fStarX[i] -= fStarSpeed[i];
+            if (fStarX[i] < 0) {
+                fStarX[i] = sw;
+                fStarY[i] = rand() % (int)sh;
+            }
+            float px = sx + fStarX[i];
+            float py = sy + fStarY[i];
+            SetHighColor(kC64[fStarColor[i]]);
+            FillRect(BRect(px, py, px + 1, py + 1));
+        }
+
+        // === RASTER BARS (thick, full-width, sine bounce) ===
+        // Multiple bars with smooth color gradients using C64 palette
+        struct RasterBar { const int* colors; int len; float speed; float phase; };
+
+        const int bar1[] = {0,11,12,15,7,1,7,15,12,11,0};       // Yellow-white
+        const int bar2[] = {0,11,2,10,10,2,11,0};                // Red
+        const int bar3[] = {0,6,14,3,1,3,14,6,0};                // Cyan-blue
+        const int bar4[] = {0,11,4,4,14,4,4,11,0};               // Purple
+        const int bar5[] = {0,9,8,8,7,8,8,9,0};                  // Orange
+
+        RasterBar bars[] = {
+            {bar1, 11, 0.031f, 0.0f},
+            {bar2, 8,  0.043f, 1.5f},
+            {bar3, 9,  0.037f, 3.0f},
+            {bar4, 9,  0.029f, 4.5f},
+            {bar5, 9,  0.047f, 6.0f},
+        };
+
+        float barH = 4.0f;  // Thick scanlines
+        for (int b = 0; b < 5; b++) {
+            float baseY = sy + 40.0f + b * 55.0f + sin(fTick * bars[b].speed + bars[b].phase) * 50.0f;
+            for (int r = 0; r < bars[b].len; r++) {
+                float ry = baseY + r * barH;
+                if (ry >= sy && ry + barH <= sy + sh - 60) {
+                    SetHighColor(kC64[bars[b].colors[r]]);
+                    FillRect(BRect(sx, ry, sx + sw, ry + barH - 1));
+                }
+            }
+        }
+
+        // === HYDROGEN ATOM (bouncing sprite with trail) ===
+        float atomCX = sx + sw / 2.0f + sin(fTick * 0.021f) * (sw * 0.3f);
+        float atomCY = sy + sh * 0.35f + sin(fTick * 0.033f) * (sh * 0.18f);
+        float t = fTick * 1.0f;
+
+        // Ghost trails (previous positions, fading)
+        for (int trail = 4; trail >= 0; trail--) {
+            float tt = (fTick - trail * 3) * 1.0f;
+            float tcx = sx + sw / 2.0f + sin((fTick - trail * 3) * 0.021f) * (sw * 0.3f);
+            float tcy = sy + sh * 0.35f + sin((fTick - trail * 3) * 0.033f) * (sh * 0.18f);
+            int trailColor = (trail < 2) ? 11 : 0;
+            DrawAtom(tcx, tcy, tt, trailColor);
+        }
+        // Main atom (on top)
+        DrawAtom(atomCX, atomCY, t, -1);
+
+        // === TITLE with color cycling + sine wobble ===
+        SetFont(be_bold_font);
+        SetFontSize(20.0f);
+        const char* title = "VENICEDAW";
+        float charW = 18.0f;
+        float titleTotalW = 9 * charW;
+        float titleBaseX = sx + (sw - titleTotalW) / 2.0f;
+        float titleBaseY = sy + 28.0f;
+
+        const int cycleColors[] = {2, 10, 8, 7, 1, 7, 13, 5, 3, 14, 4};
+        int numCycle = 11;
+
+        for (int i = 0; i < 9; i++) {
+            float wobble = sin(fTick * 0.12f + i * 0.7f) * 5.0f;
+            int ci = (i + fTick / 5) % numCycle;
+
+            // Shadow
+            SetHighColor(kC64[0]);
+            char ch[2] = {title[i], 0};
+            DrawString(ch, BPoint(titleBaseX + i * charW + 2, titleBaseY + wobble + 2));
+
+            // Character
+            SetHighColor(kC64[cycleColors[ci]]);
+            DrawString(ch, BPoint(titleBaseX + i * charW, titleBaseY + wobble));
+        }
+
+        // === CREDITS ===
+        SetFont(be_fixed_font);
+        SetFontSize(12.0f);
+        float cy = sy + sh * 0.60f;
+
+        DrawC64Text("3DMIX VIEWER - ALPHA EDITION", sx, sw, cy, 14); cy += 22;
+        DrawC64Text("CODE BY ANDREA BERNARDI", sx, sw, cy, 1); cy += 22;
+        DrawC64Text("HAIKU OS - APRIL 2026", sx, sw, cy, 15); cy += 28;
+        DrawC64Text("- GREETINGS -", sx, sw, cy, 7); cy += 20;
+
+        const int greetColors[] = {3, 13, 10, 14};
+        const char* greets[] = {
+            "BE INC. (1990-2002)", "HAIKU PROJECT",
+            "THE BEOS COMMUNITY", "ALL DEMOSCENE CODERS"
+        };
+        for (int g = 0; g < 4; g++) {
+            DrawC64Text(greets[g], sx, sw, cy, greetColors[g]);
+            cy += 16;
+        }
+
+        // === SINE SCROLLER (big, with shadow, at bottom) ===
+        static const char* scrollText =
+            "          VENICEDAW  ...  "
+            "A DIGITAL AUDIO WORKSTATION FOR HAIKU OS  ...  "
+            "BEOS 3DMIX HERITAGE LIVES ON  ...  "
+            "3D SPATIAL AUDIO WITH HEAD SHADOW AND ITD  ...  "
+            "CODED BY ANDREA BERNARDI  ...  "
+            "KEEP THE BEOS SPIRIT ALIVE!  ...  "
+            "GREETZ TO ALL HAIKU AND BEOS USERS WORLDWIDE  ...          ";
+
+        SetFont(be_bold_font);
+        SetFontSize(24.0f);
+
+        int textLen = strlen(scrollText);
+        float scrollCharW = 16.0f;
+        float totalTextW = textLen * scrollCharW;
+        if (fScrollX < -totalTextW) fScrollX = sw + 100;
+
+        float scrollerBaseY = sy + sh - 30.0f;
+
+        // Black strip behind scroller
+        SetHighColor(kC64[0]);
+        FillRect(BRect(sx, scrollerBaseY - 28, sx + sw, scrollerBaseY + 16));
+        // Thin lines above and below (like raster split)
+        SetHighColor(kC64[11]);
+        FillRect(BRect(sx, scrollerBaseY - 30, sx + sw, scrollerBaseY - 29));
+        FillRect(BRect(sx, scrollerBaseY + 17, sx + sw, scrollerBaseY + 18));
+
+        for (int c = 0; c < textLen; c++) {
+            float cx = fScrollX + c * scrollCharW;
+            if (cx < sx - 20 || cx > sx + sw + 20) continue;
+
+            // Big sine wave
+            float sineOff = sin(cx * 0.025f + fTick * 0.12f) * 16.0f;
+
+            char ch[2] = {scrollText[c], 0};
+
+            // Shadow (offset by 2px)
+            SetHighColor(kC64[0]);
+            DrawString(ch, BPoint(cx + 2, scrollerBaseY + sineOff + 2));
+
+            // Character with per-char color cycling
+            int ci = ((c + fTick / 3) % 8);
+            const int sc[] = {1, 15, 3, 13, 7, 13, 3, 15};
+            SetHighColor(kC64[sc[ci]]);
+            DrawString(ch, BPoint(cx, scrollerBaseY + sineOff));
+        }
+
+        ConstrainClippingRegion(NULL);
+    }
+
+private:
+    void DrawC64Text(const char* text, float areaX, float areaW, float y, int color) {
+        float tw = StringWidth(text);
+        // Shadow
+        SetHighColor(kC64[0]);
+        DrawString(text, BPoint(areaX + (areaW - tw) / 2 + 1, y + 1));
+        // Text
+        SetHighColor(kC64[color]);
+        DrawString(text, BPoint(areaX + (areaW - tw) / 2, y));
+    }
+
+    void DrawAtom(float cx, float cy, float t, int trailColor) {
+        const float P = 4.0f;  // Pixel size (blocky sprite feel)
+        bool isTrail = (trailColor >= 0);
+
+        // Orbit paths (dotted rings)
+        if (!isTrail) {
+            for (int a = 0; a < 24; a++) {
+                float angle = a * (2.0f * M_PI / 24.0f);
+                SetHighColor(kC64[11]);
+                float o1x = cx + cos(angle) * 55.0f;
+                float o1y = cy + sin(angle) * 16.0f;
+                FillRect(BRect(o1x, o1y, o1x + 2, o1y + 2));
+                float o2x = cx + cos(angle) * 42.0f;
+                float o2y = cy + sin(angle) * 44.0f;
+                FillRect(BRect(o2x, o2y, o2x + 2, o2y + 2));
+                float o3x = cx + cos(angle) * 30.0f;
+                float o3y = cy + sin(angle) * 52.0f;
+                FillRect(BRect(o3x, o3y, o3x + 2, o3y + 2));
+            }
+        }
+
+        // Nucleus (proton) - blocky cross shape
+        int nc = isTrail ? trailColor : 2;
+        int nh = isTrail ? trailColor : 10;
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++) {
+                SetHighColor(kC64[nc]);
+                FillRect(BRect(cx+dx*P, cy+dy*P, cx+dx*P+P-1, cy+dy*P+P-1));
+            }
+        if (!isTrail) {
+            SetHighColor(kC64[nh]);
+            FillRect(BRect(cx-P, cy-P, cx-1, cy-1));  // Highlight
+            SetHighColor(kC64[1]);
+            FillRect(BRect(cx, cy, cx+P-1, cy+P-1));   // White center dot
+        }
+
+        // Electrons (2x2 blocky sprites)
+        struct Elec { float rx, ry, speed, phase; int color, hicolor; };
+        Elec elecs[] = {
+            {55, 16, 0.075f, 0.0f, 3, 1},     // Cyan, fast
+            {42, 44, 0.055f, 2.1f, 5, 13},    // Green, medium
+            {30, 52, 0.042f, 4.2f, 7, 1},     // Yellow, slow
+        };
+
+        for (int e = 0; e < 3; e++) {
+            float ex = cx + cos(t * elecs[e].speed + elecs[e].phase) * elecs[e].rx;
+            float ey = cy + sin(t * elecs[e].speed + elecs[e].phase) * elecs[e].ry;
+
+            int ec = isTrail ? trailColor : elecs[e].color;
+            SetHighColor(kC64[ec]);
+            FillRect(BRect(ex, ey, ex+P-1, ey+P-1));
+            FillRect(BRect(ex+P, ey, ex+P+P-1, ey+P-1));
+            FillRect(BRect(ex, ey+P, ex+P-1, ey+P+P-1));
+            if (!isTrail) {
+                SetHighColor(kC64[elecs[e].hicolor]);
+                FillRect(BRect(ex+P, ey+P, ex+P+P-1, ey+P+P-1));
+            }
+        }
+    }
+
+    static const int kNumStars = 80;
+    float fStarX[kNumStars], fStarY[kNumStars], fStarSpeed[kNumStars];
+    int fStarColor[kNumStars];
+    int32 fTick;
+    float fScrollX;
+};
+
+class AboutDemoWindow : public BWindow {
+public:
+    AboutDemoWindow()
+        : BWindow(BRect(150, 80, 600, 540), "About VeniceDAW",
+                  B_TITLED_WINDOW, B_NOT_RESIZABLE | B_NOT_ZOOMABLE)
+    {
+        AboutDemoView* view = new AboutDemoView(Bounds());
+        AddChild(view);
+    }
+};
+
+// ============================================================================
+
 class DemoWindow : public BWindow {
 public:
     DemoWindow(const char* projectPath)
@@ -3760,24 +4085,18 @@ public:
         }
     }
 
-    // Show About window
+    // ================================================================
+    // C64-STYLE DEMO ABOUT WINDOW with animated hydrogen atom
+    // ================================================================
     void ShowAbout() {
-        BAlert* about = new BAlert("About VeniceDAW",
-            "VeniceDAW - 3DMix Viewer Alpha\n"
-            "\"CD-ROM Edition\" 🎵\n\n"
-            "A time machine back to 1995-2001\n"
-            "when BeOS was the coolest OS on Earth!\n\n"
-            "Features:\n"
-            "• Plays ancient BeOS 3dmix files from the archives\n"
-            "• 3D spatial audio positioning (feel the 90s!)\n"
-            "• Waveform visualization like it's Y2K\n"
-            "• Compatible with AMD E-Series CPUs from 2011 ⚡\n\n"
-            "Built with ❤️ for Haiku OS\n"
-            "November 2025\n\n"
-            "🎧 Keep the BeOS spirit alive! 🎧",
-            "Cool!", NULL, NULL,
-            B_WIDTH_AS_USUAL, B_INFO_ALERT);
-        about->Go();
+        // Check if already open
+        if (fAboutWindow && fAboutWindow->Lock()) {
+            fAboutWindow->Activate();
+            fAboutWindow->Unlock();
+            return;
+        }
+        fAboutWindow = new AboutDemoWindow();
+        fAboutWindow->Show();
     }
 
     void LoadProject(const char* path) {
@@ -4790,6 +5109,7 @@ private:
     DemoGL3DView* fGLView;
     BMessageRunner* fUpdateRunner;
     TimelineWindow* fTimelineWindow;
+    BWindow* fAboutWindow = nullptr;
     VeniceDAW::Project3DMix* fProject;
     BString fProjectPath;  // Full path to the .3dmix file
     BFilePanel* fOpenPanel;
