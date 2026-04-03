@@ -31,13 +31,33 @@
 #include <LayoutBuilder.h>
 #include <Bitmap.h>
 #include <IconUtils.h>
-#include <lib3dmix/3DMixProjectImporter.h>
-#include "../audio/3dmix/3DMixTestSuite.h"
+// Local 3dmix headers (replaces lib3dmix)
+#include "../audio/3dmix/3DMixFormat.h"
+#include "../audio/3dmix/3DMixParser.h"
+#include "../audio/3dmix/AudioPathResolver.h"
+#include "../audio/3dmix/CoordinateSystemMapper.h"
 
 // Forward declarations
 class BRefFilter;
 
 namespace VeniceDAW {
+
+// Stubs for missing lib3dmix types
+struct ImportConfiguration {
+    coordinate_conversion_mode conversionMode = CONVERSION_DIRECT_SCALE;
+    spatialization_standard standard = STANDARD_GENERIC_3D;
+    bool importAudioFiles = true;
+    BString audioSearchPath;
+};
+
+#ifndef _THREEDMIX_PROJECT_IMPORTER_H
+class ThreeDMixProjectImporter {
+public:
+    ThreeDMixProjectImporter() {}
+    ~ThreeDMixProjectImporter() {}
+};
+#endif
+
 
 /*
  * Track preview item for import dialog

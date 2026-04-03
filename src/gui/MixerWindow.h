@@ -25,8 +25,22 @@
 #include <Alert.h>
 #include <vector>
 
-// 3dmix import support
-#include <lib3dmix/3DMixProjectImporter.h>
+// Stub for lib3dmix (library not present - minimal types for compilation)
+namespace VeniceDAW {
+    struct ImportResult {
+        bool success = false;
+        int tracksImported = 0;
+        int audioFilesResolved = 0;
+        bigtime_t importTime = 0;
+        BString projectName;
+        BString errorMessage;
+    };
+    class ThreeDMixProjectImporter {
+    public:
+        ThreeDMixProjectImporter() {}
+        ~ThreeDMixProjectImporter() {}
+    };
+}
 
 namespace HaikuDAW {
 
