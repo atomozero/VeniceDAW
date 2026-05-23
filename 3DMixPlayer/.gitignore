@@ -1,0 +1,13 @@
+# Build artifacts
+*.o
+3DMixPlayer
+
+# Debug
+*.dSYM/
+core
+vgcore.*
+
+# Editor / OS
+*~
+*.swp
+.DS_Store
